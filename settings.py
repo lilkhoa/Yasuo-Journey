@@ -1,0 +1,59 @@
+"""
+Game Settings and Configuration
+Centralized configuration for the A3 Yasuo game project.
+"""
+
+# Display settings
+WINDOW_WIDTH = 1280
+WINDOW_HEIGHT = 720
+FPS = 60
+FULLSCREEN = False
+
+# Game settings
+GAME_TITLE = "A3 Yasuo - Action Game"
+
+# Asset paths
+ASSETS_PATH = "assets"
+NPC_PATH = "assets/NPC"
+PLAYER_PATH = "assets/Player"
+MAP_PATH = "assets/Map"
+SKILLS_PATH = "assets/Skills"
+
+# NPC Settings
+NPC_GHOST_HEALTH = 100
+NPC_GHOST_SPEED = 2
+NPC_GHOST_DAMAGE = 10
+NPC_GHOST_DETECTION_RANGE = 300
+NPC_GHOST_ATTACK_RANGE = 100
+
+NPC_GOBLIN_HEALTH = 80
+NPC_GOBLIN_SPEED = 3
+NPC_GOBLIN_DAMAGE = 15
+
+NPC_SHOOTER_HEALTH = 60
+NPC_SHOOTER_SPEED = 1.5
+NPC_SHOOTER_DAMAGE = 20
+NPC_SHOOTER_PROJECTILE_SPEED = 5
+
+# Player Settings
+PLAYER_HEALTH = 200
+PLAYER_SPEED = 5
+PLAYER_JUMP_POWER = 10
+
+# Combat Settings
+ATTACK_COOLDOWN = 60  # frames
+SKILL_Q_COOLDOWN = 120
+SKILL_W_COOLDOWN = 180
+SKILL_E_COOLDOWN = 90
+
+# Physics
+GRAVITY = 0.5
+MAX_FALL_SPEED = 10
+
+# Colors (R, G, B, A)
+COLOR_BLACK = (0, 0, 0, 255)
+COLOR_WHITE = (255, 255, 255, 255)
+COLOR_RED = (255, 0, 0, 255)
+COLOR_GREEN = (0, 255, 0, 255)
+COLOR_BLUE = (0, 0, 255, 255)
+COLOR_BACKGROUND = (20, 20, 30, 255)
