@@ -14,16 +14,12 @@ class NPCState(Enum):
     IDLE = "Idle"
     WALK = "Walk"
     RUN = "Run"
-    JUMP = "Jump"
     ATTACK_1 = "Attack_1"
     ATTACK_2 = "Attack_2"
     ATTACK_3 = "Attack_3"
     ATTACK_4 = "Attack_4"
-    CHARGE_1 = "Charge_1"
-    CHARGE_2 = "Charge_2"
     HURT = "Hurt"
     DEAD = "Dead"
-    SCREAM = "Scream"
 
 
 class Direction(Enum):
