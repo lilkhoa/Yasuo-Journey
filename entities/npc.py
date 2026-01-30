@@ -1,7 +1,3 @@
-"""
-NPC Module - Ghost Enemy Implementation
-Handles Ghost NPC behavior, animations, and combat mechanics using PySDL2.
-"""
 import os
 import ctypes
 import sdl2
@@ -141,6 +137,9 @@ class NPC:
         self.is_attacking = False
         self.attack_cooldown = 0
         self.attack_cooldown_max = attack_cooldown_max
+        
+        # Projectile system (can be set by child classes)
+        self.projectile_manager = None
         
         # Load sprites (implemented by child classes)
         self._load_sprites()
@@ -322,7 +321,7 @@ class NPC:
 
 
 class Ghost(NPC):
-    def __init__(self, x, y, sprite_factory, texture_factory, renderer):
+    def __init__(self, x, y, sprite_factory, texture_factory, renderer, projectile_manager=None):
         """
         Initialize Ghost NPC.
         
@@ -332,6 +331,7 @@ class Ghost(NPC):
             sprite_factory: PySDL2 sprite factory
             texture_factory: PySDL2 texture factory
             renderer: PySDL2 renderer
+            projectile_manager: ProjectileManager instance for spawning projectiles (optional)
         """
         super().__init__(
             x, y, sprite_factory, texture_factory, renderer,
@@ -343,6 +343,12 @@ class Ghost(NPC):
             patrol_radius=NPC_GHOST_PATROL_RADIUS,
             attack_cooldown_max=NPC_GHOST_ATTACK_COOLDOWN
         )
+        
+        # Set projectile manager for firing projectiles
+        self.projectile_manager = projectile_manager
+        
+        # Track which frame to fire projectile (mid-attack animation)
+        self.projectile_fired_this_attack = False
     
     def _get_npc_folder_name(self):
         """Get the folder name for Ghost sprites."""
@@ -410,9 +416,55 @@ class Ghost(NPC):
         """Get list of states that cannot be interrupted for Ghost."""
         return [NPCState.ATTACK_3, NPCState.ATTACK_4, NPCState.HURT, NPCState.DEAD]
     
+    def update(self, delta_time=1):
+        """
+        Update Ghost NPC with projectile firing logic.
+        
+        Args:
+            delta_time: Time elapsed since last update
+        """
+        # Call parent update
+        super().update(delta_time)
+        
+        # Fire projectile at appropriate frame during attack animation
+        if self.is_attacking and not self.projectile_fired_this_attack:
+            # Fire projectile at frame 3 for both Attack_3 and Attack_4
+            if self.current_frame >= 3:
+                if self.state == NPCState.ATTACK_3:
+                    self._fire_projectile(charge_type=1)
+                elif self.state == NPCState.ATTACK_4:
+                    self._fire_projectile(charge_type=2)
+                self.projectile_fired_this_attack = True
+        
+        # Reset projectile flag when attack ends
+        if not self.is_attacking:
+            self.projectile_fired_this_attack = False
+    
+    def _fire_projectile(self, charge_type):
+        """
+        Fire a projectile from the Ghost.
+        
+        Args:
+            charge_type: 1 for Charge_1, 2 for Charge_2
+        """
+        if not self.projectile_manager:
+            return
+        
+        # Calculate projectile spawn position (in front of Ghost)
+        offset_x = 25 if self.direction == Direction.RIGHT else -25
+        proj_x = self.x + offset_x
+        proj_y = self.y + 22
+        
+        direction = 1 if self.direction == Direction.RIGHT else -1
+        
+        # Spawn the projectile through the manager
+        self.projectile_manager.spawn_ghost_projectile(
+            proj_x, proj_y, direction, self, charge_type
+        )
+    
     def attack(self, attack_type=3):
         """
-        Initiate an attack.
+        Initiate an attack with automatic projectile firing.
         
         Args:
             attack_type: Type of attack (3 or 4 only)
@@ -430,6 +482,7 @@ class Ghost(NPC):
         self.is_attacking = True
         self.attack_cooldown = self.attack_cooldown_max
         self.velocity_x = 0
+        self.projectile_fired_this_attack = False  # Reset for new attack
 
 
 class Shooter(NPC):
@@ -667,7 +720,7 @@ class Onre(NPC):
 
 
 class NPCManager:
-    def __init__(self, sprite_factory, texture_factory, renderer):
+    def __init__(self, sprite_factory, texture_factory, renderer, projectile_manager=None):
         """
         Initialize NPC Manager.
         
@@ -675,11 +728,13 @@ class NPCManager:
             sprite_factory: PySDL2 sprite factory
             texture_factory: PySDL2 texture factory
             renderer: PySDL2 renderer
+            projectile_manager: ProjectileManager instance for NPC projectiles (optional)
         """
         self.npcs = []
         self.sprite_factory = sprite_factory
         self.texture_factory = texture_factory
         self.renderer = renderer
+        self.projectile_manager = projectile_manager
     
     def spawn_ghost(self, x, y):
         """
@@ -692,7 +747,8 @@ class NPCManager:
         Returns:
             Ghost: The spawned Ghost instance
         """
-        ghost = Ghost(x, y, self.sprite_factory, self.texture_factory, self.renderer)
+        ghost = Ghost(x, y, self.sprite_factory, self.texture_factory, 
+                     self.renderer, self.projectile_manager)
         self.npcs.append(ghost)
         return ghost
     
