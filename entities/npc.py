@@ -141,6 +141,12 @@ class NPC:
         # Projectile system (can be set by child classes)
         self.projectile_manager = None
         
+        # Death state management
+        self.death_animation_complete = False
+        self.death_timer = 0  # Frames since death animation completed
+        self.death_removal_delay = 90  # Frames to wait before removal (1.5 seconds at 60 FPS)
+        self.ready_for_removal = False  # Flag for NPCManager to clean up
+        
         # Load sprites (implemented by child classes)
         self._load_sprites()
     
@@ -163,6 +169,32 @@ class NPC:
         Args:
             delta_time: Time elapsed since last update
         """
+        # Handle death state
+        if self.state == NPCState.DEAD:
+            # Update death animation
+            self._update_animation()
+            
+            # If death animation is complete, start removal timer
+            if self.death_animation_complete:
+                self.death_timer += 1
+                
+                # Mark for removal after delay
+                if self.death_timer >= self.death_removal_delay:
+                    self.ready_for_removal = True
+            
+            # Don't process other updates when dead
+            return
+        
+        # Check if should transition to dead
+        if self.health <= 0:
+            self.health = 0
+            self.state = NPCState.DEAD
+            self.current_frame = 0
+            self.death_animation_complete = False
+            self.death_timer = 0
+            self.velocity_x = 0  # Stop movement
+            return
+        
         # Update animation
         self._update_animation()
         
@@ -175,23 +207,34 @@ class NPC:
         # Update movement based on current state
         if self.state in [NPCState.WALK, NPCState.RUN]:
             self._update_movement()
-        
-        # Check if dead
-        if self.health <= 0 and self.state != NPCState.DEAD:
-            self.health = 0
-            self.state = NPCState.DEAD
-            self.current_frame = 0
     
     def _update_animation(self):
         """Update animation frame based on current state."""
         if self.state not in self.sprites:
             return
         
+        sprite_data = self.sprites[self.state]
+        
+        # Special handling for DEAD state - play once and stop
+        if self.state == NPCState.DEAD:
+            if not self.death_animation_complete:
+                self.frame_counter += self.animation_speed
+                
+                if self.frame_counter >= 1.0:
+                    self.frame_counter = 0
+                    self.current_frame += 1
+                    
+                    # Check if animation is complete
+                    if self.current_frame >= sprite_data['frames']:
+                        self.current_frame = sprite_data['frames'] - 1  # Hold on last frame
+                        self.death_animation_complete = True
+            return
+        
+        # Normal looping animation for other states
         self.frame_counter += self.animation_speed
         
         if self.frame_counter >= 1.0:
             self.frame_counter = 0
-            sprite_data = self.sprites[self.state]
             self.current_frame = (self.current_frame + 1) % sprite_data['frames']
     
     def _update_movement(self):
@@ -246,6 +289,10 @@ class NPC:
         Args:
             amount: Damage amount to apply
         """
+        # Don't take damage if already dead
+        if self.state == NPCState.DEAD:
+            return
+        
         self.health -= amount
         if self.health > 0:
             self.state = NPCState.HURT
@@ -254,6 +301,9 @@ class NPC:
             self.health = 0
             self.state = NPCState.DEAD
             self.current_frame = 0
+            self.death_animation_complete = False
+            self.death_timer = 0
+            self.velocity_x = 0  # Stop movement immediately
     
     def render(self):
         """Render NPC sprite to screen using PySDL2."""
@@ -838,12 +888,17 @@ class NPCManager:
         return onre
     
     def update_all(self, delta_time=1):
-        """Update all NPCs."""
+        """Update all NPCs and clean up those marked for removal."""
         for npc in self.npcs:
             npc.update(delta_time)
         
-        # Remove dead NPCs after death animation completes
-        self.npcs = [npc for npc in self.npcs if npc.is_alive() or npc.state != NPCState.DEAD]
+        # Remove NPCs that are marked for removal (dead + delay passed)
+        npcs_to_remove = [npc for npc in self.npcs if npc.ready_for_removal]
+        for npc in npcs_to_remove:
+            npc.cleanup()  # Clean up textures before removal
+        
+        # Keep only NPCs not marked for removal
+        self.npcs = [npc for npc in self.npcs if not npc.ready_for_removal]
     
     def render_all(self):
         """Render all NPCs."""
