@@ -7,6 +7,31 @@ import ctypes
 import sdl2
 import sdl2.ext
 from enum import Enum
+from settings import (
+    NPC_GHOST_HEALTH,
+    NPC_GHOST_DAMAGE,
+    NPC_GHOST_ATTACK_RANGE,
+    NPC_GHOST_SPEED,
+    NPC_GHOST_DETECTION_RANGE,
+    NPC_GHOST_PATROL_RADIUS,
+    NPC_GHOST_ATTACK_COOLDOWN,
+
+    NPC_SHOOTER_HEALTH,
+    NPC_SHOOTER_DAMAGE,
+    NPC_SHOOTER_ATTACK_RANGE,
+    NPC_SHOOTER_SPEED,
+    NPC_SHOOTER_DETECTION_RANGE,
+    NPC_SHOOTER_PATROL_RADIUS,
+    NPC_SHOOTER_ATTACK_COOLDOWN,
+
+    NPC_ONRE_HEALTH,
+    NPC_ONRE_DAMAGE,
+    NPC_ONRE_ATTACK_RANGE,
+    NPC_ONRE_SPEED,
+    NPC_ONRE_DETECTION_RANGE,
+    NPC_ONRE_PATROL_RADIUS,
+    NPC_ONRE_ATTACK_COOLDOWN
+)
 
 
 class NPCState(Enum):
@@ -28,56 +53,79 @@ class Direction(Enum):
     RIGHT = 1
 
 
-class Ghost:
+class NPC:
     """
-    Ghost NPC class with animation, movement, and combat capabilities.
+    Base NPC class with shared animation, movement, and combat capabilities.
+    
+    This parent class consolidates common functionality for all NPC types,
+    reducing code duplication and providing a consistent interface.
     
     Attributes:
         x, y: Position coordinates
         width, height: Sprite dimensions
         health: Current health points
         max_health: Maximum health points
+        damage: Attack damage
+        attack_range: Attack range in pixels
+        detection_range: Player detection range in pixels
         speed: Movement speed
         state: Current animation state
         direction: Movement direction (left/right)
-        sprites: Dictionary of loaded sprite surfaces
+        sprites: Dictionary of loaded sprite data
+        textures: Dictionary of loaded textures
         current_frame: Current animation frame index
         animation_speed: Frame update rate
         frame_counter: Counter for animation timing
+        patrol_left_bound: Left boundary for patrol
+        patrol_right_bound: Right boundary for patrol
+        is_attacking: Flag indicating if currently attacking
+        attack_cooldown: Current attack cooldown counter
+        attack_cooldown_max: Maximum attack cooldown frames
     """
     
-    def __init__(self, x, y, sprite_factory, texture_factory, renderer):
+    def __init__(self, x, y, sprite_factory, texture_factory, renderer, 
+                 health, damage, attack_range, detection_range, speed, 
+                 patrol_radius, attack_cooldown_max):
         """
-        Initialize Ghost NPC.
+        Initialize base NPC.
         
         Args:
             x: Initial x position
             y: Initial y position
-            sprite_factory: PySDL2 sprite factory for creating sprites
-            texture_factory: PySDL2 texture factory for loading images
+            sprite_factory: PySDL2 sprite factory
+            texture_factory: PySDL2 texture factory
             renderer: PySDL2 renderer
+            health: Maximum health points
+            damage: Attack damage
+            attack_range: Attack range in pixels
+            detection_range: Player detection range in pixels
+            speed: Movement speed
+            patrol_radius: Patrol radius from spawn point
+            attack_cooldown_max: Maximum attack cooldown in frames
         """
+        # Position and dimensions
         self.x = x
         self.y = y
         self.width = 64
         self.height = 64
         
         # Combat stats
-        self.health = 100
-        self.max_health = 100
-        self.damage = 10
-        self.attack_range = 100
+        self.health = health
+        self.max_health = health
+        self.damage = damage
+        self.attack_range = attack_range
+        self.detection_range = detection_range
         
         # Movement
-        self.speed = 2
+        self.speed = speed
         self.direction = Direction.RIGHT
         self.velocity_x = self.speed
         self.velocity_y = 0
         
         # State and animation
         self.state = NPCState.IDLE
-        self.sprites = {}
         self.textures = {}
+        self.sprites = {}
         self.current_frame = 0
         self.animation_speed = 0.15
         self.frame_counter = 0
@@ -87,19 +135,222 @@ class Ghost:
         self.texture_factory = texture_factory
         self.renderer = renderer
         
-        # Load sprites
-        self._load_sprites()
-        
-        # For movement testing, can be removed later
-        self.patrol_left_bound = x - 200
-        self.patrol_right_bound = x + 200
+        # AI behavior
+        self.patrol_left_bound = x - patrol_radius
+        self.patrol_right_bound = x + patrol_radius
         self.is_attacking = False
         self.attack_cooldown = 0
-        self.attack_cooldown_max = 60  # frames
+        self.attack_cooldown_max = attack_cooldown_max
         
+        # Load sprites (implemented by child classes)
+        self._load_sprites()
+    
+    def _load_sprites(self):
+        """Load sprite sheets. Must be implemented by child classes."""
+        raise NotImplementedError("Subclasses must implement _load_sprites()")
+    
+    def _calculate_frames(self, state):
+        """Calculate number of frames. Must be implemented by child classes."""
+        raise NotImplementedError("Subclasses must implement _calculate_frames()")
+    
+    def _get_npc_folder_name(self):
+        """Get the folder name for this NPC type. Must be implemented by child classes."""
+        raise NotImplementedError("Subclasses must implement _get_npc_folder_name()")
+    
+    def update(self, delta_time=1):
+        """
+        Update NPC state, animation, and movement.
+        
+        Args:
+            delta_time: Time elapsed since last update
+        """
+        # Update animation
+        self._update_animation()
+        
+        # Update cooldowns
+        if self.attack_cooldown > 0:
+            self.attack_cooldown -= 1
+            if self.attack_cooldown == 0:
+                self.is_attacking = False
+        
+        # Update movement based on current state
+        if self.state in [NPCState.WALK, NPCState.RUN]:
+            self._update_movement()
+        
+        # Check if dead
+        if self.health <= 0 and self.state != NPCState.DEAD:
+            self.health = 0
+            self.state = NPCState.DEAD
+            self.current_frame = 0
+    
+    def _update_animation(self):
+        """Update animation frame based on current state."""
+        if self.state not in self.sprites:
+            return
+        
+        self.frame_counter += self.animation_speed
+        
+        if self.frame_counter >= 1.0:
+            self.frame_counter = 0
+            sprite_data = self.sprites[self.state]
+            self.current_frame = (self.current_frame + 1) % sprite_data['frames']
+    
+    def _update_movement(self):
+        """Update NPC movement with patrol behavior."""
+        self.x += self.velocity_x
+        
+        # Check patrol boundaries and reverse direction
+        if self.x <= self.patrol_left_bound:
+            self.direction = Direction.RIGHT
+            self.velocity_x = self.speed
+        elif self.x >= self.patrol_right_bound:
+            self.direction = Direction.LEFT
+            self.velocity_x = -self.speed
+    
+    def move_left(self):
+        """Move NPC to the left. Can be overridden by child classes."""
+        self.direction = Direction.LEFT
+        self.velocity_x = -self.speed
+        if self.state not in self._get_non_interruptible_states():
+            self.state = NPCState.WALK
+    
+    def move_right(self):
+        """Move NPC to the right. Can be overridden by child classes."""
+        self.direction = Direction.RIGHT
+        self.velocity_x = self.speed
+        if self.state not in self._get_non_interruptible_states():
+            self.state = NPCState.WALK
+    
+    def stop(self):
+        """Stop NPC movement."""
+        self.velocity_x = 0
+        if self.state == NPCState.RUN:
+            self.state = NPCState.WALK
+    
+    def _get_non_interruptible_states(self):
+        """Get list of states that cannot be interrupted. Can be overridden."""
+        return [NPCState.HURT, NPCState.DEAD]
+    
+    def attack(self, attack_type=1):
+        """
+        Initiate an attack. Must be implemented by child classes.
+        
+        Args:
+            attack_type: Type of attack
+        """
+        raise NotImplementedError("Subclasses must implement attack()")
+    
+    def take_damage(self, amount):
+        """
+        Apply damage to NPC.
+        
+        Args:
+            amount: Damage amount to apply
+        """
+        self.health -= amount
+        if self.health > 0:
+            self.state = NPCState.HURT
+            self.current_frame = 0
+        else:
+            self.health = 0
+            self.state = NPCState.DEAD
+            self.current_frame = 0
+    
+    def render(self):
+        """Render NPC sprite to screen using PySDL2."""
+        if self.state not in self.sprites:
+            return
+        
+        sprite_data = self.sprites[self.state]
+        texture = sprite_data['texture']
+        
+        # Calculate source rectangle (current frame in sprite sheet)
+        frame_width = sprite_data['width'] // sprite_data['frames']
+        frame_height = sprite_data['height']
+        
+        src_rect = sdl2.SDL_Rect(
+            self.current_frame * frame_width,
+            0,
+            frame_width,
+            frame_height
+        )
+        
+        # Destination rectangle
+        dest_rect = sdl2.SDL_Rect(
+            int(self.x),
+            int(self.y),
+            self.width,
+            self.height
+        )
+        
+        # Flip sprite based on direction
+        flip = sdl2.SDL_FLIP_NONE
+        if self.direction == Direction.LEFT:
+            flip = sdl2.SDL_FLIP_HORIZONTAL
+        
+        # Render the sprite
+        sdl2.SDL_RenderCopyEx(
+            self.renderer,
+            texture,
+            src_rect,
+            dest_rect,
+            0,
+            None,
+            flip
+        )
+    
+    def get_bounds(self):
+        """
+        Get bounding box for collision detection.
+        
+        Returns:
+            tuple: (x, y, width, height)
+        """
+        return (self.x, self.y, self.width, self.height)
+    
+    def is_alive(self):
+        """Check if NPC is still alive."""
+        return self.health > 0
+    
+    def cleanup(self):
+        """Clean up loaded textures."""
+        for texture in self.textures.values():
+            if texture:
+                sdl2.SDL_DestroyTexture(texture)
+        self.textures.clear()
+        self.sprites.clear()
+
+
+class Ghost(NPC):
+    def __init__(self, x, y, sprite_factory, texture_factory, renderer):
+        """
+        Initialize Ghost NPC.
+        
+        Args:
+            x: Initial x position
+            y: Initial y position
+            sprite_factory: PySDL2 sprite factory
+            texture_factory: PySDL2 texture factory
+            renderer: PySDL2 renderer
+        """
+        super().__init__(
+            x, y, sprite_factory, texture_factory, renderer,
+            health=NPC_GHOST_HEALTH,
+            damage=NPC_GHOST_DAMAGE,
+            attack_range=NPC_GHOST_ATTACK_RANGE,
+            detection_range=NPC_GHOST_DETECTION_RANGE,
+            speed=NPC_GHOST_SPEED,
+            patrol_radius=NPC_GHOST_PATROL_RADIUS,
+            attack_cooldown_max=NPC_GHOST_ATTACK_COOLDOWN
+        )
+    
+    def _get_npc_folder_name(self):
+        """Get the folder name for Ghost sprites."""
+        return "Ghost"
+    
     def _load_sprites(self):
         """Load all Ghost sprite sheets from assets folder."""
-        base_path = os.path.join("assets", "NPC", "Ghost")
+        base_path = os.path.join("assets", "NPC", self._get_npc_folder_name())
         
         sprite_files = {
             NPCState.IDLE: "Idle.png",
@@ -155,73 +406,9 @@ class Ghost:
         }
         return frame_counts.get(state, 1)
     
-    def update(self, delta_time=1):
-        """
-        Update Ghost NPC state, animation, and movement.
-        
-        Args:
-            delta_time: Time elapsed since last update
-        """
-        # Update animation
-        self._update_animation()
-        
-        # Update cooldowns
-        if self.attack_cooldown > 0:
-            self.attack_cooldown -= 1
-            # Reset is_attacking when cooldown expires
-            if self.attack_cooldown == 0:
-                self.is_attacking = False
-        
-        # Update movement based on current state
-        if self.state == NPCState.WALK or self.state == NPCState.RUN:
-            self._update_movement()
-        
-        if self.health <= 0 and self.state != NPCState.DEAD:
-            self.state = NPCState.DEAD
-            self.current_frame = 0
-    
-    def _update_animation(self):
-        """Update animation frame based on current state."""
-        if self.state not in self.sprites:
-            return
-        
-        self.frame_counter += self.animation_speed
-        
-        if self.frame_counter >= 1.0:
-            self.frame_counter = 0
-            sprite_data = self.sprites[self.state]
-            self.current_frame = (self.current_frame + 1) % sprite_data['frames']
-    
-    def _update_movement(self):
-        """Update Ghost movement with patrol behavior."""
-        self.x += self.velocity_x
-
-        if self.x <= self.patrol_left_bound:
-            self.direction = Direction.RIGHT
-            self.velocity_x = self.speed
-        elif self.x >= self.patrol_right_bound:
-            self.direction = Direction.LEFT
-            self.velocity_x = -self.speed
-    
-    def move_left(self):
-        """Move Ghost to the left."""
-        self.direction = Direction.LEFT
-        self.velocity_x = -self.speed
-        if self.state not in [NPCState.ATTACK_3, NPCState.ATTACK_4, NPCState.HURT, NPCState.DEAD]:
-            self.state = NPCState.WALK
-    
-    def move_right(self):
-        """Move Ghost to the right."""
-        self.direction = Direction.RIGHT
-        self.velocity_x = self.speed
-        if self.state not in [NPCState.ATTACK_3, NPCState.ATTACK_4, NPCState.HURT, NPCState.DEAD]:
-            self.state = NPCState.WALK
-    
-    def stop(self):
-        """Stop Ghost movement."""
-        self.velocity_x = 0
-        if self.state == NPCState.RUN:
-            self.state = NPCState.WALK
+    def _get_non_interruptible_states(self):
+        """Get list of states that cannot be interrupted for Ghost."""
+        return [NPCState.ATTACK_3, NPCState.ATTACK_4, NPCState.HURT, NPCState.DEAD]
     
     def attack(self, attack_type=3):
         """
@@ -242,113 +429,10 @@ class Ghost:
         self.current_frame = 0
         self.is_attacking = True
         self.attack_cooldown = self.attack_cooldown_max
-        # Stop movement during attack
         self.velocity_x = 0
-    
-    def take_damage(self, amount):
-        """
-        Apply damage to Ghost.
-        
-        Args:
-            amount: Damage amount to apply
-        """
-        self.health -= amount
-        if self.health > 0:
-            self.state = NPCState.HURT
-            self.current_frame = 0
-        else:
-            self.health = 0
-            self.state = NPCState.DEAD
-            self.current_frame = 0
-    
-    def render(self):
-        """Render Ghost sprite to screen using PySDL2."""
-        if self.state not in self.sprites:
-            return
-        
-        sprite_data = self.sprites[self.state]
-        texture = sprite_data['texture']
-        total_width = sprite_data['width']
-        total_height = sprite_data['height']
-        num_frames = sprite_data['frames']
-        
-        # Calculate frame dimensions
-        frame_width = total_width // num_frames
-        frame_height = total_height
-        
-        # Source rectangle (current frame in sprite sheet)
-        src_rect = sdl2.SDL_Rect(
-            self.current_frame * frame_width,
-            0,
-            frame_width,
-            frame_height
-        )
-        
-        # Destination rectangle (where to draw on screen)
-        dest_rect = sdl2.SDL_Rect(
-            int(self.x),
-            int(self.y),
-            self.width,
-            self.height
-        )
-        
-        # Flip sprite based on direction
-        flip = sdl2.SDL_FLIP_NONE
-        if self.direction == Direction.LEFT:
-            flip = sdl2.SDL_FLIP_HORIZONTAL
-        
-        # Render the sprite
-        sdl2.SDL_RenderCopyEx(
-            self.renderer,
-            texture,
-            src_rect,
-            dest_rect,
-            0,  # angle
-            None,  # center
-            flip
-        )
-    
-    def get_bounds(self):
-        """
-        Get bounding box for collision detection.
-        
-        Returns:
-            tuple: (x, y, width, height)
-        """
-        return (self.x, self.y, self.width, self.height)
-    
-    def is_alive(self):
-        """Check if Ghost is still alive."""
-        return self.health > 0
-    
-    def cleanup(self):
-        """Clean up loaded textures."""
-        for texture in self.textures.values():
-            if texture:
-                sdl2.SDL_DestroyTexture(texture)
-        self.textures.clear()
-        self.sprites.clear()
 
 
-class Shooter:
-    """
-    Shooter NPC class with animation, movement, and ranged combat capabilities.
-    Sprites are stored as individual frame files in separate folders.
-    
-    Attributes:
-        x, y: Position coordinates
-        width, height: Sprite dimensions
-        health: Current health points
-        max_health: Maximum health points
-        speed: Movement speed
-        state: Current animation state
-        direction: Movement direction (left/right)
-        frame_textures: Dictionary of texture lists for each state
-        current_frame: Current animation frame index
-        animation_speed: Frame update rate
-        frame_counter: Counter for animation timing
-    """
-    
+class Shooter(NPC):
     def __init__(self, x, y, sprite_factory, texture_factory, renderer):
         """
         Initialize Shooter NPC.
@@ -360,49 +444,24 @@ class Shooter:
             texture_factory: PySDL2 texture factory
             renderer: PySDL2 renderer
         """
-        self.x = x
-        self.y = y
-        self.width = 64
-        self.height = 64
-        
-        # Combat stats
-        self.health = 120
-        self.max_health = 120
-        self.damage = 5
-        self.attack_range = 200
-        
-        # Movement
-        self.speed = 1.5
-        self.direction = Direction.RIGHT
-        self.velocity_x = self.speed
-        self.velocity_y = 0
-        
-        # State and animation
-        self.state = NPCState.IDLE
-        self.textures = {}
-        self.sprites = {}
-        self.current_frame = 0
-        self.animation_speed = 0.15
-        self.frame_counter = 0
-        
-        # PySDL2 components
-        self.sprite_factory = sprite_factory
-        self.texture_factory = texture_factory
-        self.renderer = renderer
-        
-        # Load sprites
-        self._load_sprites()
-        
-        # AI behavior
-        self.patrol_left_bound = x - 150
-        self.patrol_right_bound = x + 150
-        self.is_attacking = False
-        self.attack_cooldown = 0
-        self.attack_cooldown_max = 80 
+        super().__init__(
+            x, y, sprite_factory, texture_factory, renderer,
+            health=NPC_SHOOTER_HEALTH,
+            damage=NPC_SHOOTER_DAMAGE,
+            attack_range=NPC_SHOOTER_ATTACK_RANGE,
+            detection_range=NPC_SHOOTER_DETECTION_RANGE,
+            speed=NPC_SHOOTER_SPEED,
+            patrol_radius=NPC_SHOOTER_PATROL_RADIUS,
+            attack_cooldown_max=NPC_SHOOTER_ATTACK_COOLDOWN
+        )
+    
+    def _get_npc_folder_name(self):
+        """Get the folder name for Shooter sprites."""
+        return "Shooter" 
     
     def _load_sprites(self):
         """Load all Shooter sprite sheets from assets folder."""
-        base_path = os.path.join("assets", "NPC", "Shooter")
+        base_path = os.path.join("assets", "NPC", self._get_npc_folder_name())
         
         sprite_files = {
             NPCState.IDLE: "Idle.png",
@@ -456,76 +515,9 @@ class Shooter:
         }
         return frame_counts.get(state, 1)
     
-    def update(self, delta_time=1):
-        """
-        Update Shooter NPC state, animation, and movement.
-        
-        Args:
-            delta_time: Time elapsed since last update
-        """
-        # Update animation
-        self._update_animation()
-        
-        # Update cooldowns
-        if self.attack_cooldown > 0:
-            self.attack_cooldown -= 1
-            # Reset is_attacking when cooldown expires
-            if self.attack_cooldown == 0:
-                self.is_attacking = False
-        
-        # Update movement based on current state
-        if self.state in [NPCState.WALK, NPCState.RUN]:
-            self._update_movement()
-        
-        # Check if dead
-        if self.health <= 0 and self.state != NPCState.DEAD:
-            self.health = 0
-            self.state = NPCState.DEAD
-            self.current_frame = 0
-    
-    def _update_animation(self):
-        """Update animation frame based on current state."""
-        if self.state not in self.sprites:
-            return
-        
-        self.frame_counter += self.animation_speed
-        
-        if self.frame_counter >= 1.0:
-            self.frame_counter = 0
-            sprite_data = self.sprites[self.state]
-            self.current_frame = (self.current_frame + 1) % sprite_data['frames']
-    
-    def _update_movement(self):
-        """Update Shooter movement with patrol behavior."""
-        self.x += self.velocity_x
-        
-        # Check patrol boundaries and reverse direction
-        if self.x <= self.patrol_left_bound:
-            self.direction = Direction.RIGHT
-            self.velocity_x = self.speed
-        elif self.x >= self.patrol_right_bound:
-            self.direction = Direction.LEFT
-            self.velocity_x = -self.speed
-    
-    def move_left(self):
-        """Move Shooter to the left."""
-        self.direction = Direction.LEFT
-        self.velocity_x = -self.speed
-        if self.state not in [NPCState.ATTACK_1, NPCState.ATTACK_2, NPCState.HURT, NPCState.DEAD]:
-            self.state = NPCState.WALK
-    
-    def move_right(self):
-        """Move Shooter to the right."""
-        self.direction = Direction.RIGHT
-        self.velocity_x = self.speed
-        if self.state not in [NPCState.ATTACK_1, NPCState.ATTACK_2, NPCState.HURT, NPCState.DEAD]:
-            self.state = NPCState.WALK
-    
-    def stop(self):
-        """Stop Shooter movement."""
-        self.velocity_x = 0
-        if self.state in [NPCState.WALK, NPCState.RUN]:
-            self.state = NPCState.WALK
+    def _get_non_interruptible_states(self):
+        """Get list of states that cannot be interrupted for Shooter."""
+        return [NPCState.ATTACK_1, NPCState.ATTACK_2, NPCState.HURT, NPCState.DEAD]
     
     def attack(self, attack_type=1):
         """
@@ -547,108 +539,9 @@ class Shooter:
         self.is_attacking = True
         self.attack_cooldown = self.attack_cooldown_max
         self.velocity_x = 0
-    
-    def take_damage(self, amount):
-        """
-        Apply damage to Shooter.
-        
-        Args:
-            amount: Damage amount to apply
-        """
-        self.health -= amount
-        if self.health > 0:
-            self.state = NPCState.HURT
-            self.current_frame = 0
-        else:
-            self.health = 0
-            self.state = NPCState.DEAD
-            self.current_frame = 0
-    
-    def render(self):
-        """Render Shooter sprite to screen using PySDL2."""
-        if self.state not in self.sprites:
-            return
-        
-        sprite_data = self.sprites[self.state]
-        texture = sprite_data['texture']
-        
-        # Calculate source rectangle (current frame in sprite sheet)
-        frame_width = sprite_data['width'] // sprite_data['frames']
-        frame_height = sprite_data['height']
-        
-        src_rect = sdl2.SDL_Rect(
-            self.current_frame * frame_width,
-            0,
-            frame_width,
-            frame_height
-        )
-        
-        # Destination rectangle
-        dest_rect = sdl2.SDL_Rect(
-            int(self.x),
-            int(self.y),
-            self.width,
-            self.height
-        )
-        
-        # Flip sprite based on direction
-        flip = sdl2.SDL_FLIP_NONE
-        if self.direction == Direction.LEFT:
-            flip = sdl2.SDL_FLIP_HORIZONTAL
-        
-        # Render the sprite
-        sdl2.SDL_RenderCopyEx(
-            self.renderer,
-            texture,
-            src_rect,
-            dest_rect,
-            0,
-            None,
-            flip
-        )
-    
-    def get_bounds(self):
-        """
-        Get bounding box for collision detection.
-        
-        Returns:
-            tuple: (x, y, width, height)
-        """
-        return (self.x, self.y, self.width, self.height)
-    
-    def is_alive(self):
-        """Check if Shooter is still alive."""
-        return self.health > 0
-    
-    def cleanup(self):
-        """Clean up loaded textures."""
-        for texture in self.textures.values():
-            if texture:
-                sdl2.SDL_DestroyTexture(texture)
-        self.textures.clear()
-        self.sprites.clear()
 
 
-class Onre:
-    """
-    Onre NPC class with animation, movement, and combat capabilities.
-    Sprites are stored as sprite sheet PNG files.
-    
-    Attributes:
-        x, y: Position coordinates
-        width, height: Sprite dimensions
-        health: Current health points
-        max_health: Maximum health points
-        speed: Movement speed
-        state: Current animation state
-        direction: Movement direction (left/right)
-        textures: Dictionary of textures for each state
-        sprites: Dictionary of sprite data for each state
-        current_frame: Current animation frame index
-        animation_speed: Frame update rate
-        frame_counter: Counter for animation timing
-    """
-    
+class Onre(NPC):
     def __init__(self, x, y, sprite_factory, texture_factory, renderer):
         """
         Initialize Onre NPC.
@@ -660,49 +553,24 @@ class Onre:
             texture_factory: PySDL2 texture factory
             renderer: PySDL2 renderer
         """
-        self.x = x
-        self.y = y
-        self.width = 64
-        self.height = 64
-        
-        # Combat stats
-        self.health = 150
-        self.max_health = 150
-        self.damage = 8
-        self.attack_range = 50
-        
-        # Movement
-        self.speed = 2.5
-        self.direction = Direction.RIGHT
-        self.velocity_x = self.speed
-        self.velocity_y = 0
-        
-        # State and animation
-        self.state = NPCState.IDLE
-        self.textures = {}
-        self.sprites = {}
-        self.current_frame = 0
-        self.animation_speed = 0.15
-        self.frame_counter = 0
-        
-        # PySDL2 components
-        self.sprite_factory = sprite_factory
-        self.texture_factory = texture_factory
-        self.renderer = renderer
-        
-        # Load sprites
-        self._load_sprites()
-        
-        # AI behavior
-        self.patrol_left_bound = x - 150
-        self.patrol_right_bound = x + 150
-        self.is_attacking = False
-        self.attack_cooldown = 0
-        self.attack_cooldown_max = 80
+        super().__init__(
+            x, y, sprite_factory, texture_factory, renderer,
+            health=NPC_ONRE_HEALTH,
+            damage=NPC_ONRE_DAMAGE,
+            attack_range=NPC_ONRE_ATTACK_RANGE,
+            detection_range=NPC_ONRE_DETECTION_RANGE,
+            speed=NPC_ONRE_SPEED,
+            patrol_radius=NPC_ONRE_PATROL_RADIUS,
+            attack_cooldown_max=NPC_ONRE_ATTACK_COOLDOWN
+        )
+    
+    def _get_npc_folder_name(self):
+        """Get the folder name for Onre sprites."""
+        return "Onre"
     
     def _load_sprites(self):
         """Load all Onre sprite sheets from assets folder."""
-        base_path = os.path.join("assets", "NPC", "Onre")
+        base_path = os.path.join("assets", "NPC", self._get_npc_folder_name())
         
         sprite_files = {
             NPCState.IDLE: "Idle.png",
@@ -758,74 +626,22 @@ class Onre:
         }
         return frame_counts.get(state, 1)
     
-    def update(self, delta_time=1):
-        """
-        Update Onre NPC state, animation, and movement.
-        
-        Args:
-            delta_time: Time elapsed since last update
-        """
-        # Update animation
-        self._update_animation()
-        
-        # Update cooldowns
-        if self.attack_cooldown > 0:
-            self.attack_cooldown -= 1
-            # Reset is_attacking when cooldown expires
-            if self.attack_cooldown == 0:
-                self.is_attacking = False
-        
-        # Update movement based on current state
-        if self.state in [NPCState.WALK, NPCState.RUN]:
-            self._update_movement()
-        
-        # Check if dead
-        if self.health <= 0 and self.state != NPCState.DEAD:
-            self.health = 0
-            self.state = NPCState.DEAD
-            self.current_frame = 0
-    
-    def _update_animation(self):
-        """Update animation frame based on current state."""
-        if self.state not in self.sprites:
-            return
-        
-        self.frame_counter += self.animation_speed
-        
-        if self.frame_counter >= 1.0:
-            self.frame_counter = 0
-            sprite_data = self.sprites[self.state]
-            self.current_frame = (self.current_frame + 1) % sprite_data['frames']
-    
-    def _update_movement(self):
-        """Update Onre movement with patrol behavior."""
-        self.x += self.velocity_x
-        
-        # Check patrol boundaries and reverse direction
-        if self.x <= self.patrol_left_bound:
-            self.direction = Direction.RIGHT
-            self.velocity_x = self.speed
-        elif self.x >= self.patrol_right_bound:
-            self.direction = Direction.LEFT
-            self.velocity_x = -self.speed
+    def _get_non_interruptible_states(self):
+        """Get list of states that cannot be interrupted for Onre."""
+        return [NPCState.ATTACK_1, NPCState.ATTACK_2, NPCState.ATTACK_3, 
+                NPCState.HURT, NPCState.DEAD]
     
     def move_left(self):
         """Move Onre to the left."""
-        if self.state not in [NPCState.ATTACK_1, NPCState.ATTACK_2, NPCState.ATTACK_3, 
-                               NPCState.HURT, NPCState.DEAD]:
+        if self.state not in self._get_non_interruptible_states():
             self.direction = Direction.LEFT
             self.velocity_x = -self.speed
     
     def move_right(self):
         """Move Onre to the right."""
-        if self.state not in [NPCState.ATTACK_1, NPCState.ATTACK_2, NPCState.ATTACK_3, 
-                               NPCState.HURT, NPCState.DEAD]:
+        if self.state not in self._get_non_interruptible_states():
             self.direction = Direction.RIGHT
             self.velocity_x = self.speed
-    
-    def stop(self):
-        """Stop Onre movement."""
-        self.velocity_x = 0
     
     def attack(self, attack_type=1):
         """
@@ -848,93 +664,9 @@ class Onre:
         self.is_attacking = True
         self.attack_cooldown = self.attack_cooldown_max
         self.velocity_x = 0
-    
-    def take_damage(self, amount):
-        """
-        Apply damage to Onre.
-        
-        Args:
-            amount: Damage amount to apply
-        """
-        self.health -= amount
-        if self.health > 0:
-            self.state = NPCState.HURT
-            self.current_frame = 0
-        else:
-            self.health = 0
-            self.state = NPCState.DEAD
-            self.current_frame = 0
-    
-    def render(self):
-        """Render Onre sprite to screen using PySDL2."""
-        if self.state not in self.sprites:
-            return
-        
-        sprite_data = self.sprites[self.state]
-        texture = sprite_data['texture']
-        
-        # Calculate source rectangle (current frame in sprite sheet)
-        frame_width = sprite_data['width'] // sprite_data['frames']
-        frame_height = sprite_data['height']
-        
-        src_rect = sdl2.SDL_Rect(
-            self.current_frame * frame_width,
-            0,
-            frame_width,
-            frame_height
-        )
-        
-        # Destination rectangle
-        dest_rect = sdl2.SDL_Rect(
-            int(self.x),
-            int(self.y),
-            self.width,
-            self.height
-        )
-        
-        # Flip sprite based on direction
-        flip = sdl2.SDL_FLIP_NONE
-        if self.direction == Direction.LEFT:
-            flip = sdl2.SDL_FLIP_HORIZONTAL
-        
-        # Render the sprite
-        sdl2.SDL_RenderCopyEx(
-            self.renderer,
-            texture,
-            src_rect,
-            dest_rect,
-            0,
-            None,
-            flip
-        )
-    
-    def get_bounds(self):
-        """
-        Get bounding box for collision detection.
-        
-        Returns:
-            tuple: (x, y, width, height)
-        """
-        return (self.x, self.y, self.width, self.height)
-    
-    def is_alive(self):
-        """Check if Onre is still alive."""
-        return self.health > 0
-    
-    def cleanup(self):
-        """Clean up loaded textures."""
-        for texture in self.textures.values():
-            if texture:
-                sdl2.SDL_DestroyTexture(texture)
-        self.textures.clear()
-        self.sprites.clear()
 
 
 class NPCManager:
-    """
-    Manager class for handling multiple NPCs.
-    """
-    
     def __init__(self, sprite_factory, texture_factory, renderer):
         """
         Initialize NPC Manager.
