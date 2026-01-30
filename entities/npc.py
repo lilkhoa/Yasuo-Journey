@@ -486,7 +486,7 @@ class Ghost(NPC):
 
 
 class Shooter(NPC):
-    def __init__(self, x, y, sprite_factory, texture_factory, renderer):
+    def __init__(self, x, y, sprite_factory, texture_factory, renderer, projectile_manager=None):
         """
         Initialize Shooter NPC.
         
@@ -496,6 +496,7 @@ class Shooter(NPC):
             sprite_factory: PySDL2 sprite factory
             texture_factory: PySDL2 texture factory
             renderer: PySDL2 renderer
+            projectile_manager: ProjectileManager instance for spawning projectiles (optional)
         """
         super().__init__(
             x, y, sprite_factory, texture_factory, renderer,
@@ -507,6 +508,12 @@ class Shooter(NPC):
             patrol_radius=NPC_SHOOTER_PATROL_RADIUS,
             attack_cooldown_max=NPC_SHOOTER_ATTACK_COOLDOWN
         )
+        
+        # Set projectile manager for firing projectiles
+        self.projectile_manager = projectile_manager
+        
+        # Track which frame to fire projectile (mid-attack animation)
+        self.projectile_fired_this_attack = False
     
     def _get_npc_folder_name(self):
         """Get the folder name for Shooter sprites."""
@@ -572,9 +579,55 @@ class Shooter(NPC):
         """Get list of states that cannot be interrupted for Shooter."""
         return [NPCState.ATTACK_1, NPCState.ATTACK_2, NPCState.HURT, NPCState.DEAD]
     
+    def update(self, delta_time=1):
+        """
+        Update Shooter NPC with projectile firing logic.
+        
+        Args:
+            delta_time: Time elapsed since last update
+        """
+        # Call parent update
+        super().update(delta_time)
+        
+        # Fire projectile at appropriate frame during attack animation
+        if self.is_attacking and not self.projectile_fired_this_attack:
+            # Fire projectile at frame 2 for both Attack_1 and Attack_2
+            if self.current_frame >= 2:
+                if self.state == NPCState.ATTACK_1:
+                    self._fire_projectile(attack_type=1)
+                elif self.state == NPCState.ATTACK_2:
+                    self._fire_projectile(attack_type=2)
+                self.projectile_fired_this_attack = True
+        
+        # Reset projectile flag when attack ends
+        if not self.is_attacking:
+            self.projectile_fired_this_attack = False
+    
+    def _fire_projectile(self, attack_type):
+        """
+        Fire a projectile from the Shooter.
+        
+        Args:
+            attack_type: 1 for Attack_1, 2 for Attack_2
+        """
+        if not self.projectile_manager:
+            return
+        
+        # Calculate projectile spawn position (in front of Shooter)
+        offset_x = 25 if self.direction == Direction.RIGHT else -25
+        proj_x = self.x + offset_x
+        proj_y = self.y + 25
+        
+        direction = 1 if self.direction == Direction.RIGHT else -1
+        
+        # Spawn the projectile through the manager
+        self.projectile_manager.spawn_shooter_projectile(
+            proj_x, proj_y, direction, self, attack_type
+        )
+    
     def attack(self, attack_type=1):
         """
-        Initiate a ranged attack.
+        Initiate a ranged attack with automatic projectile firing.
         
         Args:
             attack_type: Type of attack (1 or 2)
@@ -592,6 +645,7 @@ class Shooter(NPC):
         self.is_attacking = True
         self.attack_cooldown = self.attack_cooldown_max
         self.velocity_x = 0
+        self.projectile_fired_this_attack = False  # Reset for new attack
 
 
 class Onre(NPC):
@@ -763,7 +817,8 @@ class NPCManager:
         Returns:
             Shooter: The spawned Shooter instance
         """
-        shooter = Shooter(x, y, self.sprite_factory, self.texture_factory, self.renderer)
+        shooter = Shooter(x, y, self.sprite_factory, self.texture_factory, 
+                         self.renderer, self.projectile_manager)
         self.npcs.append(shooter)
         return shooter
     

@@ -275,6 +275,130 @@ class GhostProjectile(Projectile):
         else:
             print(f"Warning: Ghost projectile sprite not found: {filepath}")
 
+class ShooterProjectile(Projectile):
+    """
+    Shooter NPC projectile with individual frame animations.
+    
+    Uses 8 separate image files (1.png through 8.png) for animation.
+    Both attack types use the same projectile animation.
+    """
+    
+    def __init__(self, x, y, direction, owner, renderer, attack_type=1):
+        """
+        Initialize Shooter projectile.
+        
+        Args:
+            x: Initial x position
+            y: Initial y position
+            direction: Direction (1 for right, -1 for left)
+            owner: The Shooter that fired this projectile
+            renderer: PySDL2 renderer
+            attack_type: Type of attack (1 or 2)
+        """
+        # Base velocity (will be multiplied by direction)
+        velocity_x = NPC_SHOOTER_PROJECTILE_SPEED * direction
+        velocity_y = 0
+        damage = NPC_SHOOTER_DAMAGE
+        
+        super().__init__(x, y, velocity_x, velocity_y, damage, direction, owner, renderer)
+        
+        self.attack_type = attack_type
+        self.width = 32
+        self.height = 32
+        
+        # Load individual frame textures
+        self.frame_textures = []
+        self._load_frames()
+    
+    def _load_frames(self):
+        """Load all 8 individual frame images."""
+        base_path = os.path.join("assets", "Projectile", "Shooter")
+        
+        # Load frames 1-8
+        for i in range(1, 9):
+            filename = f"{i}.png"
+            filepath = os.path.join(base_path, filename)
+            
+            if os.path.exists(filepath):
+                try:
+                    # Load texture
+                    surface = sdl2.ext.load_image(filepath)
+                    texture = sdl2.SDL_CreateTextureFromSurface(self.renderer, surface)
+                    sdl2.SDL_FreeSurface(surface)
+                    
+                    if texture:
+                        self.frame_textures.append(texture)
+                except Exception as e:
+                    print(f"Failed to load {filepath}: {e}")
+            else:
+                print(f"Warning: Shooter projectile frame not found: {filepath}")
+        
+        if self.frame_textures:
+            # Set sprite data using first frame dimensions
+            w = ctypes.c_int()
+            h = ctypes.c_int()
+            sdl2.SDL_QueryTexture(self.frame_textures[0], None, None, 
+                                 ctypes.byref(w), ctypes.byref(h))
+            
+            self.sprite_data = {
+                'frames': len(self.frame_textures),
+                'width': w.value,
+                'height': h.value
+            }
+            
+            print(f"Loaded Shooter projectile: {len(self.frame_textures)} frames, {w.value}x{h.value} pixels")
+        else:
+            print("Error: No Shooter projectile frames loaded!")
+    
+    def _update_animation(self):
+        """Update animation frame for individual textures."""
+        if not self.frame_textures:
+            return
+        
+        self.frame_counter += self.animation_speed
+        
+        if self.frame_counter >= 1.0:
+            self.frame_counter = 0
+            self.current_frame = (self.current_frame + 1) % len(self.frame_textures)
+    
+    def render(self):
+        """Render Shooter projectile with individual frame textures."""
+        if not self.active or not self.frame_textures:
+            return
+        
+        # Get current frame texture
+        texture = self.frame_textures[self.current_frame]
+        
+        # Destination rectangle
+        dest_rect = sdl2.SDL_Rect(
+            int(self.x),
+            int(self.y),
+            self.width,
+            self.height
+        )
+        
+        # Flip sprite based on direction
+        flip = sdl2.SDL_FLIP_HORIZONTAL
+        if self.direction < 0:
+            flip = sdl2.SDL_FLIP_NONE
+        
+        # Render (no source rect needed for individual frames)
+        sdl2.SDL_RenderCopyEx(
+            self.renderer,
+            texture,
+            None,  # Use entire texture
+            dest_rect,
+            0,
+            None,
+            flip
+        )
+    
+    def cleanup(self):
+        """Clean up all frame textures."""
+        for texture in self.frame_textures:
+            if texture:
+                sdl2.SDL_DestroyTexture(texture)
+        self.frame_textures.clear()
 
 class ProjectileManager:
     """
@@ -306,6 +430,24 @@ class ProjectileManager:
             GhostProjectile: The spawned projectile
         """
         projectile = GhostProjectile(x, y, direction, owner, self.renderer, charge_type)
+        self.projectiles.append(projectile)
+        return projectile
+    
+    def spawn_shooter_projectile(self, x, y, direction, owner, attack_type=1):
+        """
+        Spawn a Shooter projectile.
+        
+        Args:
+            x: Spawn x position
+            y: Spawn y position
+            direction: Direction (1 for right, -1 for left)
+            owner: The Shooter entity
+            attack_type: Attack type (1 or 2)
+            
+        Returns:
+            ShooterProjectile: The spawned projectile
+        """
+        projectile = ShooterProjectile(x, y, direction, owner, self.renderer, attack_type)
         self.projectiles.append(projectile)
         return projectile
     
