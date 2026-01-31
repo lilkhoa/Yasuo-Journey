@@ -2,6 +2,7 @@ import os
 import ctypes
 import sdl2
 import sdl2.ext
+import random
 from enum import Enum
 from settings import (
     NPC_GHOST_HEALTH,
@@ -138,14 +139,23 @@ class NPC:
         self.attack_cooldown = 0
         self.attack_cooldown_max = attack_cooldown_max
         
+        # Patrol behavior with random idle stops
+        self.is_patrolling = False
+        self.patrol_idle_timer = 0
+        self.patrol_idle_duration_min = 60
+        self.patrol_idle_duration_max = 180
+        self.patrol_idle_chance = 0.0002
+        self.was_patrolling_before_idle = False
+        self.patrol_reversals_count = 0
+        
         # Projectile system (can be set by child classes)
         self.projectile_manager = None
         
         # Death state management
         self.death_animation_complete = False
-        self.death_timer = 0  # Frames since death animation completed
-        self.death_removal_delay = 90  # Frames to wait before removal (1.5 seconds at 60 FPS)
-        self.ready_for_removal = False  # Flag for NPCManager to clean up
+        self.death_timer = 0
+        self.death_removal_delay = 90
+        self.ready_for_removal = False
         
         # Load sprites (implemented by child classes)
         self._load_sprites()
@@ -204,8 +214,7 @@ class NPC:
             if self.attack_cooldown == 0:
                 self.is_attacking = False
         
-        # Update movement based on current state
-        if self.state in [NPCState.WALK, NPCState.RUN]:
+        if self.state in [NPCState.WALK, NPCState.RUN, NPCState.IDLE]:
             self._update_movement()
     
     def _update_animation(self):
@@ -215,7 +224,6 @@ class NPC:
         
         sprite_data = self.sprites[self.state]
         
-        # Special handling for DEAD state - play once and stop
         if self.state == NPCState.DEAD:
             if not self.death_animation_complete:
                 self.frame_counter += self.animation_speed
@@ -226,11 +234,10 @@ class NPC:
                     
                     # Check if animation is complete
                     if self.current_frame >= sprite_data['frames']:
-                        self.current_frame = sprite_data['frames'] - 1  # Hold on last frame
+                        self.current_frame = sprite_data['frames'] - 1
                         self.death_animation_complete = True
             return
         
-        # Normal looping animation for other states
         self.frame_counter += self.animation_speed
         
         if self.frame_counter >= 1.0:
@@ -238,16 +245,55 @@ class NPC:
             self.current_frame = (self.current_frame + 1) % sprite_data['frames']
     
     def _update_movement(self):
-        """Update NPC movement with patrol behavior."""
+        """Update NPC movement with patrol behavior and random idle stops."""
+        # Only update movement if patrolling is enabled
+        if not self.is_patrolling:
+            self.x += self.velocity_x
+            return
+        
+        # Handle patrol idle state
+        if self.patrol_idle_timer > 0:
+            self.patrol_idle_timer -= 1
+            
+            if self.patrol_idle_timer == 0:
+                self.state = NPCState.WALK
+                self.velocity_x = self.speed if self.direction == Direction.RIGHT else -self.speed
+                self.patrol_reversals_count = 0
+            return
+        
         self.x += self.velocity_x
         
-        # Check patrol boundaries and reverse direction
         if self.x <= self.patrol_left_bound:
             self.direction = Direction.RIGHT
             self.velocity_x = self.speed
+            self.patrol_reversals_count += 1
         elif self.x >= self.patrol_right_bound:
             self.direction = Direction.LEFT
             self.velocity_x = -self.speed
+            self.patrol_reversals_count += 1
+        
+        if self.state == NPCState.WALK and self.patrol_reversals_count >= 2 and random.random() < self.patrol_idle_chance:
+            self._start_patrol_idle()
+    
+    def _start_patrol_idle(self):
+        """Start a random idle period during patrol."""
+        self.state = NPCState.IDLE
+        self.velocity_x = 0
+        self.patrol_idle_timer = random.randint(self.patrol_idle_duration_min, self.patrol_idle_duration_max)
+        self.was_patrolling_before_idle = True
+    
+    def start_patrol(self):
+        """Enable patrol mode for this NPC."""
+        self.is_patrolling = True
+        self.patrol_reversals_count = 0  # Reset cycle counter
+        if self.state not in self._get_non_interruptible_states():
+            self.state = NPCState.WALK
+            self.velocity_x = self.speed if self.direction == Direction.RIGHT else -self.speed
+    
+    def stop_patrol(self):
+        """Disable patrol mode for this NPC."""
+        self.is_patrolling = False
+        self.patrol_idle_timer = 0
     
     def move_left(self):
         """Move NPC to the left. Can be overridden by child classes."""

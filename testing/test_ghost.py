@@ -81,6 +81,7 @@ class GhostTest:
         self.ghost = Ghost(400, 300, self.sprite_factory, None, self.renderer, self.projectile_manager)
         self.ghost.patrol_left_bound = 200
         self.ghost.patrol_right_bound = 900
+        self.ghost.start_patrol()  # Enable patrol mode with random idle stops
         
         # Test mode
         self.test_mode = "patrol"  # patrol, manual, combat
@@ -166,18 +167,20 @@ class GhostTest:
                 # Mode switching
                 elif key == sdl2.SDLK_1:
                     self.test_mode = "patrol"
-                    self.ghost.state = NPCState.WALK
+                    self.ghost.start_patrol()
                     print("\n[MODE] Switched to PATROL mode")
                     self._update_status()
                 
                 elif key == sdl2.SDLK_2:
                     self.test_mode = "manual"
+                    self.ghost.stop_patrol()
                     self.ghost.velocity_x = 0
                     print("\n[MODE] Switched to MANUAL CONTROL mode")
                     self._update_status()
                 
                 elif key == sdl2.SDLK_3:
                     self.test_mode = "combat"
+                    self.ghost.stop_patrol()
                     self.ghost.velocity_x = 0
                     self.ghost.x = 400
                     self.target.x = 900
