@@ -7,15 +7,26 @@ from settings import *
 from world.map import GameMap
 from sdl2 import SDL_Rect, SDL_RenderCopy # Import hàm vẽ cấp thấp để tối ư
 
+# TEST_LEVEL = [
+#     "              ", # Row 0
+#     "              ", # Row 1
+#     "              ", # Row 2
+#     "      2233    ", # Row 3: Một bục nhảy lơ lửng
+#     "              ", # Row 4
+#     "              ", # Row 5
+#     "- -5= =4- - - ", # Row 6: Mặt đất chính (Sẽ nhìn thấy rõ nhất)
+#     "0 0 0 0 0 0 0 ", # Row 7: Dưới lòng đất (Bị cắt 1 nửa hiển thị)
+# ]
+
 TEST_LEVEL = [
-    "              ", # Row 0
-    "              ", # Row 1
-    "              ", # Row 2
-    "      222     ", # Row 3: Một bục nhảy lơ lửng
-    "              ", # Row 4
-    "              ", # Row 5
-    "12222222222222", # Row 6: Mặt đất chính (Sẽ nhìn thấy rõ nhất)
-    "              ", # Row 7: Dưới lòng đất (Bị cắt 1 nửa hiển thị)
+    "                          ", # Row 0
+    "                          ", # Row 1
+    "                          ", # Row 2
+    "  2233                    ", # Row 3: Một bục nhảy lơ lửng
+    "          (- - 0 0 0 0 0 0", # Row 4
+    "      [== 78 8 0 0 0 0 0 0", # Row 5
+    "-5= =5- - - 68 0 0 0 0 0 0", # Row 6: Mặt đất chính (Sẽ nhìn thấy rõ nhất)
+    "0 0 0 0 0 0 0 0 0 0 0 0 0 ", # Row 7: Dưới lòng đất (Bị cắt 1 nửa hiển thị)
 ]
 
 def draw_bg(renderer, texture):
