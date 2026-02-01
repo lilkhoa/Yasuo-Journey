@@ -179,36 +179,28 @@ class NPC:
         Args:
             delta_time: Time elapsed since last update
         """
-        # Handle death state
         if self.state == NPCState.DEAD:
-            # Update death animation
             self._update_animation()
             
-            # If death animation is complete, start removal timer
             if self.death_animation_complete:
                 self.death_timer += 1
                 
-                # Mark for removal after delay
                 if self.death_timer >= self.death_removal_delay:
                     self.ready_for_removal = True
             
-            # Don't process other updates when dead
             return
         
-        # Check if should transition to dead
         if self.health <= 0:
             self.health = 0
             self.state = NPCState.DEAD
             self.current_frame = 0
             self.death_animation_complete = False
             self.death_timer = 0
-            self.velocity_x = 0  # Stop movement
+            self.velocity_x = 0
             return
         
-        # Update animation
         self._update_animation()
         
-        # Update cooldowns
         if self.attack_cooldown > 0:
             self.attack_cooldown -= 1
             if self.attack_cooldown == 0:
@@ -232,7 +224,6 @@ class NPC:
                     self.frame_counter = 0
                     self.current_frame += 1
                     
-                    # Check if animation is complete
                     if self.current_frame >= sprite_data['frames']:
                         self.current_frame = sprite_data['frames'] - 1
                         self.death_animation_complete = True
@@ -246,12 +237,10 @@ class NPC:
     
     def _update_movement(self):
         """Update NPC movement with patrol behavior and random idle stops."""
-        # Only update movement if patrolling is enabled
         if not self.is_patrolling:
             self.x += self.velocity_x
             return
         
-        # Handle patrol idle state
         if self.patrol_idle_timer > 0:
             self.patrol_idle_timer -= 1
             
@@ -285,7 +274,7 @@ class NPC:
     def start_patrol(self):
         """Enable patrol mode for this NPC."""
         self.is_patrolling = True
-        self.patrol_reversals_count = 0  # Reset cycle counter
+        self.patrol_reversals_count = 0
         if self.state not in self._get_non_interruptible_states():
             self.state = NPCState.WALK
             self.velocity_x = self.speed if self.direction == Direction.RIGHT else -self.speed
@@ -335,7 +324,6 @@ class NPC:
         Args:
             amount: Damage amount to apply
         """
-        # Don't take damage if already dead
         if self.state == NPCState.DEAD:
             return
         
@@ -349,7 +337,7 @@ class NPC:
             self.current_frame = 0
             self.death_animation_complete = False
             self.death_timer = 0
-            self.velocity_x = 0  # Stop movement immediately
+            self.velocity_x = 0
     
     def render(self):
         """Render NPC sprite to screen using PySDL2."""
@@ -359,7 +347,6 @@ class NPC:
         sprite_data = self.sprites[self.state]
         texture = sprite_data['texture']
         
-        # Calculate source rectangle (current frame in sprite sheet)
         frame_width = sprite_data['width'] // sprite_data['frames']
         frame_height = sprite_data['height']
         
@@ -370,7 +357,6 @@ class NPC:
             frame_height
         )
         
-        # Destination rectangle
         dest_rect = sdl2.SDL_Rect(
             int(self.x),
             int(self.y),
@@ -378,12 +364,10 @@ class NPC:
             self.height
         )
         
-        # Flip sprite based on direction
         flip = sdl2.SDL_FLIP_NONE
         if self.direction == Direction.LEFT:
             flip = sdl2.SDL_FLIP_HORIZONTAL
         
-        # Render the sprite
         sdl2.SDL_RenderCopyEx(
             self.renderer,
             texture,
@@ -440,10 +424,7 @@ class Ghost(NPC):
             attack_cooldown_max=NPC_GHOST_ATTACK_COOLDOWN
         )
         
-        # Set projectile manager for firing projectiles
         self.projectile_manager = projectile_manager
-        
-        # Track which frame to fire projectile (mid-attack animation)
         self.projectile_fired_this_attack = False
     
     def _get_npc_folder_name(self):
