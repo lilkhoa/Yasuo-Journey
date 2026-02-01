@@ -36,6 +36,7 @@ class NPCState(Enum):
     IDLE = "Idle"
     WALK = "Walk"
     RUN = "Run"
+    CHASE = "Chase"
     ATTACK_1 = "Attack_1"
     ATTACK_2 = "Attack_2"
     ATTACK_3 = "Attack_3"
@@ -54,17 +55,15 @@ class NPC:
     """
     Base NPC class with shared animation, movement, and combat capabilities.
     
-    This parent class consolidates common functionality for all NPC types,
-    reducing code duplication and providing a consistent interface.
-    
     Attributes:
-        x, y: Position coordinates
+        x, y: Current position coordinates
+        spawn_x, spawn_y: Initial spawn position (used for return behavior)
         width, height: Sprite dimensions
         health: Current health points
         max_health: Maximum health points
         damage: Attack damage
-        attack_range: Attack range in pixels
-        detection_range: Player detection range in pixels
+        attack_range: Attack range in pixels (from NPC center)
+        detection_range: Player detection range in pixels (from spawn position)
         speed: Movement speed
         state: Current animation state
         direction: Movement direction (left/right)
@@ -78,6 +77,9 @@ class NPC:
         is_attacking: Flag indicating if currently attacking
         attack_cooldown: Current attack cooldown counter
         attack_cooldown_max: Maximum attack cooldown frames
+        player: Reference to player object (for chase behavior)
+        is_chasing: Flag indicating if currently chasing player
+        returning_to_spawn: Flag indicating if returning to spawn after chase
     """
     
     def __init__(self, x, y, sprite_factory, texture_factory, renderer, 
@@ -103,6 +105,8 @@ class NPC:
         # Position and dimensions
         self.x = x
         self.y = y
+        self.spawn_x = x
+        self.spawn_y = y
         self.width = 64
         self.height = 64
         
@@ -150,6 +154,15 @@ class NPC:
         
         # Projectile system (can be set by child classes)
         self.projectile_manager = None
+        
+        # Player interaction
+        self.player = None
+        
+        # Chase behavior
+        self.is_chasing = False
+        self.chase_hysteresis_buffer = 50
+        self.returning_to_spawn = False
+        self.return_threshold = 20
         
         # Death state management
         self.death_animation_complete = False
@@ -206,7 +219,11 @@ class NPC:
             if self.attack_cooldown == 0:
                 self.is_attacking = False
         
-        if self.state in [NPCState.WALK, NPCState.RUN, NPCState.IDLE]:
+        # Check for player detection and chase behavior
+        if self.player and not self.is_attacking:
+            self._check_player_detection()
+        
+        if self.state in [NPCState.WALK, NPCState.RUN, NPCState.IDLE, NPCState.CHASE]:
             self._update_movement()
     
     def _update_animation(self):
@@ -236,7 +253,18 @@ class NPC:
             self.current_frame = (self.current_frame + 1) % sprite_data['frames']
     
     def _update_movement(self):
-        """Update NPC movement with patrol behavior and random idle stops."""
+        """Update NPC movement with patrol, chase, and return behaviors."""
+        # Handle chase behavior
+        if self.is_chasing and self.state == NPCState.CHASE:
+            self._chase_player()
+            return
+        
+        # Handle return to spawn after chase
+        if self.returning_to_spawn:
+            self._return_to_spawn()
+            return
+        
+        # Handle normal patrol behavior
         if not self.is_patrolling:
             self.x += self.velocity_x
             return
@@ -271,6 +299,121 @@ class NPC:
         self.patrol_idle_timer = random.randint(self.patrol_idle_duration_min, self.patrol_idle_duration_max)
         self.was_patrolling_before_idle = True
     
+    def _check_player_detection(self):
+        """Check if player is within detection range and update chase state."""
+        if not self.player or not hasattr(self.player, 'x'):
+            return
+        
+        # Calculate detection area bounds relative to spawn position
+        detection_left = self.spawn_x - self.detection_range
+        detection_right = self.spawn_x + self.detection_range
+        
+        player_x = self.player.x + self.player.width / 2  # Use player center
+        
+        # Check if player is within detection area
+        player_in_detection = detection_left <= player_x <= detection_right
+        
+        if not self.is_chasing and player_in_detection:
+            # Player entered detection area - start chasing
+            self._start_chase()
+        elif self.is_chasing:
+            # Add hysteresis buffer to prevent jittery behavior at boundary
+            buffer_left = detection_left - self.chase_hysteresis_buffer
+            buffer_right = detection_right + self.chase_hysteresis_buffer
+            
+            if not (buffer_left <= player_x <= buffer_right):
+                # Player left detection area (with buffer) - stop chasing
+                self._stop_chase()
+            else:
+                # Player still in detection range - check distance
+                distance_to_player = abs(self.x + self.width / 2 - player_x)
+                
+                if distance_to_player <= self.attack_range:
+                    # Player in attack range - update direction to face player before attacking
+                    if not self.is_attacking and self.attack_cooldown == 0:
+                        # Update direction to face player
+                        npc_center_x = self.x + self.width / 2
+                        if player_x > npc_center_x:
+                            self.direction = Direction.RIGHT
+                        else:
+                            self.direction = Direction.LEFT
+                        self._attack_player()
+                else:
+                    # Player out of attack range - continue chasing if not attacking
+                    if not self.is_attacking and self.state != NPCState.CHASE:
+                        self.state = NPCState.CHASE
+    
+    def _start_chase(self):
+        """Start chasing the player."""
+        self.is_chasing = True
+        self.returning_to_spawn = False
+        # Don't stop patrol mode - we'll resume after chase
+        self.state = NPCState.CHASE
+        self.patrol_idle_timer = 0
+    
+    def _stop_chase(self):
+        """Stop chasing and resume patrol from current position."""
+        self.is_chasing = False
+        self.returning_to_spawn = False  # Don't return to spawn, patrol from current position
+        self.patrol_reversals_count = 0  # Reset patrol cycle
+        self.state = NPCState.WALK
+        # Set velocity based on current direction to resume patrol
+        self.velocity_x = self.speed if self.direction == Direction.RIGHT else -self.speed
+    
+    def _chase_player(self):
+        """Move toward the player during chase."""
+        if not self.player or not hasattr(self.player, 'x'):
+            return
+        
+        player_center_x = self.player.x + self.player.width / 2
+        npc_center_x = self.x + self.width / 2
+        
+        # Determine direction to player
+        if player_center_x > npc_center_x:
+            self.direction = Direction.RIGHT
+            self.velocity_x = self.speed * 1.5  # Chase slightly faster than patrol
+        else:
+            self.direction = Direction.LEFT
+            self.velocity_x = -self.speed * 1.5
+        
+        # Move toward player
+        self.x += self.velocity_x
+    
+    def _return_to_spawn(self):
+        """Return to spawn position after chase ends."""
+        distance_to_spawn = abs(self.x - self.spawn_x)
+        
+        # Check if arrived at spawn position
+        if distance_to_spawn <= self.return_threshold:
+            # Arrived at spawn - resume patrol
+            self.x = self.spawn_x
+            self.returning_to_spawn = False
+            self.patrol_reversals_count = 0  # Reset patrol cycle
+            # Always resume patrol after chase
+            self.state = NPCState.WALK
+            # Choose a consistent patrol direction (e.g., always start going right)
+            # This prevents jitter from arbitrary direction based on return path
+            self.direction = Direction.RIGHT
+            self.velocity_x = self.speed
+            return
+        
+        # Move toward spawn position
+        if self.x > self.spawn_x:
+            self.direction = Direction.LEFT
+            self.velocity_x = -self.speed
+        else:
+            self.direction = Direction.RIGHT
+            self.velocity_x = self.speed
+        
+        self.x += self.velocity_x
+        
+        self.x += self.velocity_x
+    
+    def _attack_player(self):
+        """Initiate attack on player (to be implemented by subclasses)."""
+        # Default implementation - can be overridden
+        self.attack(attack_type=1)
+    
     def start_patrol(self):
         """Enable patrol mode for this NPC."""
         self.is_patrolling = True
@@ -283,6 +426,15 @@ class NPC:
         """Disable patrol mode for this NPC."""
         self.is_patrolling = False
         self.patrol_idle_timer = 0
+    
+    def set_player(self, player):
+        """
+        Set the player reference for chase behavior.
+        
+        Args:
+            player: Player instance with x, y, width, height attributes
+        """
+        self.player = player
     
     def move_left(self):
         """Move NPC to the left. Can be overridden by child classes."""
@@ -472,6 +624,10 @@ class Ghost(NPC):
                             print(f"Loaded {state.value}: {w.value}x{h.value} pixels, {frames} frames, frame_width={w.value//frames}")
                 except Exception as e:
                     print(f"Failed to load {filepath}: {e}")
+        
+        # CHASE state reuses RUN sprite
+        if NPCState.RUN in self.sprites:
+            self.sprites[NPCState.CHASE] = self.sprites[NPCState.RUN]
     
     def _calculate_frames(self, state):
         """
@@ -482,6 +638,7 @@ class Ghost(NPC):
             NPCState.IDLE: 5,
             NPCState.WALK: 5,
             NPCState.RUN: 5,
+            NPCState.CHASE: 5,  # Reuses RUN animation
             NPCState.ATTACK_3: 7,
             NPCState.ATTACK_4: 7,
             NPCState.HURT: 3,
@@ -635,6 +792,10 @@ class Shooter(NPC):
                         print(f"Loaded Shooter {state.value}: {w.value}x{h.value} pixels, {frames} frames")
                 except Exception as e:
                     print(f"Failed to load {filepath}: {e}")
+        
+        # CHASE state reuses RUN sprite
+        if NPCState.RUN in self.sprites:
+            self.sprites[NPCState.CHASE] = self.sprites[NPCState.RUN]
     
     def _calculate_frames(self, state):
         """
@@ -645,6 +806,7 @@ class Shooter(NPC):
             NPCState.IDLE: 7,
             NPCState.WALK: 7,
             NPCState.RUN: 8,
+            NPCState.CHASE: 8,  # Reuses RUN animation
             NPCState.ATTACK_1: 4,
             NPCState.ATTACK_2: 4,
             NPCState.HURT: 3,
@@ -792,6 +954,10 @@ class Onre(NPC):
                         print(f"Loaded Onre {state.value}: {w.value}x{h.value} pixels, {frames} frames")
                 except Exception as e:
                     print(f"Failed to load {filepath}: {e}")
+        
+        # CHASE state reuses RUN sprite
+        if NPCState.RUN in self.sprites:
+            self.sprites[NPCState.CHASE] = self.sprites[NPCState.RUN]
     
     def _calculate_frames(self, state):
         """
@@ -802,6 +968,7 @@ class Onre(NPC):
             NPCState.IDLE: 6,
             NPCState.WALK: 7,
             NPCState.RUN: 7,
+            NPCState.CHASE: 7,  # Reuses RUN animation
             NPCState.ATTACK_1: 5,
             NPCState.ATTACK_2: 4,
             NPCState.ATTACK_3: 4,
