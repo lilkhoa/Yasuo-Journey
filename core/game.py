@@ -5,105 +5,130 @@ import sdl2
 import sdl2.ext
 from settings import *
 from world.map import GameMap
-from sdl2 import SDL_Rect, SDL_RenderCopy # Import hàm vẽ cấp thấp để tối ư
+from sdl2 import SDL_Rect, SDL_RenderCopy
+from camera import Camera
 
-# TEST_LEVEL = [
-#     "              ", # Row 0
-#     "              ", # Row 1
-#     "              ", # Row 2
-#     "      2233    ", # Row 3: Một bục nhảy lơ lửng
-#     "              ", # Row 4
-#     "              ", # Row 5
-#     "- -5= =4- - - ", # Row 6: Mặt đất chính (Sẽ nhìn thấy rõ nhất)
-#     "0 0 0 0 0 0 0 ", # Row 7: Dưới lòng đất (Bị cắt 1 nửa hiển thị)
-# ]
-
+# Long test map to test camera scroll
 TEST_LEVEL = [
-    "                          ", # Row 0
-    "                          ", # Row 1
-    "                          ", # Row 2
-    "  2233                    ", # Row 3: Một bục nhảy lơ lửng
-    "          (- - 0 0 0 0 0 0", # Row 4
-    "      [== 78 8 0 0 0 0 0 0", # Row 5
-    "-5= =5- - - 68 0 0 0 0 0 0", # Row 6: Mặt đất chính (Sẽ nhìn thấy rõ nhất)
-    "0 0 0 0 0 0 0 0 0 0 0 0 0 ", # Row 7: Dưới lòng đất (Bị cắt 1 nửa hiển thị)
+    "                                                  ", 
+    "                                                  ", 
+    "                                                  ", 
+    "  2233                    2233                    ", 
+    "          (- - 0 0 0 0 0 0        (- - 0 0 0 0 0 0", 
+    "      [== 78 8 0 0 0 0 0 0    [== 78 8 0 0 0 0 0 0", 
+    "-5= =5- - - 68 0 0 0 0 0 0-5= =5- - - 68 0 0 0 0 0", 
+    "0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 ", 
 ]
 
-def draw_bg(renderer, texture):
-    # Cắt toàn bộ ảnh gốc (320x180)
+# Fake player class to simulate Player to test Camera
+class FakePlayer:
+    def __init__(self):
+        self.rect = SDL_Rect(100, 400, 50, 100) # x, y, w, h
+    def move(self, keys, map_width):
+        if keys[sdl2.SDL_SCANCODE_RIGHT]:
+            self.rect.x += 10
+        if keys[sdl2.SDL_SCANCODE_LEFT]:
+            self.rect.x -= 10
+        # Limit
+        self.rect.x = max(0, min(self.rect.x, map_width - 50))
+
+def draw_bg(renderer, texture, camera_x, speed_factor):
+    """
+        speed_factor:
+            0.0 -> do not move
+            0.5 -> move to opposite direction, with speed = 1/2 player
+            1.0 -> equal to player
+    """
+    bg_width = WINDOW_WIDTH
+
+    relative_x = (camera_x * speed_factor) % bg_width
+
     src_rect = SDL_Rect(0, 0, 320, 180)
-    # Vẽ giãn ra toàn màn hình (1280x720)
-    dst_rect = SDL_Rect(0, 0, WINDOW_WIDTH, WINDOW_HEIGHT)
-    # Thực hiện lệnh vẽ
-    SDL_RenderCopy(renderer, texture, src_rect, dst_rect)
+    dst_rect1 = SDL_Rect(int(-relative_x), 0, WINDOW_WIDTH, WINDOW_HEIGHT)
+    SDL_RenderCopy(renderer, texture, src_rect, dst_rect1)
+
+    if relative_x > 0:
+        dst_rect2 = SDL_Rect(int(-relative_x + bg_width), 0, WINDOW_WIDTH, WINDOW_HEIGHT)
+        SDL_RenderCopy(renderer, texture, src_rect, dst_rect2)
 
 def run():
-    # 1. Khởi tạo SDL2
     sdl2.ext.init()
-    
-    # 2. Tạo cửa sổ (Window)
     window = sdl2.ext.Window("Project Game Demo", size=(WINDOW_WIDTH, WINDOW_HEIGHT))
     window.show()
-    
-    # 3. Tạo Renderer (Bộ vẽ) - Dùng GPU
-    # index=-1 để chọn driver mặc định, flags=0
     renderer = sdl2.ext.Renderer(window, flags=sdl2.SDL_RENDERER_PRESENTVSYNC)
-    
-    # 4. Load Texture (Ảnh)
-    # Factory giúp load ảnh dễ hơn
     factory = sdl2.ext.SpriteFactory(sdl2.ext.TEXTURE, renderer=renderer)
     
     try:
-        # Đường dẫn ảnh phải chuẩn. Giả sử ảnh nằm cùng thư mục code.
         tileset_sprite = factory.from_image("assets/Map/oak_woods_tileset.png")
-        tileset_texture = tileset_sprite.texture # Lấy raw texture SDL
+        tileset_texture = tileset_sprite.texture
 
-        # Load 3 lớp Background (Theo thứ tự từ xa tới gần)
-        bg1_sprite = factory.from_image("assets/Map/background/background_layer_1.png") # Bầu trời
+        # Load 3 Background layers (far to near order)
+        bg1_sprite = factory.from_image("assets/Map/background/background_layer_1.png") # sky
         bg1_tex = bg1_sprite.texture
         
-        bg2_sprite = factory.from_image("assets/Map/background/background_layer_2.png") # Rừng xa
+        bg2_sprite = factory.from_image("assets/Map/background/background_layer_2.png") # far forest
         bg2_tex = bg2_sprite.texture
 
-        bg3_sprite = factory.from_image("assets/Map/background/background_layer_3.png") # Rừng gần
+        bg3_sprite = factory.from_image("assets/Map/background/background_layer_3.png") # near forest
         bg3_tex = bg3_sprite.texture
+
     except Exception as e:
-        print(f"Lỗi load ảnh: {e}")
+        print(f"Load sprite error: {e}")
         return
 
-    # 5. Khởi tạo Map
+    # 1. init Map
     my_map = GameMap(TEST_LEVEL)
 
-    # 6. Vòng lặp game (Game Loop)
+    # 2. init Camera
+    camera = Camera(WINDOW_WIDTH, WINDOW_HEIGHT)
+
+    # 3. simulate Player
+    player = FakePlayer()
+
+    # 4.  game loop
     running = True
     while running:
-        # Xử lý sự kiện (Bấm nút tắt, phím bấm...)
         events = sdl2.ext.get_events()
         for event in events:
             if event.type == sdl2.SDL_QUIT:
                 running = False
                 break
         
-        # --- RENDER (VẼ) ---
-        # B1. Xóa màn hình (Tô màu nền)
-        renderer.clear()
+        # Update Logic
+        keys = sdl2.SDL_GetKeyboardState(None)
+        player.move(keys, my_map.width_pixel)
         
-        # Lấy con trỏ renderer gốc để dùng hàm SDL_RenderCopy
+        # update Camera theo Player
+        camera.update(player.rect, my_map.width_pixel)
+
+        # Render
+        renderer.clear()
         sdl_renderer = renderer.sdlrenderer
 
-        # B2: Vẽ Background (Từ xa tới gần)
-        # Nếu vẽ sai thứ tự, cái sau sẽ che mất cái trước!
-        draw_bg(sdl_renderer, bg1_tex) # Layer 1: Xanh nhạt
-        draw_bg(sdl_renderer, bg2_tex) # Layer 2: Tím nhạt
-        draw_bg(sdl_renderer, bg3_tex) # Layer 3: Cây to
-
-        # B3: Vẽ Map (Đè lên background)
-        my_map.render(sdl_renderer, tileset_texture)
+        # RENDER BACKGROUND PARALLAX
+        # Layer 1 (Sky): Move extremely slow (0.1) or do not move (0)
+        draw_bg(sdl_renderer, bg1_tex, camera.camera.x, 0.1) 
         
-        # B4: Cập nhật màn hình
+        # Layer 2 (far forest): move with medium speed (0.4)
+        draw_bg(sdl_renderer, bg2_tex, camera.camera.x, 0.4) 
+        
+        # Layer 3 (near forest): move faster (0.7),
+        draw_bg(sdl_renderer, bg3_tex, camera.camera.x, 0.7)
+
+        # render Map move with speed 1.0
+        my_map.render(sdl_renderer, tileset_texture, camera)
+
+        # passing camera into render map function
+        my_map.render(sdl_renderer, tileset_texture, camera)
+        
+        # Vẽ Player (Màu đỏ) để biết nó đang ở đâu
+        # Cần tính vị trí player trên màn hình (Apply Camera)
+        player_screen_rect = camera.apply(player.rect)
+        sdl2.SDL_SetRenderDrawColor(sdl_renderer, 255, 0, 0, 255)
+        sdl2.SDL_RenderFillRect(sdl_renderer, player_screen_rect)
+
         renderer.present()
 
-    # Dọn dẹp
     sdl2.ext.quit()
 
 if __name__ == "__main__":
