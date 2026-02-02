@@ -54,18 +54,49 @@ NPC_ONRE_ATTACK_COOLDOWN = 40  # frames
 
 # Player Settings
 PLAYER_HEALTH = 200
-PLAYER_SPEED = 5
+PLAYER_SPEED_WALK = 150   # Tốc độ đi bộ (pixels/second)
+PLAYER_SPEED_RUN = 300    # Tốc độ chạy (pixels/second)
 PLAYER_JUMP_POWER = 10
 
 # Combat Settings
-ATTACK_COOLDOWN = 60  # frames
+ATTACK_COOLDOWN = 30        # Frames giữa các lần đánh thường
 SKILL_Q_COOLDOWN = 120
 SKILL_W_COOLDOWN = 180
 SKILL_E_COOLDOWN = 90
 
+# Damage Settings [MỚI]
+DAMAGE_NORMAL = 20
+DAMAGE_SKILL_E = 50
+DAMAGE_SKILL_Q = 100        # Q dame to nhất
+DAMAGE_SKILL_W = 30         # W dame khi chạm
+
+# Block Settings [MỚI]
+BLOCK_DAMAGE_REDUCTION = 0.9  # Giảm 90% sát thương
+BLOCK_STAMINA_COST_PER_HIT = 20 # Tốn 20 stamina mỗi lần đỡ đòn
+
+# Player Stats (Refactored for Spec)
+PLAYER_MAX_HEALTH = 200
+PLAYER_MAX_STAMINA = 100     # Nội năng = Stamina
+
+PLAYER_STAMINA_REGEN_WALK = 0.5  # Hồi nội năng khi đi bộ
+PLAYER_HEALTH_REGEN = 0.02      # Hồi máu tự nhiên (nếu có)
+
+PLAYER_RUN_COST = 0.2           # Chạy tốn stamina
+SKILL_Q_COST = 20
+SKILL_W_COST = 30
+SKILL_E_COST = 15
+
+# Mechanisms
+PLAYER_LIFESTEAL = 100          # Hút máu toàn phần (100%)
+
+# Cơ chế thưởng (Reward)
+Reward_Hit_Stamina = 5
+Reward_Kill_Stamina = 30
+
 # Physics
 GRAVITY = 0.5
 MAX_FALL_SPEED = 10
+GROUND_Y = 480 # Mức đất tạm thời để test di chuyển (Row 5-6 * 96)
 
 # Colors (R, G, B, A)
 COLOR_BLACK = (0, 0, 0, 255)
