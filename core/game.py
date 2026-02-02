@@ -5,19 +5,38 @@ import sdl2
 import sdl2.ext
 from settings import *
 from world.map import GameMap
+from world.decoration import Decoration
 from sdl2 import SDL_Rect, SDL_RenderCopy
 from camera import Camera
 
-# Long test map to test camera scroll
+# Long test map to test camera scroll: TERRAIN
 TEST_LEVEL = [
     "                                                  ", 
     "                                                  ", 
     "                                                  ", 
-    "  2233                    2233                    ", 
-    "          (- - 0 0 0 0 0 0        (- - 0 0 0 0 0 0", 
-    "      [== 78 8 0 0 0 0 0 0    [== 78 8 0 0 0 0 0 0", 
-    "-5= =5- - - 68 0 0 0 0 0 0-5= =5- - - 68 0 0 0 0 0", 
-    "0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 ", 
+    "                                                  ",
+    "                                                  ", 
+    "                                                  ",  
+    "                                                  ", 
+    "                                                  ", 
+    # "  2233                    2233                    ", 
+    # "          (- - 8 8 8 8 8 8        (- - 8 8 8 8 8 8", 
+    # "      [== 78 8 0 0 0 0 0 0    [== 78 8 0 0 0 0 0 0", 
+    # "-5= =5- - - 68 0 0 0 0 0 0-5= =5- - - 68 0 0 0 0 0", 
+    # "0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 ", 
+]
+
+# DECO MAP (Mask Map)
+# Lưu ý: the length must be compatible
+DECO_MAP = [
+    "                                                  ", 
+    "    ff                                            ", 
+    "                                                  ", 
+    "                          S                       ", # f: hàng rào, S: Shop
+    "          g g              l      g g             ", # g: cỏ, l: đèn
+    "      r   r                       r               ", # r: đá
+    "                                                  ", 
+    "                                                  ", 
 ]
 
 # Fake player class to simulate Player to test Camera
@@ -76,8 +95,9 @@ def run():
         print(f"Load sprite error: {e}")
         return
 
-    # 1. init Map
-    my_map = GameMap(TEST_LEVEL)
+    # 1. init Map and decoration handler
+    my_map = GameMap(TEST_LEVEL, DECO_MAP)
+    deco_mgr = Decoration(renderer)
 
     # 2. init Camera
     camera = Camera(WINDOW_WIDTH, WINDOW_HEIGHT)
@@ -116,10 +136,7 @@ def run():
         draw_bg(sdl_renderer, bg3_tex, camera.camera.x, 0.7)
 
         # render Map move with speed 1.0
-        my_map.render(sdl_renderer, tileset_texture, camera)
-
-        # passing camera into render map function
-        my_map.render(sdl_renderer, tileset_texture, camera)
+        my_map.render(sdl_renderer, tileset_texture, deco_mgr, camera)
         
         # Vẽ Player (Màu đỏ) để biết nó đang ở đâu
         # Cần tính vị trí player trên màn hình (Apply Camera)
