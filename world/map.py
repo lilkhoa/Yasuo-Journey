@@ -31,12 +31,13 @@ TILE_DEFINITIONS = {
 }
 
 class GameMap: 
-    def __init__(self, map_data):
+    def __init__(self, map_data, deco_data):
         self.map_data = map_data
+        self.deco_data = deco_data  # Deco data, Mask map
         # real long from map (Pixel) to limit Camera
         self.width_pixel = len(self.map_data[0]) * TILE_SIZE
     
-    def render(self, renderer, tileset_texture, camera: Camera):
+    def render(self, renderer, tileset_texture, deco_handler, camera: Camera):
         # camera: Camera object from game.py
 
         # 1. Culling technique (just render the things need to render)
@@ -54,7 +55,8 @@ class GameMap:
             for x_index in range(start_col, end_col):
                 if x_index >= len(row):
                     break
-
+                
+                # Layer 1: Terrain layer
                 char = row[x_index]
 
                 if char in TILE_DEFINITIONS:
@@ -80,7 +82,18 @@ class GameMap:
                     dst_rect = SDL_Rect(dst_x, dst_y, dst_w, dst_h)
                     
                     SDL_RenderCopy(renderer, tileset_texture, src_rect, dst_rect)
-                    
+
+        # Layer 2: Decoration layer
+        if self.deco_data:
+            for y_index, row in enumerate(self.deco_data):
+                # if 'f' in row or 'S' in row:
+                #     print(f"DEBUG: Processing row {y_index}, len={len(row)}, content='{row}'")
+                for x_index in range(start_col, end_col):
+                    if y_index < len(self.deco_data) and x_index < len(row):
+                        deco_char = row[x_index]
+                        if deco_char != ' ':
+                            deco_handler.render(renderer, deco_char, x_index, y_index, camera)
+                        
 
         
 
