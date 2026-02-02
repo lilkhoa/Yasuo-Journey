@@ -4,7 +4,6 @@ import os
 from combat.skill import Skill
 from combat.utils import load_grid_sprite_sheet
 
-# --- LOGIC LOAD TÀI NGUYÊN ---
 def load_tornado_assets(factory, asset_dir):
     filename = "mytornado.png" # Đảm bảo tên file đúng (mytornado.png)
     path = os.path.join(asset_dir, filename)

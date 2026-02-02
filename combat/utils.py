@@ -3,7 +3,6 @@ import sdl2.ext
 import ctypes
 import os
 
-# --- CÁC HÀM CŨ (GIỮ NGUYÊN) ---
 def get_surface_struct_and_ptr(surface):
     if hasattr(surface, "contents"):
         return surface.contents, surface
@@ -77,7 +76,6 @@ def load_first_frame_cropped(factory, filepath, num_frames):
     cropped_ptr = get_cropped_surface(full_surface, 0, 0, frame_w, frame_h)
     return cropped_ptr
 
-# --- HÀM MỚI ĐÃ NÂNG CẤP: LOAD CHUỖI ẢNH TÙY CHỈNH ---
 def load_image_sequence(factory, folder_path, prefix, count, target_size=None, zero_pad=True):
     """
     Load chuỗi ảnh.
@@ -92,11 +90,10 @@ def load_image_sequence(factory, folder_path, prefix, count, target_size=None, z
     print(f"Đang load chuỗi ảnh từ: {os.path.basename(folder_path)}...")
 
     for i in range(1, count + 1):
-        # Xử lý tên file dựa trên định dạng số
         if zero_pad:
-            filename = f"{prefix}{i:03d}.png" # VD: CS001.png
+            filename = f"{prefix}{i:03d}.png"
         else:
-            filename = f"{prefix}{i}.png"     # VD: fire_column_medium_1.png
+            filename = f"{prefix}{i}.png"   
             
         filepath = os.path.join(folder_path, filename)
         
@@ -122,3 +119,23 @@ def load_image_sequence(factory, folder_path, prefix, count, target_size=None, z
     
     print(f"Đã load {len(sprites)} frame cho Skill.")
     return sprites
+
+def flip_sprites_horizontal(factory, original_sprites):
+    flipped_sprites = []
+    
+    for sprite in original_sprites:
+        dup_surface_ptr = sdl2.SDL_DuplicateSurface(sprite.surface)
+        
+        if not dup_surface_ptr:
+            continue
+        new_sprite = factory.from_surface(dup_surface_ptr, free=True)
+
+        dup_surface = dup_surface_ptr.contents
+        
+        dst_px = sdl2.ext.pixels3d(dup_surface)
+
+        dst_px[:] = dst_px[::-1, ...]
+        
+        flipped_sprites.append(new_sprite)
+        
+    return flipped_sprites

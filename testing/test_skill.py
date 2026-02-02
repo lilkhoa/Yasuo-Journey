@@ -57,24 +57,22 @@ def run_test():
             elif event.type == sdl2.SDL_KEYDOWN:
                 key = event.key.keysym.sym
                 
-                if key == sdl2.SDLK_q: 
-                    player.start_q()
-                elif key == sdl2.SDLK_w: 
-                    player.start_w()
+                # Lấy trạng thái bàn phím để biết hướng đang giữ
+                keyboard_state = sdl2.SDL_GetKeyboardState(None)
+                current_dir = 0
+                if keyboard_state[sdl2.SDL_SCANCODE_RIGHT]:
+                    current_dir = 1
+                elif keyboard_state[sdl2.SDL_SCANCODE_LEFT]:
+                    current_dir = -1
                 
-                # --- LOGIC MỚI CHO PHÍM E ---
+                if key == sdl2.SDLK_q: 
+                    player.start_q(current_dir)
+                    
+                elif key == sdl2.SDLK_w: 
+                    player.start_w(current_dir)
+                
                 elif key == sdl2.SDLK_e:
-                    # Kiểm tra xem phím mũi tên nào đang được giữ
-                    keyboard_state = sdl2.SDL_GetKeyboardState(None)
-                    dash_dir = 0
-                    
-                    if keyboard_state[sdl2.SDL_SCANCODE_RIGHT]:
-                        dash_dir = 1
-                    elif keyboard_state[sdl2.SDL_SCANCODE_LEFT]:
-                        dash_dir = -1
-                    
-                    # Truyền hướng vào hàm start_e
-                    player.start_e(world, factory, spriterenderer, dash_dir)
+                    player.start_e(world, factory, spriterenderer, current_dir)
         
         keys = sdl2.SDL_GetKeyboardState(None)
         
