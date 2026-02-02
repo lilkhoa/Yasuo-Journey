@@ -41,8 +41,8 @@ class GameMap:
         # camera: Camera object from game.py
 
         # 1. Culling technique (just render the things need to render)
-        start_col = int(camera.camera.x // TILE_SIZE) - 1
-        end_col = start_col + (WINDOW_WIDTH // TILE_SIZE) + 3 # to draw over the edge
+        start_col = int(camera.camera.x // TILE_SIZE) - 4 # 4 indicate that 4 col have been through by the left edge, is allowed to stop rendering => avoid disappear immediately
+        end_col = start_col + (WINDOW_WIDTH // TILE_SIZE) + 6 # to draw over the edge
 
         # check the limit range
         start_col = max(0, start_col)
