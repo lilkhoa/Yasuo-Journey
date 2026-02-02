@@ -9,7 +9,6 @@ from settings import *
 from core.camera import Camera
 
 DECO_DIR = "assets/Map/decorations"
-SHOP_ANIM_PATH = "assets/Map/decorations/shop_anim.png" 
 
 # CONFIG ANIMATION SHOP
 SHOP_FRAME_WIDTH = 118
@@ -38,26 +37,41 @@ class Decoration:
         '''
         if not renderer:
             print(f"Renderer must be existed before create decorations!")
+            return
 
         factory = sdl2.ext.SpriteFactory(sdl2.ext.TEXTURE, renderer=renderer)
+        
+        # 1. create repository SPRITE (IMPORTANT: for Python does not remove it)
+        self.sprites = {} 
+        self.textures = {}
 
         try:
-            # Load textures
-            self.textures = {
-                'FENCE_1': factory.from_image(os.path.join(DECO_DIR, "fence_1.png")).texture,
-                'FENCE_2': factory.from_image(os.path.join(DECO_DIR, "fence_2.png")).texture,
-                'GRASS_1': factory.from_image(os.path.join(DECO_DIR, "grass_1.png")).texture,
-                'GRASS_2': factory.from_image(os.path.join(DECO_DIR, "grass_2.png")).texture,
-                'GRASS_3': factory.from_image(os.path.join(DECO_DIR, "grass_3.png")).texture,
-                'LAMP':    factory.from_image(os.path.join(DECO_DIR, "lamp.png")).texture,
-                'ROCK_1':  factory.from_image(os.path.join(DECO_DIR, "rock_1.png")).texture,
-                'ROCK_2':  factory.from_image(os.path.join(DECO_DIR, "rock_2.png")).texture,
-                'ROCK_3':  factory.from_image(os.path.join(DECO_DIR, "rock_3.png")).texture, # Lưu ý check lại file rock_3
-                'SIGN':    factory.from_image(os.path.join(DECO_DIR, "sign.png")).texture,
-                'SHOP':    factory.from_image(SHOP_ANIM_PATH).texture
-            }
+            
+            # Helper function to safety load
+            def load(name, filename):
+                full_path = os.path.join(DECO_DIR, filename)
+                # store Sprite into self.sprites to keep it "live"
+                sprite = factory.from_image(full_path)
+                self.sprites[name] = sprite
+                # store texture
+                self.textures[name] = sprite.texture
+
+            load('FENCE_1', "fence_1.png")
+            load('FENCE_2', "fence_2.png")
+            load('GRASS_1', "grass_1.png")
+            load('GRASS_2', "grass_2.png")
+            load('GRASS_3', "grass_3.png")
+            load('LAMP',    "lamp.png")
+            load('ROCK_1',  "rock_1.png")
+            load('ROCK_2',  "rock_2.png")
+            load('ROCK_3',  "rock_3.png")
+            load('SIGN',    "sign.png")
+            load('SHOP',    "shop_anim.png")
+            
+            print("DEBUG: Decorations loaded successfully!")
+
         except Exception as E:
-            print(f"Loading image error {E}!")
+            print(f"Loading image error: {E}")
             return
 
         # Define original size (w, h) for each one
