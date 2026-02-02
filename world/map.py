@@ -1,10 +1,14 @@
+import sys
 import os
+sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
 import ctypes
 import sdl2
 import sdl2.ext
 from sdl2 import SDL_Rect, SDL_RenderCopy
 from enum import Enum
 from settings import *
+from world.decoration import Decoration
+from core.camera import Camera
 
 # Define the cut coordinates in file tileset (Source Rect)
 # Base on the data we have take from the tileset: x = top_left_x, y = top_left_y, w = bottom_right_x - top_left_x, h = bottom_right_y - top_left_y
@@ -29,13 +33,29 @@ TILE_DEFINITIONS = {
 class GameMap: 
     def __init__(self, map_data):
         self.map_data = map_data
+        # real long from map (Pixel) to limit Camera
+        self.width_pixel = len(self.map_data[0]) * TILE_SIZE
     
-    def render(self, renderer, tileset_texture, camera_x = 0):
-        # camera_x: use to move the map when main character move
+    def render(self, renderer, tileset_texture, camera: Camera):
+        # camera: Camera object from game.py
 
-        y_index = 0
+        # 1. Culling technique (just render the things need to render)
+        start_col = int(camera.camera.x // TILE_SIZE) - 1
+        end_col = start_col + (WINDOW_WIDTH // TILE_SIZE) + 3 # to draw over the edge
+
+        # check the limit range
+        start_col = max(0, start_col)
+        end_col = min(len(self.map_data[0]), end_col)
+        
+        cam_x = camera.camera.x
+
         for y_index, row in enumerate(self.map_data):
-            for x_index, char in enumerate(row):
+            # just traverse the visable range of colun
+            for x_index in range(start_col, end_col):
+                if x_index >= len(row):
+                    break
+
+                char = row[x_index]
 
                 if char in TILE_DEFINITIONS:
                     # 1. Get the cutting information
@@ -43,12 +63,19 @@ class GameMap:
                     src_rect = SDL_Rect(src_x, src_y, src_w, src_h)
 
                     # 2. Calculate the render postion
-                    # Multiply with size and need to scale to place the right place and right size
-                    dst_w = src_w * SCALE_FACTOR
-                    dst_h = src_h * SCALE_FACTOR if char != '0' else src_h * int(1.5 * SCALE_FACTOR)
+                    # Logic resize for tile '0'
+                    if char == '0':
+                        dst_w = src_w * SCALE_FACTOR
+                        dst_h = int(src_h * 1.5 * SCALE_FACTOR)
+                        # Logic modify special y offset
+                        dst_y = (y_index * TILE_SIZE) - int(TILE_SIZE / 4.5)
+                    else:
+                        dst_w = src_w * SCALE_FACTOR
+                        dst_h = src_h * SCALE_FACTOR
+                        dst_y = y_index * TILE_SIZE
 
-                    dst_x = (x_index * TILE_SIZE) - int(camera_x)
-                    dst_y = (y_index * TILE_SIZE) if char != '0' else (y_index * TILE_SIZE) - int(1/4.5 * TILE_SIZE)
+                    # Tọa độ X trên màn hình = Tọa độ thế giới - Tọa độ Camera
+                    dst_x = (x_index * TILE_SIZE) - cam_x
 
                     dst_rect = SDL_Rect(dst_x, dst_y, dst_w, dst_h)
                     
