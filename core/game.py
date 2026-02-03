@@ -137,6 +137,8 @@ def run():
     make_npc_compatible(g1)
     s1 = npc_manager.spawn_shooter(900, 350)
     make_npc_compatible(s1)
+    o1 = npc_manager.spawn_onre(1200, 350)
+    make_npc_compatible(o1)
     
     active_tornadoes = []
     active_walls = []

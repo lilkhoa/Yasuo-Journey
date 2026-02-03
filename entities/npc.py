@@ -124,7 +124,7 @@ class NPC:
         self.velocity_y = 0
         
         # State and animation
-        self.state = NPCState.IDLE
+        self.state = NPCState.WALK
         self.textures = {}
         self.sprites = {}
         self.current_frame = 0
@@ -1091,6 +1091,7 @@ class NPCManager:
         """
         ghost = Ghost(x, y, self.sprite_factory, self.texture_factory, 
                      self.renderer, self.projectile_manager)
+        ghost.start_patrol()  # Auto-start patrol with spawn position as center
         self.npcs.append(ghost)
         return ghost
     
@@ -1107,6 +1108,7 @@ class NPCManager:
         """
         shooter = Shooter(x, y, self.sprite_factory, self.texture_factory, 
                          self.renderer, self.projectile_manager)
+        shooter.start_patrol()  # Auto-start patrol with spawn position as center
         self.npcs.append(shooter)
         return shooter
     
@@ -1122,6 +1124,7 @@ class NPCManager:
             Onre: The spawned Onre instance
         """
         onre = Onre(x, y, self.sprite_factory, self.texture_factory, self.renderer)
+        onre.start_patrol()  # Auto-start patrol with spawn position as center
         self.npcs.append(onre)
         return onre
     
