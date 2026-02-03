@@ -1,7 +1,3 @@
-﻿"""
-Ghost NPC Chase Behavior Test
-Test Ghost NPC patrol, chase, and attack behaviors with player-controlled rectangle.
-"""
 import sys
 import os
 import sdl2
@@ -15,7 +11,7 @@ except ImportError:
 # Add parent directory to path for imports
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
-from entities.npc import Ghost, NPCState
+from entities.npc import Onre
 from entities.projectile import ProjectileManager
 
 
@@ -32,7 +28,7 @@ class Player:
         self.x = x
         self.y = y
         self.width = 50
-        self.height = 50
+        self.height = 100
         self.speed = 5
         self.health = 100
         self.max_health = 100
@@ -70,7 +66,7 @@ class Player:
         return (self.x, self.y, self.width, self.height)
 
 
-class GhostTest:
+class OnreTest:
     """Ghost NPC chase behavior testing application."""
     
     def __init__(self):
@@ -90,7 +86,7 @@ class GhostTest:
         
         # Create window
         self.window = sdl2.SDL_CreateWindow(
-            b"Ghost NPC Chase Test - Use Arrow Keys to Move Player",
+            b"Onre NPC Chase Test - Use Arrow Keys to Move Player",
             sdl2.SDL_WINDOWPOS_CENTERED,
             sdl2.SDL_WINDOWPOS_CENTERED,
             WINDOW_WIDTH,
@@ -123,10 +119,10 @@ class GhostTest:
         self.projectile_manager = ProjectileManager(self.renderer)
         
         # Create player
-        self.player = Player(640, 300)
+        self.player = Player(40, 300)
         
         # Spawn Ghost NPC with patrol and chase behavior
-        self.ghost = Ghost(600, 300, self.sprite_factory, None, self.renderer, self.projectile_manager)
+        self.ghost = Onre(600, 300, self.sprite_factory, None, self.renderer)
         # Patrol bounds are automatically calculated from spawn position and patrol_radius in NPC class
         self.ghost.set_player(self.player)  # Enable chase behavior
         self.ghost.start_patrol()
@@ -355,7 +351,7 @@ class GhostTest:
 
 def main():
     """Entry point."""
-    test = GhostTest()
+    test = OnreTest()
     test.run()
 
 

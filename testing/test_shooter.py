@@ -32,7 +32,7 @@ class Player:
         self.x = x
         self.y = y
         self.width = 50
-        self.height = 50
+        self.height = 100
         self.speed = 5
         self.health = 100
         self.max_health = 100
@@ -198,15 +198,6 @@ class ShooterTest:
         # Clear screen (dark gray)
         sdl2.SDL_SetRenderDrawColor(self.renderer, 40, 40, 40, 255)
         sdl2.SDL_RenderClear(self.renderer)
-        
-        # Draw patrol boundaries
-        self._draw_patrol_bounds()
-        
-        # Draw detection range
-        self._draw_detection_range()
-        
-        # Draw spawn position marker
-        self._draw_spawn_marker()
         
         # Render player
         self.player.render(self.renderer)

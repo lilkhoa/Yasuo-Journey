@@ -107,8 +107,8 @@ class NPC:
         self.y = y
         self.spawn_x = x
         self.spawn_y = y
-        self.width = 64
-        self.height = 64
+        self.width = 96
+        self.height = 96
         
         # Combat stats
         self.health = health
@@ -148,7 +148,7 @@ class NPC:
         self.patrol_idle_timer = 0
         self.patrol_idle_duration_min = 60
         self.patrol_idle_duration_max = 180
-        self.patrol_idle_chance = 0.0002
+        self.patrol_idle_chance = 0.008
         self.was_patrolling_before_idle = False
         self.patrol_reversals_count = 0
         
@@ -169,6 +169,9 @@ class NPC:
         self.death_timer = 0
         self.death_removal_delay = 90
         self.ready_for_removal = False
+        
+        # Hurt state management (Phase 2: stunned)
+        self.hurt_animation_complete = False
         
         # Load sprites (implemented by child classes)
         self._load_sprites()
@@ -196,10 +199,7 @@ class NPC:
             self._update_animation()
             
             if self.death_animation_complete:
-                self.death_timer += 1
-                
-                if self.death_timer >= self.death_removal_delay:
-                    self.ready_for_removal = True
+                self.ready_for_removal = True
             
             return
         
@@ -208,21 +208,40 @@ class NPC:
             self.state = NPCState.DEAD
             self.current_frame = 0
             self.death_animation_complete = False
-            self.death_timer = 0
             self.velocity_x = 0
             return
         
+        if self.state == NPCState.HURT:
+            self._update_animation()
+            
+            if self.hurt_animation_complete:
+                self.hurt_animation_complete = False
+                self.current_frame = 0
+                self.frame_counter = 0
+                
+                if self.is_patrolling:
+                    self.state = NPCState.WALK
+                    self.velocity_x = self.speed if self.direction == Direction.RIGHT else -self.speed
+                else:
+                    self.state = NPCState.IDLE
+                    self.velocity_x = 0
+            else:
+                return
+        
+        # Normal animation update for all other states
         self._update_animation()
         
+        # Update attack cooldown
         if self.attack_cooldown > 0:
             self.attack_cooldown -= 1
             if self.attack_cooldown == 0:
                 self.is_attacking = False
         
-        # Check for player detection and chase behavior
+        # Check for player detection and chase behavior (AI active)
         if self.player and not self.is_attacking:
             self._check_player_detection()
         
+        # Update movement for movement states
         if self.state in [NPCState.WALK, NPCState.RUN, NPCState.IDLE, NPCState.CHASE]:
             self._update_movement()
     
@@ -233,6 +252,7 @@ class NPC:
         
         sprite_data = self.sprites[self.state]
         
+        # Handle DEAD animation (play once, hold last frame)
         if self.state == NPCState.DEAD:
             if not self.death_animation_complete:
                 self.frame_counter += self.animation_speed
@@ -246,6 +266,20 @@ class NPC:
                         self.death_animation_complete = True
             return
         
+        if self.state == NPCState.HURT:
+            if not self.hurt_animation_complete:
+                self.frame_counter += self.animation_speed
+                
+                if self.frame_counter >= 1.0:
+                    self.frame_counter = 0
+                    self.current_frame += 1
+                    
+                    if self.current_frame >= sprite_data['frames']:
+                        self.current_frame = sprite_data['frames'] - 1
+                        self.hurt_animation_complete = True
+            return
+        
+        # Normal looping animation for all other states
         self.frame_counter += self.animation_speed
         
         if self.frame_counter >= 1.0:
@@ -472,6 +506,7 @@ class NPC:
     def take_damage(self, amount):
         """
         Apply damage to NPC.
+        Phase 1: Instant damage impact.
         
         Args:
             amount: Damage amount to apply
@@ -480,15 +515,24 @@ class NPC:
             return
         
         self.health -= amount
+        
         if self.health > 0:
             self.state = NPCState.HURT
             self.current_frame = 0
+            self.frame_counter = 0
+            self.hurt_animation_complete = False
+            self.velocity_x = 0
+            
+            # Clear chase and attack states to ensure clean recovery
+            self.is_chasing = False
+            self.returning_to_spawn = False
+            self.is_attacking = False
+            self.attack_cooldown = 0
         else:
             self.health = 0
             self.state = NPCState.DEAD
             self.current_frame = 0
             self.death_animation_complete = False
-            self.death_timer = 0
             self.velocity_x = 0
     
     def render(self):
@@ -660,9 +704,7 @@ class Ghost(NPC):
         # Call parent update
         super().update(delta_time)
         
-        # Fire projectile at appropriate frame during attack animation
         if self.is_attacking and not self.projectile_fired_this_attack:
-            # Fire projectile at frame 3 for both Attack_3 and Attack_4
             if self.current_frame >= 3:
                 if self.state == NPCState.ATTACK_3:
                     self._fire_projectile(charge_type=1)
@@ -685,9 +727,9 @@ class Ghost(NPC):
             return
         
         # Calculate projectile spawn position (in front of Ghost)
-        offset_x = 25 if self.direction == Direction.RIGHT else -25
+        offset_x = 50 if self.direction == Direction.RIGHT else 5
         proj_x = self.x + offset_x
-        proj_y = self.y + 22
+        proj_y = self.y + 20
         
         direction = 1 if self.direction == Direction.RIGHT else -1
         
@@ -853,7 +895,7 @@ class Shooter(NPC):
             return
         
         # Calculate projectile spawn position (in front of Shooter)
-        offset_x = 25 if self.direction == Direction.RIGHT else -25
+        offset_x = 25 if self.direction == Direction.RIGHT else 5
         proj_x = self.x + offset_x
         proj_y = self.y + 25
         
@@ -909,6 +951,7 @@ class Onre(NPC):
             patrol_radius=NPC_ONRE_PATROL_RADIUS,
             attack_cooldown_max=NPC_ONRE_ATTACK_COOLDOWN
         )
+        self.current_attack_cycle = 1
     
     def _get_npc_folder_name(self):
         """Get the folder name for Onre sprites."""
@@ -1009,12 +1052,13 @@ class Onre(NPC):
             2: NPCState.ATTACK_2,
             3: NPCState.ATTACK_3
         }
-        
-        self.state = attack_states.get(attack_type, NPCState.ATTACK_1)
+        self.state = attack_states.get(self.current_attack_cycle, NPCState.ATTACK_1)
         self.current_frame = 0
         self.is_attacking = True
         self.attack_cooldown = self.attack_cooldown_max
         self.velocity_x = 0
+
+        self.current_attack_cycle = (self.current_attack_cycle % 3) + 1
 
 
 class NPCManager:
