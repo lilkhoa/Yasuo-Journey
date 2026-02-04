@@ -226,7 +226,7 @@ def run():
                                        w.sprite.y - camera.camera.y)
         
         # Render NPCs
-        npc_manager.render_all()
+        npc_manager.render_all(camera.camera.x, camera.camera.y)
         
         # Render Player (với camera offset)
         p_dst = SDL_Rect(int(player.entity.sprite.x - camera.camera.x), 

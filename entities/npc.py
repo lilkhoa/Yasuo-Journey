@@ -535,8 +535,13 @@ class NPC:
             self.death_animation_complete = False
             self.velocity_x = 0
     
-    def render(self):
-        """Render NPC sprite to screen using PySDL2."""
+    def render(self, camera_x=0, camera_y=0):
+        """Render NPC sprite to screen using PySDL2.
+        
+        Args:
+            camera_x: Camera x offset (world to screen conversion)
+            camera_y: Camera y offset (world to screen conversion)
+        """
         if self.state not in self.sprites:
             return
         
@@ -553,9 +558,10 @@ class NPC:
             frame_height
         )
         
+        # Apply camera offset for screen rendering (world-space to screen-space)
         dest_rect = sdl2.SDL_Rect(
-            int(self.x),
-            int(self.y),
+            int(self.x - camera_x),
+            int(self.y - camera_y),
             self.width,
             self.height
         )
@@ -1141,10 +1147,15 @@ class NPCManager:
         # Keep only NPCs not marked for removal
         self.npcs = [npc for npc in self.npcs if not npc.ready_for_removal]
     
-    def render_all(self):
-        """Render all NPCs."""
+    def render_all(self, camera_x=0, camera_y=0):
+        """Render all NPCs.
+        
+        Args:
+            camera_x: Camera x offset (world to screen conversion)
+            camera_y: Camera y offset (world to screen conversion)
+        """
         for npc in self.npcs:
-            npc.render()
+            npc.render(camera_x, camera_y)
     
     def cleanup(self):
         """Clean up all NPCs."""
