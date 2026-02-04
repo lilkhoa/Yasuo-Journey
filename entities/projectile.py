@@ -18,8 +18,10 @@ from settings import (
     METEOR_GROUND_Y,
     METEOR_SIZE_WIDTH,
     METEOR_SIZE_HEIGHT,
-)
 
+    BOSS_LASER_WIDTH,
+    BOSS_LASER_HEIGHT,
+)
 class ProjectileType(Enum):
     """Enumeration for projectile types."""
     GHOST_CHARGE_1 = "Ghost_Charge_1"
@@ -1424,6 +1426,183 @@ class MinionFireballProjectile(Projectile):
         self.frame_textures = []
 
 
+class BossKamehamehaProjectile(Projectile):
+    """
+    Boss Kamehameha laser beam projectile.
+    
+    A large, stationary laser beam that extends from the boss.
+    The beam remains attached to the boss's position while being fired.
+    Uses a 9-frame sprite sheet (ordered left to right).
+    """
+    
+    def __init__(self, x, y, direction, owner, renderer, damage, preloaded_texture=None):
+        """
+        Initialize Kamehameha laser beam projectile.
+        
+        Args:
+            x: Boss center x position
+            y: Boss center y position
+            direction: Direction (1 for right, -1 for left)
+            owner: The Boss entity
+            renderer: PySDL2 renderer
+            damage: Damage value
+            preloaded_texture: Preloaded sprite sheet texture (optional)
+        """
+        # Initialize with zero velocity (stationary)
+        super().__init__(x, y, 0, 0, damage, direction, owner, renderer)
+        
+        # Laser dimensions
+        self.width = BOSS_LASER_WIDTH
+        self.height = BOSS_LASER_HEIGHT
+        
+        # Position the laser extending from boss
+        self.boss_x = x
+        self.boss_y = y
+        self._update_position()
+        
+        # Laser lifetime (2 seconds at 60 FPS)
+        self.lifetime = 60
+        
+        # Sprite sheet with 9 frames (left to right order)
+        self.sprite_texture = None
+        self.frame_count = 9
+        self.frame_width = 0
+        self.frame_height = 0
+        
+        # Load or use preloaded sprite sheet
+        if preloaded_texture:
+            self.sprite_texture = preloaded_texture
+            w = ctypes.c_int()
+            h = ctypes.c_int()
+            sdl2.SDL_QueryTexture(preloaded_texture, None, None, 
+                                 ctypes.byref(w), ctypes.byref(h))
+            self.frame_width = w.value // self.frame_count
+            self.frame_height = h.value
+            print(f"[Kamehameha] Using preloaded texture: {self.frame_count} frames, {self.frame_width}x{self.frame_height} each")
+        else:
+            # Fallback: load from disk
+            self._load_sprite_sheet()
+        
+        self.animation_speed = 0.15
+    
+    def _load_sprite_sheet(self):
+        """Load sprite sheet from disk (fallback)."""
+        filepath = os.path.join("assets", "Projectile", "Boss", "Kamekameha", "3.png")
+        
+        if os.path.exists(filepath):
+            try:
+                surface = sdl2.ext.load_image(filepath)
+                self.sprite_texture = sdl2.SDL_CreateTextureFromSurface(self.renderer, surface)
+                sdl2.SDL_FreeSurface(surface)
+                
+                if self.sprite_texture:
+                    w = ctypes.c_int()
+                    h = ctypes.c_int()
+                    sdl2.SDL_QueryTexture(self.sprite_texture, None, None, 
+                                         ctypes.byref(w), ctypes.byref(h))
+                    self.frame_width = w.value // self.frame_count
+                    self.frame_height = h.value
+                    print(f"[Kamehameha] Loaded sprite sheet: {self.frame_count} frames, {self.frame_width}x{self.frame_height} each")
+            except Exception as e:
+                print(f"Failed to load Kamehameha sprite sheet {filepath}: {e}")
+        else:
+            print(f"Error: Kamehameha sprite sheet not found at {filepath}")
+    
+    def _update_position(self):
+        """Update laser position to remain attached to boss."""
+        if self.direction > 0:
+            # Firing right - laser extends to the right of boss
+            self.x = self.boss_x
+        else:
+            # Firing left - laser extends to the left of boss
+            self.x = self.boss_x - self.width - 50
+        
+        self.y = self.boss_y - self.height // 2
+    
+    def update(self, delta_time, targets=None):
+        """
+        Update laser beam (stationary, remains at boss position).
+        
+        Args:
+            delta_time: Time since last frame
+            targets: List of targets to check collision against
+        """
+        if not self.active:
+            return
+        
+        # Keep laser attached to boss position (stationary)
+        self._update_position()
+        
+        # Update animation
+        self._update_animation()
+        
+        # Update lifetime
+        self.lifetime -= delta_time
+        if self.lifetime <= 0:
+            self.active = False
+    
+    def _update_animation(self):
+        """Update animation frame (loops through all 9 frames)."""
+        if not self.sprite_texture:
+            return
+        
+        self.frame_counter += self.animation_speed
+        
+        if self.frame_counter >= 1.0:
+            self.frame_counter = 0
+            self.current_frame = (self.current_frame + 1) % self.frame_count
+    
+    def render(self, camera_x=0, camera_y=0):
+        """Render Kamehameha laser beam.
+        
+        Args:
+            camera_x: Camera x offset
+            camera_y: Camera y offset
+        """
+        if not self.active or not self.sprite_texture:
+            return
+        
+        # Source rectangle (current frame in sprite sheet, left to right order)
+        src_rect = sdl2.SDL_Rect(
+            self.current_frame * self.frame_width,
+            0,
+            self.frame_width,
+            self.frame_height
+        )
+        
+        # Destination rectangle
+        dest_rect = sdl2.SDL_Rect(
+            int(self.x - camera_x),
+            int(self.y - camera_y),
+            self.width,
+            self.height
+        )
+        
+        # Determine flip based on direction
+        flip = sdl2.SDL_FLIP_HORIZONTAL if self.direction < 0 else sdl2.SDL_FLIP_NONE
+        
+        # Render laser beam
+        sdl2.SDL_RenderCopyEx(
+            self.renderer,
+            self.sprite_texture,
+            src_rect,
+            dest_rect,
+            0,
+            None,
+            flip
+        )
+    
+    def on_hit(self):
+        """Override on_hit to keep laser active (doesn't deactivate on collision)."""
+        # Laser persists through hits, dealing continuous damage
+        pass
+    
+    def cleanup(self):
+        """Clean up resources."""
+        # Don't destroy texture if it's preloaded (shared resource)
+        self.sprite_texture = None
+
+
 class ProjectileManager:
     """
     Manager class for handling multiple projectiles.
@@ -1447,6 +1626,7 @@ class ProjectileManager:
         self.boss_meteor_textures = None
         self.boss_explosion_textures = None
         self.minion_fireball_textures = None
+        self.boss_kamehameha_texture = None
         
         # Preload boss projectile textures
         self._preload_boss_projectile_textures()
@@ -1536,6 +1716,18 @@ class ProjectileManager:
         self.minion_fireball_textures = self.boss_flame_textures  # Reuse same textures, different rendering size
         if self.minion_fireball_textures:
             print(f"[ProjectileManager] Preloaded {len(self.minion_fireball_textures)} minion fireball textures (shared)")
+        
+        # Preload kamehameha laser beam sprite sheet
+        filepath = os.path.join("assets", "Projectile", "Boss", "Kamekameha", "3.png")
+        if os.path.exists(filepath):
+            try:
+                surface = sdl2.ext.load_image(filepath)
+                self.boss_kamehameha_texture = sdl2.SDL_CreateTextureFromSurface(self.renderer, surface)
+                sdl2.SDL_FreeSurface(surface)
+                if self.boss_kamehameha_texture:
+                    print(f"[ProjectileManager] Preloaded boss kamehameha sprite sheet")
+            except Exception as e:
+                print(f"Failed to preload kamehameha sprite sheet {filepath}: {e}")
     
     def spawn_ghost_projectile(self, x, y, direction, owner, charge_type=1):
         """
@@ -1693,6 +1885,25 @@ class ProjectileManager:
         print(f"[PROJECTILE] Minion fireball spawned at ({x:.1f}, {y:.1f}), vel=({velocity_x:.1f}, {velocity_y:.1f}), damage={damage}")
         return projectile
     
+    def spawn_boss_kamehameha(self, x, y, direction, owner, damage):
+        """
+        Spawn a Boss Kamehameha laser beam projectile.
+        
+        Args:
+            x: Boss center x position
+            y: Boss center y position
+            direction: Direction (1 for right, -1 for left)
+            owner: The Boss entity
+            damage: Damage value
+            
+        Returns:
+            BossKamehamehaProjectile: The spawned laser beam
+        """
+        laser = BossKamehamehaProjectile(x, y, direction, owner, self.renderer, damage, self.boss_kamehameha_texture)
+        self.projectiles.append(laser)
+        print(f"[PROJECTILE] Boss Kamehameha laser spawned at ({x:.1f}, {y:.1f}), direction={direction}, damage={damage}")
+        return laser
+    
     def update_all(self, delta_time=1):
         """Update all projectiles."""
         for projectile in self.projectiles:
@@ -1787,3 +1998,9 @@ class ProjectileManager:
         
         # Minion fireball textures are shared with boss flame, no separate cleanup needed
         self.minion_fireball_textures = None
+        
+        # Clean up preloaded boss kamehameha texture
+        if self.boss_kamehameha_texture:
+            sdl2.SDL_DestroyTexture(self.boss_kamehameha_texture)
+            self.boss_kamehameha_texture = None
+            print("[ProjectileManager] Cleaned up boss kamehameha texture")

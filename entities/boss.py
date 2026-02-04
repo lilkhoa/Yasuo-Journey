@@ -721,7 +721,7 @@ class Boss:
     def _update_kamehameha(self):
         """Update kamehameha skill phases."""
         if self.skill_phase == 0:
-            # Phase 0: Charging
+            # Phase 0: Charging and firing
             self.skill_timer += 1
             
             # Advance casting animation
@@ -731,25 +731,14 @@ class Boss:
                 sprite_data = self.sprites[BossState.CASTING]
                 self.current_frame = (self.current_frame + 1) % sprite_data['frames']
             
-            if self.skill_timer >= 90:  # 1.5 second charge
-                # Charge complete, fire laser
-                self.skill_phase = 1
-                self.skill_timer = 0
+            # Fire laser once during charging (at 0.5 seconds)
+            if self.skill_timer == 30 and not getattr(self, '_kamehameha_fired', False):
+                self._kamehameha_fired = True
                 self._fire_kamehameha()
-        
-        elif self.skill_phase == 1:
-            # Phase 1: Laser active
-            self.skill_timer += 1
             
-            # Continue casting animation
-            self.frame_counter += self.animation_speed
-            if self.frame_counter >= 1.0:
-                self.frame_counter = 0
-                sprite_data = self.sprites[BossState.CASTING]
-                self.current_frame = (self.current_frame + 1) % sprite_data['frames']
-            
-            if self.skill_timer >= 120:  # 2 second laser duration
-                # Laser complete
+            if self.skill_timer >= 100:  # Total duration: 2.5 seconds (charge + laser)
+                # Skill complete
+                self._kamehameha_fired = False  # Reset for next use
                 self._end_skill()
     
     def _fire_kamehameha(self):
@@ -770,13 +759,14 @@ class Boss:
         spawn_x = self.x + self.width / 2
         spawn_y = self.y + self.height / 2
         
-        velocity_x = self.projectile_speed * 2 * self.direction.value
-        velocity_y = 0
+        direction = self.direction.value
         
-        # Spawn kamehameha projectile (will be implemented with projectile system)
-        # self.projectile_manager.spawn_boss_kamehameha(
-        #     spawn_x, spawn_y, velocity_x, velocity_y, self.laser_damage, self.direction.value
-        # )
+        # Spawn kamehameha laser beam (stationary, attached to boss)
+        self.projectile_manager.spawn_boss_kamehameha(
+            spawn_x, spawn_y, direction, self, self.laser_damage
+        )
+        
+        print(f"[BOSS] Kamehameha laser fired at ({spawn_x:.1f}, {spawn_y:.1f}), direction={direction}")
     
     def _update_summon_minions(self):
         """Update summon minions skill phases."""
