@@ -69,6 +69,25 @@ BOSS_LASER_DAMAGE = 40
 BOSS_METEOR_DAMAGE = 80
 BOSS_SKILL_COOLDOWN = 300 
 
+# Boss Circular Shooting Skill Settings
+CIRCULAR_CHARGE_DURATION = 60
+CIRCULAR_SHOOT_DURATION = 180
+CIRCULAR_PROJECTILES_PER_STREAM = 12
+CIRCULAR_VELOCITY_MULTIPLIER = 0.6
+
+# Boss Meteor Skill Settings
+METEOR_CHARGE_DURATION = 60
+METEOR_DURATION = 180
+METEOR_SPAWN_INTERVAL = 15
+METEOR_SIZE = 96
+METEOR_EXPLOSION_SIZE = 128
+METEOR_VELOCITY_X_MIN = -6  # Minimum horizontal velocity (negative = right-to-left)
+METEOR_VELOCITY_X_MAX = -2  # Maximum horizontal velocity (negative = right-to-left)
+METEOR_VELOCITY_Y_MIN = 8  # Minimum falling velocity (positive = downward)
+METEOR_VELOCITY_Y_MAX = 12  # Maximum falling velocity (positive = downward)
+METEOR_ROTATION_ANGLE = -45
+METEOR_GROUND_Y = 600
+
 
 # Player Settings
 PLAYER_HEALTH = 200

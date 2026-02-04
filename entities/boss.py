@@ -24,7 +24,7 @@ from settings import (
     WINDOW_WIDTH,
     WINDOW_HEIGHT
 )
-from entities.boss_skills import CircularShootingSkill
+from entities.boss_skills import CircularShootingSkill, MeteorSkill
 
 
 class BossState(Enum):
@@ -179,6 +179,7 @@ class Boss:
         
         # Skill instances
         self.circular_shooting_skill = None
+        self.meteor_skill = None
         
         # HP threshold tracking for meteor skill
         self.meteor_triggered_75 = False
@@ -601,13 +602,13 @@ class Boss:
     def _start_meteor_skill(self):
         """Start meteor skill - meteors fall diagonally from sky."""
         self.current_skill = SkillType.METEOR
-        self.skill_phase = 0  # 0: charge, 1: meteors falling
+        self.skill_phase = 0
         self.skill_timer = 0
         self.skill_cooldown = 0
         
-        self.state = BossState.CASTING
-        self.current_frame = 0
-        self.frame_counter = 0
+        # Create and start skill instance
+        self.meteor_skill = MeteorSkill(self)
+        self.meteor_skill.start()
     
     def _start_kamehameha_skill(self):
         """Start kamehameha skill - charge then fire laser beam."""
@@ -655,58 +656,14 @@ class Boss:
     
     def _update_meteor(self):
         """Update meteor skill phases."""
-        if self.skill_phase == 0:
-            # Phase 0: Charging
-            self.skill_timer += 1
+        if self.meteor_skill:
+            # Delegate to skill instance
+            skill_complete = self.meteor_skill.update()
             
-            # Advance casting animation
-            self.frame_counter += self.animation_speed
-            if self.frame_counter >= 1.0:
-                self.frame_counter = 0
-                sprite_data = self.sprites[BossState.CASTING]
-                self.current_frame = (self.current_frame + 1) % sprite_data['frames']
-            
-            if self.skill_timer >= 60:  # 1 second charge
-                # Charge complete, start meteors
-                self.skill_phase = 1
-                self.skill_timer = 0
-        
-        elif self.skill_phase == 1:
-            # Phase 1: Meteors falling
-            self.skill_timer += 1
-            
-            # Continue casting animation
-            self.frame_counter += self.animation_speed
-            if self.frame_counter >= 1.0:
-                self.frame_counter = 0
-                sprite_data = self.sprites[BossState.CASTING]
-                self.current_frame = (self.current_frame + 1) % sprite_data['frames']
-            
-            # Spawn meteors every 15 frames
-            if self.skill_timer % 15 == 0:
-                self._spawn_meteor()
-            
-            if self.skill_timer >= 180:  # 3 seconds of meteors
-                # Meteor skill complete
+            if skill_complete:
+                # Skill finished, clean up
                 self._end_skill()
-    
-    def _spawn_meteor(self):
-        """Spawn a meteor that falls diagonally."""
-        if not self.projectile_manager:
-            return
-        
-        # Random X position at top of screen
-        spawn_x = random.randint(0, WINDOW_WIDTH)
-        spawn_y = -50
-        
-        # Diagonal velocity (falling down and slightly sideways)
-        velocity_x = random.uniform(-3, 3)
-        velocity_y = random.uniform(8, 12)  # Falling down
-        
-        # Spawn meteor projectile (will be implemented with projectile system)
-        # self.projectile_manager.spawn_boss_meteor(
-        #     spawn_x, spawn_y, velocity_x, velocity_y, self.meteor_damage
-        # )
+                self.meteor_skill = None
     
     def _update_kamehameha(self):
         """Update kamehameha skill phases."""

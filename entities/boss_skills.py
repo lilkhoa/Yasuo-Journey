@@ -3,7 +3,22 @@ Boss Skills Module
 Implements special boss skills including circular shooting, meteor rain, kamehameha, and summon minions.
 """
 import math
+import random
 from enum import Enum
+from settings import (
+    CIRCULAR_CHARGE_DURATION,
+    CIRCULAR_SHOOT_DURATION,
+    CIRCULAR_PROJECTILES_PER_STREAM,
+    CIRCULAR_VELOCITY_MULTIPLIER,
+    METEOR_CHARGE_DURATION,
+    METEOR_DURATION,
+    METEOR_SPAWN_INTERVAL,
+    METEOR_VELOCITY_X_MIN,
+    METEOR_VELOCITY_X_MAX,
+    METEOR_VELOCITY_Y_MIN,
+    METEOR_VELOCITY_Y_MAX,
+    WINDOW_WIDTH,
+)
 
 
 class SkillPhase(Enum):
@@ -39,10 +54,10 @@ class CircularShootingSkill:
         self.timer = 0
         
         # Skill parameters
-        self.charge_duration = 60  # 1 second
-        self.shoot_duration = 180  # 3 seconds
+        self.charge_duration = CIRCULAR_CHARGE_DURATION
+        self.shoot_duration = CIRCULAR_SHOOT_DURATION
         self.volley_interval = 60  # Fire every 60 frames (3 volleys per second)
-        self.projectiles_per_stream = 12  # 8 directions
+        self.projectiles_per_stream = CIRCULAR_PROJECTILES_PER_STREAM
         self.num_streams = 2  # 2 simultaneous streams
         
         # Store original position for return
@@ -161,8 +176,8 @@ class CircularShootingSkill:
                 angle_rad = math.radians(angle)
                 
                 # Calculate velocity
-                velocity_x = math.cos(angle_rad) * self.boss.projectile_speed * 0.6  # Slightly slower for dodge-ability
-                velocity_y = math.sin(angle_rad) * self.boss.projectile_speed * 0.6
+                velocity_x = math.cos(angle_rad) * self.boss.projectile_speed * CIRCULAR_VELOCITY_MULTIPLIER
+                velocity_y = math.sin(angle_rad) * self.boss.projectile_speed * CIRCULAR_VELOCITY_MULTIPLIER
                 
                 # Determine direction for sprite flipping
                 direction = 1 if velocity_x >= 0 else -1
@@ -177,3 +192,118 @@ class CircularShootingSkill:
                 )
         
         print(f"[CircularShootingSkill] Fired {self.num_streams * self.projectiles_per_stream} projectiles in circular pattern")
+
+
+class MeteorSkill:
+    """
+    Meteor Skill: Boss stands still and summons meteors from the sky.
+    
+    Phases:
+    0 - CHARGING: Boss charges up (casting animation)
+    1 - EXECUTING: Meteors fall diagonally from sky, explode on impact
+    2 - COMPLETE: Skill finished
+    """
+    
+    def __init__(self, boss):
+        """
+        Initialize meteor skill.
+        
+        Args:
+            boss: Reference to Boss instance
+        """
+        self.boss = boss
+        self.phase = 0  # 0: charging, 1: executing, 2: complete
+        self.timer = 0
+        
+        # Skill parameters
+        self.charge_duration = METEOR_CHARGE_DURATION
+        self.meteor_duration = METEOR_DURATION
+        self.spawn_interval = METEOR_SPAWN_INTERVAL
+    
+    def start(self):
+        """Start the skill execution."""
+        from entities.boss import BossState
+        
+        self.phase = 0
+        self.timer = 0
+        
+        # Boss stands still in CASTING state
+        self.boss.state = BossState.CASTING
+        self.boss.current_frame = 0
+        self.boss.frame_counter = 0
+        self.boss.velocity_x = 0
+        self.boss.velocity_y = 0
+        
+        print(f"[MeteorSkill] Started - Boss charging at position ({self.boss.x:.0f}, {self.boss.y:.0f})")
+    
+    def update(self):
+        """
+        Update skill execution.
+        
+        Returns:
+            bool: True if skill is complete, False otherwise
+        """
+        from entities.boss import BossState
+        
+        if self.phase == 0:
+            # Phase 0: Charging
+            self.timer += 1
+            
+            # Advance casting animation
+            self.boss.frame_counter += self.boss.animation_speed
+            if self.boss.frame_counter >= 1.0:
+                self.boss.frame_counter = 0
+                sprite_data = self.boss.sprites[BossState.CASTING]
+                self.boss.current_frame = (self.boss.current_frame + 1) % sprite_data['frames']
+            
+            if self.timer >= self.charge_duration:
+                # Charge complete, start meteors
+                self.phase = 1
+                self.timer = 0
+                print(f"[MeteorSkill] Phase 1: Meteors falling")
+        
+        elif self.phase == 1:
+            # Phase 1: Meteors falling
+            self.timer += 1
+            
+            # Continue casting animation
+            self.boss.frame_counter += self.boss.animation_speed
+            if self.boss.frame_counter >= 1.0:
+                self.boss.frame_counter = 0
+                sprite_data = self.boss.sprites[BossState.CASTING]
+                self.boss.current_frame = (self.boss.current_frame + 1) % sprite_data['frames']
+            
+            # Spawn meteors at intervals
+            if self.timer % self.spawn_interval == 0:
+                self._spawn_meteor()
+            
+            if self.timer >= self.meteor_duration:
+                # Meteor skill complete
+                self.phase = 2
+                print(f"[MeteorSkill] Complete")
+                return True
+        
+        return False
+    
+    def _spawn_meteor(self):
+        """Spawn a meteor that falls diagonally from the sky."""
+        if not self.boss.projectile_manager:
+            return
+        
+        # Random X position across screen width
+        spawn_x = random.uniform(0, WINDOW_WIDTH)
+        spawn_y = -100  # Spawn above screen
+        
+        # Diagonal velocity (right-to-left = negative X, top-to-bottom = positive Y)
+        velocity_x = random.uniform(METEOR_VELOCITY_X_MIN, METEOR_VELOCITY_X_MAX)  # Always negative
+        velocity_y = random.uniform(METEOR_VELOCITY_Y_MIN, METEOR_VELOCITY_Y_MAX)  # Always positive
+        
+        # Spawn meteor projectile
+        self.boss.projectile_manager.spawn_boss_meteor(
+            spawn_x, spawn_y,
+            velocity_x, velocity_y,
+            self.boss.meteor_damage,
+            self.boss
+        )
+        
+        print(f"[MeteorSkill] Spawned meteor at ({spawn_x:.0f}, {spawn_y:.0f}), vel=({velocity_x:.1f}, {velocity_y:.1f})")

@@ -937,6 +937,358 @@ class BossCircularFlameProjectile(Projectile):
         self.frame_textures = []
 
 
+class BossMeteorProjectile(Projectile):
+    """
+    Boss meteor projectile that falls from the sky.
+    
+    Falls diagonally from top to bottom, explodes on ground impact.
+    Uses rotation to orient the meteor properly.
+    """
+    
+    def __init__(self, x, y, velocity_x, velocity_y, owner, renderer, damage, ground_y, preloaded_textures=None):
+        """
+        Initialize Boss meteor projectile.
+        
+        Args:
+            x: Initial x position (above screen)
+            y: Initial y position (above screen)
+            velocity_x: Horizontal velocity
+            velocity_y: Vertical velocity (positive = down)
+            owner: The Boss entity
+            renderer: PySDL2 renderer
+            damage: Damage value
+            ground_y: Ground collision Y position
+            preloaded_textures: List of preloaded textures (optional)
+        """
+        super().__init__(x, y, velocity_x, velocity_y, damage, 1, owner, renderer)
+        
+        from settings import METEOR_SIZE, METEOR_ROTATION_ANGLE
+        
+        self.width = METEOR_SIZE
+        self.height = METEOR_SIZE
+        self.ground_y = ground_y
+        self.rotation_angle = METEOR_ROTATION_ANGLE
+        
+        # Longer lifetime for meteors (they travel from top of screen)
+        self.lifetime = 600  # 10 seconds (plenty of time to cross screen)
+        
+        # Track if explosion has been spawned
+        self.explosion_spawned = False
+        
+        # Load or use preloaded meteor textures
+        self.frame_textures = []
+        if preloaded_textures:
+            self.frame_textures = preloaded_textures
+            if self.frame_textures:
+                w = ctypes.c_int()
+                h = ctypes.c_int()
+                sdl2.SDL_QueryTexture(self.frame_textures[0], None, None,
+                                     ctypes.byref(w), ctypes.byref(h))
+                self.sprite_data = {
+                    'frames': len(self.frame_textures),
+                    'width': w.value,
+                    'height': h.value
+                }
+                self.animation_speed = 0.2
+        else:
+            self._load_frames()
+    
+    def _load_frames(self):
+        """Load individual frame textures from disk (fallback)."""
+        base_path = os.path.join("assets", "Projectile", "Boss", "Meteor")
+        
+        for i in range(0, 8):  # 8 frames (0-7)
+            filename = f"{i}.png"
+            filepath = os.path.join(base_path, filename)
+            
+            if os.path.exists(filepath):
+                try:
+                    surface = sdl2.ext.load_image(filepath)
+                    texture = sdl2.SDL_CreateTextureFromSurface(self.renderer, surface)
+                    sdl2.SDL_FreeSurface(surface)
+                    
+                    if texture:
+                        self.frame_textures.append(texture)
+                except Exception as e:
+                    print(f"Failed to load meteor frame {filepath}: {e}")
+        
+        if self.frame_textures:
+            print(f"Loaded Boss meteor: {len(self.frame_textures)} frames")
+        else:
+            print("Error: No Boss meteor frames loaded!")
+        
+        self.animation_speed = 0.2
+    
+    def update(self, delta_time=1):
+        """Update meteor position and check ground collision."""
+        if not self.active:
+            return
+        
+        # Update position
+        self.x += self.velocity_x * delta_time
+        self.y += self.velocity_y * delta_time
+        
+        # Update animation
+        self._update_animation()
+        
+        # Check ground collision
+        if self.y + self.height >= self.ground_y:
+            # Hit ground, spawn explosion
+            if not self.explosion_spawned:
+                self._spawn_explosion()
+                self.explosion_spawned = True
+            # Deactivate meteor
+            self.active = False
+        
+        # Update lifetime
+        self.lifetime -= delta_time
+        if self.lifetime <= 0:
+            self.active = False
+    
+    def _spawn_explosion(self):
+        """Spawn explosion effect at impact point."""
+        # Get projectile manager from owner
+        if hasattr(self.owner, 'projectile_manager') and self.owner.projectile_manager:
+            explosion_x = self.x + self.width / 2
+            explosion_y = self.ground_y - 64  # Center explosion on ground
+            
+            self.owner.projectile_manager.spawn_boss_explosion(
+                explosion_x, explosion_y,
+                self.damage,
+                self.owner
+            )
+    
+    def _update_animation(self):
+        """Update animation frame."""
+        if not self.frame_textures:
+            return
+        
+        self.frame_counter += self.animation_speed
+        
+        if self.frame_counter >= 1.0:
+            self.frame_counter = 0
+            self.current_frame = (self.current_frame + 1) % len(self.frame_textures)
+    
+    def render(self, camera_x=0, camera_y=0):
+        """Render meteor with rotation.
+        
+        Args:
+            camera_x: Camera x offset
+            camera_y: Camera y offset
+        """
+        if not self.active or not self.frame_textures:
+            return
+        
+        # Get current frame texture
+        texture = self.frame_textures[self.current_frame]
+        
+        # Destination rectangle
+        dest_rect = sdl2.SDL_Rect(
+            int(self.x - camera_x),
+            int(self.y - camera_y),
+            self.width,
+            self.height
+        )
+        
+        # Render with rotation (diagonal orientation)
+        sdl2.SDL_RenderCopyEx(
+            self.renderer,
+            texture,
+            None,
+            dest_rect,
+            self.rotation_angle,  # Rotate for diagonal look
+            None,
+            sdl2.SDL_FLIP_NONE
+        )
+    
+    def cleanup(self):
+        """Clean up resources."""
+        self.frame_textures = []
+
+
+class BossExplosionEffect(Projectile):
+    """
+    Boss explosion effect that appears when meteor hits ground.
+    
+    Plays once then disappears. Deals damage in area.
+    """
+    
+    def __init__(self, x, y, owner, renderer, damage, preloaded_textures=None):
+        """
+        Initialize Boss explosion effect.
+        
+        Args:
+            x: Center x position
+            y: Center y position
+            owner: The Boss entity
+            renderer: PySDL2 renderer
+            damage: Damage value
+            preloaded_textures: List of preloaded textures (optional)
+        """
+        super().__init__(x, y, 0, 0, damage, 1, owner, renderer)
+        
+        from settings import METEOR_EXPLOSION_SIZE
+        
+        self.width = METEOR_EXPLOSION_SIZE
+        self.height = METEOR_EXPLOSION_SIZE
+        
+        # Center the explosion on the position
+        self.x = x - self.width / 2
+        self.y = y - self.height / 2
+        
+        # Explosion lasts for animation duration only
+        self.lifetime = None  # Will be set based on frame count
+        
+        # Track entities hit (explosion should only hit each entity once)
+        self.hit_targets = set()
+        
+        # Load or use preloaded explosion textures
+        self.frame_textures = []
+        if preloaded_textures:
+            self.frame_textures = preloaded_textures
+            if self.frame_textures:
+                w = ctypes.c_int()
+                h = ctypes.c_int()
+                sdl2.SDL_QueryTexture(self.frame_textures[0], None, None,
+                                     ctypes.byref(w), ctypes.byref(h))
+                self.sprite_data = {
+                    'frames': len(self.frame_textures),
+                    'width': w.value,
+                    'height': h.value
+                }
+                self.animation_speed = 0.3  # Slower animation for explosion
+                self.lifetime = len(self.frame_textures) * 5  # Frames * frames per animation step
+        else:
+            self._load_frames()
+    
+    def _load_frames(self):
+        """Load individual frame textures from disk (fallback)."""
+        base_path = os.path.join("assets", "Projectile", "Boss", "Explosion")
+        
+        for i in range(0, 10):  # 10 frames (0-9)
+            filename = f"{i}.png"
+            filepath = os.path.join(base_path, filename)
+            
+            if os.path.exists(filepath):
+                try:
+                    surface = sdl2.ext.load_image(filepath)
+                    texture = sdl2.SDL_CreateTextureFromSurface(self.renderer, surface)
+                    sdl2.SDL_FreeSurface(surface)
+                    
+                    if texture:
+                        self.frame_textures.append(texture)
+                except Exception as e:
+                    print(f"Failed to load explosion frame {filepath}: {e}")
+        
+        if self.frame_textures:
+            print(f"Loaded Boss explosion: {len(self.frame_textures)} frames")
+            self.lifetime = len(self.frame_textures) * 5
+        else:
+            print("Error: No Boss explosion frames loaded!")
+            self.lifetime = 30
+        
+        self.animation_speed = 0.3
+    
+    def update(self, delta_time=1):
+        """Update explosion animation."""
+        if not self.active:
+            return
+        
+        # Update animation
+        self._update_animation()
+        
+        # Update lifetime
+        self.lifetime -= delta_time
+        if self.lifetime <= 0:
+            self.active = False
+    
+    def _update_animation(self):
+        """Update animation frame (play once, no loop)."""
+        if not self.frame_textures:
+            return
+        
+        self.frame_counter += self.animation_speed
+        
+        if self.frame_counter >= 1.0:
+            self.frame_counter = 0
+            self.current_frame += 1
+            
+            # Clamp to last frame (don't loop)
+            if self.current_frame >= len(self.frame_textures):
+                self.current_frame = len(self.frame_textures) - 1
+    
+    def check_collision(self, target):
+        """
+        Check collision with target, preventing multiple hits.
+        
+        Args:
+            target: Entity with get_bounds() method
+            
+        Returns:
+            bool: True if collision detected and target hasn't been hit yet
+        """
+        if not self.active:
+            return False
+        
+        # Check if we've already hit this target
+        target_id = id(target)
+        if target_id in self.hit_targets:
+            return False
+        
+        # Get bounding boxes
+        px, py, pw, ph = self.get_bounds()
+        tx, ty, tw, th = target.get_bounds()
+        
+        # AABB collision detection
+        collision = (px < tx + tw and
+                    px + pw > tx and
+                    py < ty + th and
+                    py + ph > ty)
+        
+        if collision:
+            # Mark this target as hit
+            self.hit_targets.add(target_id)
+        
+        return collision
+    
+    def on_hit(self):
+        """Override on_hit to NOT deactivate (explosion persists for full animation)."""
+        pass
+    
+    def render(self, camera_x=0, camera_y=0):
+        """Render explosion effect.
+        
+        Args:
+            camera_x: Camera x offset
+            camera_y: Camera y offset
+        """
+        if not self.active or not self.frame_textures:
+            return
+        
+        # Get current frame texture
+        texture = self.frame_textures[self.current_frame]
+        
+        # Destination rectangle
+        dest_rect = sdl2.SDL_Rect(
+            int(self.x - camera_x),
+            int(self.y - camera_y),
+            self.width,
+            self.height
+        )
+        
+        # Render explosion
+        sdl2.SDL_RenderCopy(
+            self.renderer,
+            texture,
+            None,
+            dest_rect
+        )
+    
+    def cleanup(self):
+        """Clean up resources."""
+        self.frame_textures = []
+
+
 class ProjectileManager:
     """
     Manager class for handling multiple projectiles.
@@ -957,6 +1309,8 @@ class ProjectileManager:
         self.boss_flame_textures = None
         self.boss_melee_textures = None
         self.boss_circular_flame_textures = None
+        self.boss_meteor_textures = None
+        self.boss_explosion_textures = None
         
         # Preload boss projectile textures
         self._preload_boss_projectile_textures()
@@ -1003,6 +1357,44 @@ class ProjectileManager:
         
         if self.boss_melee_textures:
             print(f"[ProjectileManager] Preloaded {len(self.boss_melee_textures)} boss melee textures")
+        
+        # Preload meteor textures
+        self.boss_meteor_textures = []
+        base_path = os.path.join("assets", "Projectile", "Boss", "Meteor")
+        for i in range(0, 8):  # 8 frames (0-7)
+            filename = f"{i}.png"
+            filepath = os.path.join(base_path, filename)
+            if os.path.exists(filepath):
+                try:
+                    surface = sdl2.ext.load_image(filepath)
+                    texture = sdl2.SDL_CreateTextureFromSurface(self.renderer, surface)
+                    sdl2.SDL_FreeSurface(surface)
+                    if texture:
+                        self.boss_meteor_textures.append(texture)
+                except Exception as e:
+                    print(f"Failed to preload meteor texture {filepath}: {e}")
+        
+        if self.boss_meteor_textures:
+            print(f"[ProjectileManager] Preloaded {len(self.boss_meteor_textures)} boss meteor textures")
+        
+        # Preload explosion textures
+        self.boss_explosion_textures = []
+        base_path = os.path.join("assets", "Projectile", "Boss", "Explosion")
+        for i in range(0, 10):  # 10 frames (0-9)
+            filename = f"{i}.png"
+            filepath = os.path.join(base_path, filename)
+            if os.path.exists(filepath):
+                try:
+                    surface = sdl2.ext.load_image(filepath)
+                    texture = sdl2.SDL_CreateTextureFromSurface(self.renderer, surface)
+                    sdl2.SDL_FreeSurface(surface)
+                    if texture:
+                        self.boss_explosion_textures.append(texture)
+                except Exception as e:
+                    print(f"Failed to preload explosion texture {filepath}: {e}")
+        
+        if self.boss_explosion_textures:
+            print(f"[ProjectileManager] Preloaded {len(self.boss_explosion_textures)} boss explosion textures")
     
     def spawn_ghost_projectile(self, x, y, direction, owner, charge_type=1):
         """
@@ -1102,6 +1494,44 @@ class ProjectileManager:
         self.projectiles.append(projectile)
         return projectile
     
+    def spawn_boss_meteor(self, x, y, velocity_x, velocity_y, damage, owner):
+        """
+        Spawn a Boss meteor projectile (falls from sky, explodes on ground).
+        
+        Args:
+            x: Spawn x position (above screen)
+            y: Spawn y position (above screen)
+            velocity_x: Horizontal velocity
+            velocity_y: Vertical velocity (positive = down)
+            damage: Damage value
+            owner: The Boss entity
+            
+        Returns:
+            BossMeteorProjectile: The spawned projectile
+        """
+        from settings import METEOR_GROUND_Y
+        
+        projectile = BossMeteorProjectile(x, y, velocity_x, velocity_y, owner, self.renderer, damage, METEOR_GROUND_Y, self.boss_meteor_textures)
+        self.projectiles.append(projectile)
+        return projectile
+    
+    def spawn_boss_explosion(self, x, y, damage, owner):
+        """
+        Spawn a Boss explosion effect (plays once at location).
+        
+        Args:
+            x: Center x position
+            y: Center y position
+            damage: Damage value
+            owner: The Boss entity
+            
+        Returns:
+            BossExplosionEffect: The spawned explosion
+        """
+        explosion = BossExplosionEffect(x, y, owner, self.renderer, damage, self.boss_explosion_textures)
+        self.projectiles.append(explosion)
+        return explosion
+    
     def update_all(self, delta_time=1):
         """Update all projectiles."""
         for projectile in self.projectiles:
@@ -1177,3 +1607,19 @@ class ProjectileManager:
         
         # Circular flame textures are shared with normal flame, no separate cleanup needed
         self.boss_circular_flame_textures = None
+        
+        # Clean up preloaded boss meteor textures
+        if self.boss_meteor_textures:
+            for texture in self.boss_meteor_textures:
+                if texture:
+                    sdl2.SDL_DestroyTexture(texture)
+            self.boss_meteor_textures = None
+            print("[ProjectileManager] Cleaned up boss meteor textures")
+        
+        # Clean up preloaded boss explosion textures
+        if self.boss_explosion_textures:
+            for texture in self.boss_explosion_textures:
+                if texture:
+                    sdl2.SDL_DestroyTexture(texture)
+            self.boss_explosion_textures = None
+            print("[ProjectileManager] Cleaned up boss explosion textures")
