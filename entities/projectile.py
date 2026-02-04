@@ -795,6 +795,148 @@ class BossFlameProjectile(Projectile):
         self.frame_textures = []
 
 
+class BossCircularFlameProjectile(Projectile):
+    """
+    Boss circular shooting skill flame projectile.
+    
+    Smaller version of flame projectile (32×32) for circular barrage skill.
+    More dodge-able for the player.
+    """
+    
+    def __init__(self, x, y, velocity_x, velocity_y, direction, owner, renderer, damage, preloaded_textures=None):
+        """
+        Initialize Boss circular flame projectile.
+        
+        Args:
+            x: Initial x position
+            y: Initial y position
+            velocity_x: Horizontal velocity
+            velocity_y: Vertical velocity
+            direction: Direction (1 for right, -1 for left)
+            owner: The Boss entity
+            renderer: PySDL2 renderer
+            damage: Damage value
+            preloaded_textures: List of preloaded textures (optional)
+        """
+        super().__init__(x, y, velocity_x, velocity_y, damage, direction, owner, renderer)
+        
+        # Smaller size for dodge-ability
+        self.width = 32
+        self.height = 32
+        
+        # Standard lifetime for skill projectiles
+        self.lifetime = 240  # 4 seconds at 60 FPS
+        
+        # Load or use preloaded flame projectile sprites (same assets, scaled down)
+        self.frame_textures = []
+        if preloaded_textures:
+            # Use preloaded textures
+            self.frame_textures = preloaded_textures
+            if self.frame_textures:
+                w = ctypes.c_int()
+                h = ctypes.c_int()
+                sdl2.SDL_QueryTexture(self.frame_textures[0], None, None, 
+                                     ctypes.byref(w), ctypes.byref(h))
+                self.sprite_data = {
+                    'frames': len(self.frame_textures),
+                    'width': w.value,
+                    'height': h.value
+                }
+                # Medium animation speed
+                self.animation_speed = 0.25
+                print(f"[BossCircularFlame] Created with {len(self.frame_textures)} preloaded textures, size {self.width}×{self.height}")
+        else:
+            # Fallback: load from disk (will cause lag)
+            print("[BossCircularFlame] Warning: No preloaded textures, loading from disk")
+            self._load_frames()
+    
+    def _load_frames(self):
+        """Load individual frame textures from disk (fallback)."""
+        base_path = os.path.join("assets", "Projectile", "Boss", "Flame")
+        
+        for i in range(1, 9):  # 8 frames
+            filename = f"{i}.png"
+            filepath = os.path.join(base_path, filename)
+            
+            if os.path.exists(filepath):
+                try:
+                    surface = sdl2.ext.load_image(filepath)
+                    texture = sdl2.SDL_CreateTextureFromSurface(self.renderer, surface)
+                    sdl2.SDL_FreeSurface(surface)
+                    
+                    if texture:
+                        self.frame_textures.append(texture)
+                except Exception as e:
+                    print(f"Failed to load frame {filepath}: {e}")
+        
+        if self.frame_textures:
+            w = ctypes.c_int()
+            h = ctypes.c_int()
+            sdl2.SDL_QueryTexture(self.frame_textures[0], None, None, 
+                                 ctypes.byref(w), ctypes.byref(h))
+            
+            print(f"Loaded Boss circular flame projectile: {len(self.frame_textures)} frames, {w.value}x{h.value} pixels")
+        else:
+            print("Error: No Boss circular flame projectile frames loaded!")
+        
+        # Medium animation speed
+        self.animation_speed = 0.25
+    
+    def _update_animation(self):
+        """Update animation frame for individual textures."""
+        if not self.frame_textures:
+            return
+        
+        self.frame_counter += self.animation_speed
+        
+        if self.frame_counter >= 1.0:
+            self.frame_counter = 0
+            self.current_frame = (self.current_frame + 1) % len(self.frame_textures)
+    
+    def render(self, camera_x=0, camera_y=0):
+        """Render Boss circular flame projectile with individual frame textures.
+        
+        Args:
+            camera_x: Camera x offset (world to screen conversion)
+            camera_y: Camera y offset (world to screen conversion)
+        """
+        if not self.active or not self.frame_textures:
+            return
+        
+        # Get current frame texture
+        texture = self.frame_textures[self.current_frame]
+        
+        # Destination rectangle (apply camera offset for screen-space rendering)
+        dest_rect = sdl2.SDL_Rect(
+            int(self.x - camera_x),
+            int(self.y - camera_y),
+            self.width,
+            self.height
+        )
+        
+        # Determine flip based on velocity direction
+        flip = sdl2.SDL_FLIP_NONE
+        if self.velocity_x < 0:
+            flip = sdl2.SDL_FLIP_HORIZONTAL
+        
+        # Render (no source rect needed for individual frames)
+        sdl2.SDL_RenderCopyEx(
+            self.renderer,
+            texture,
+            None,  # Use entire texture
+            dest_rect,
+            0,
+            None,
+            flip
+        )
+    
+    def cleanup(self):
+        """Clean up resources. Don't destroy textures if they're shared from manager."""
+        # Only clear the list reference, don't destroy textures
+        # Textures are managed by ProjectileManager if preloaded
+        self.frame_textures = []
+
+
 class ProjectileManager:
     """
     Manager class for handling multiple projectiles.
@@ -814,6 +956,7 @@ class ProjectileManager:
         # Texture caches for boss projectiles (preloaded)
         self.boss_flame_textures = None
         self.boss_melee_textures = None
+        self.boss_circular_flame_textures = None
         
         # Preload boss projectile textures
         self._preload_boss_projectile_textures()
@@ -838,6 +981,9 @@ class ProjectileManager:
         
         if self.boss_flame_textures:
             print(f"[ProjectileManager] Preloaded {len(self.boss_flame_textures)} boss flame textures")
+        
+        # Preload circular flame textures (same assets as normal flame, will be scaled to 32×32)
+        self.boss_circular_flame_textures = self.boss_flame_textures  # Reuse same textures, different rendering size
         
         # Preload melee effect textures
         self.boss_melee_textures = []
@@ -936,6 +1082,26 @@ class ProjectileManager:
         print(f"[PROJECTILE] Boss flame projectile spawned at ({x:.1f}, {y:.1f}), vel=({velocity_x:.1f}, {velocity_y:.1f}), damage={damage}")
         return projectile
     
+    def spawn_boss_circular_flame(self, x, y, velocity_x, velocity_y, damage, direction, owner):
+        """
+        Spawn a Boss circular shooting flame projectile (smaller, for skill).
+        
+        Args:
+            x: Spawn x position
+            y: Spawn y position
+            velocity_x: Horizontal velocity
+            velocity_y: Vertical velocity
+            damage: Damage value
+            direction: Direction (1 for right, -1 for left)
+            owner: The Boss entity
+            
+        Returns:
+            BossCircularFlameProjectile: The spawned projectile
+        """
+        projectile = BossCircularFlameProjectile(x, y, velocity_x, velocity_y, direction, owner, self.renderer, damage, self.boss_circular_flame_textures)
+        self.projectiles.append(projectile)
+        return projectile
+    
     def update_all(self, delta_time=1):
         """Update all projectiles."""
         for projectile in self.projectiles:
@@ -1008,3 +1174,6 @@ class ProjectileManager:
                     sdl2.SDL_DestroyTexture(texture)
             self.boss_melee_textures = None
             print("[ProjectileManager] Cleaned up boss melee textures")
+        
+        # Circular flame textures are shared with normal flame, no separate cleanup needed
+        self.boss_circular_flame_textures = None

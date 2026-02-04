@@ -24,6 +24,7 @@ from settings import (
     WINDOW_WIDTH,
     WINDOW_HEIGHT
 )
+from entities.boss_skills import CircularShootingSkill
 
 
 class BossState(Enum):
@@ -175,6 +176,9 @@ class Boss:
         self.current_skill = None
         self.skill_phase = 0
         self.skill_timer = 0
+        
+        # Skill instances
+        self.circular_shooting_skill = None
         
         # HP threshold tracking for meteor skill
         self.meteor_triggered_75 = False
@@ -586,15 +590,13 @@ class Boss:
     def _start_circular_shooting_skill(self):
         """Start circular shooting skill - move to center, charge, shoot, return."""
         self.current_skill = SkillType.CIRCULAR_SHOOTING
-        self.skill_phase = 0  # 0: move to center, 1: charge, 2: shoot, 3: return
+        self.skill_phase = 0
         self.skill_timer = 0
         self.skill_cooldown = 0
         
-        # Set movement to center
-        self.target_x = self.center_x
-        self.target_y = self.ground_y  # Stay on ground
-        self.is_moving_to_center = True
-        self.state = BossState.WALKING
+        # Create and start skill instance
+        self.circular_shooting_skill = CircularShootingSkill(self)
+        self.circular_shooting_skill.start()
     
     def _start_meteor_skill(self):
         """Start meteor skill - meteors fall diagonally from sky."""
@@ -642,84 +644,14 @@ class Boss:
     
     def _update_circular_shooting(self):
         """Update circular shooting skill phases."""
-        if self.skill_phase == 0:
-            # Phase 0: Moving to center (handled by _update_skill_movement)
-            if not self.is_moving_to_center:
-                # Arrived at center, start charging
-                self.skill_phase = 1
-                self.skill_timer = 60  # 1 second charge
-                self.state = BossState.CASTING
-                self.current_frame = 0
-                self.frame_counter = 0
-        
-        elif self.skill_phase == 1:
-            # Phase 1: Charging
-            self.skill_timer -= 1
+        if self.circular_shooting_skill:
+            # Delegate to skill instance
+            skill_complete = self.circular_shooting_skill.update()
             
-            # Advance casting animation
-            self.frame_counter += self.animation_speed
-            if self.frame_counter >= 1.0:
-                self.frame_counter = 0
-                sprite_data = self.sprites[BossState.CASTING]
-                self.current_frame = (self.current_frame + 1) % sprite_data['frames']
-            
-            if self.skill_timer <= 0:
-                # Charge complete, start shooting
-                self.skill_phase = 2
-                self.skill_timer = 120  # 2 seconds of shooting
-                self._fire_circular_projectiles()
-        
-        elif self.skill_phase == 2:
-            # Phase 2: Shooting circular projectiles
-            self.skill_timer -= 1
-            
-            # Fire projectiles every 20 frames
-            if self.skill_timer % 20 == 0:
-                self._fire_circular_projectiles()
-            
-            # Continue casting animation
-            self.frame_counter += self.animation_speed
-            if self.frame_counter >= 1.0:
-                self.frame_counter = 0
-                sprite_data = self.sprites[BossState.CASTING]
-                self.current_frame = (self.current_frame + 1) % sprite_data['frames']
-            
-            if self.skill_timer <= 0:
-                # Shooting complete, return to spawn
-                self.skill_phase = 3
-                self.target_x = self.spawn_x
-                self.target_y = self.spawn_y
-                self.is_returning_from_center = True
-                self.state = BossState.WALKING
-        
-        elif self.skill_phase == 3:
-            # Phase 3: Returning to spawn (handled by _update_skill_movement)
-            if not self.is_returning_from_center:
-                # Returned to spawn, skill complete
+            if skill_complete:
+                # Skill finished, clean up
                 self._end_skill()
-    
-    def _fire_circular_projectiles(self):
-        """Fire projectiles in a circular pattern."""
-        if not self.projectile_manager:
-            return
-        
-        # Fire 8 projectiles in a circle (45 degrees apart)
-        num_projectiles = 8
-        spawn_x = self.x + self.width / 2
-        spawn_y = self.y + self.height / 2
-        
-        import math
-        for i in range(num_projectiles):
-            angle = (360 / num_projectiles) * i
-            angle_rad = math.radians(angle)
-            
-            velocity_x = math.cos(angle_rad) * self.projectile_speed
-            velocity_y = math.sin(angle_rad) * self.projectile_speed
-            
-            # Spawn projectile (will be implemented with projectile system)
-            # self.projectile_manager.spawn_boss_circular_projectile(
-            #     spawn_x, spawn_y, velocity_x, velocity_y, self.ranged_damage
-            # )
+                self.circular_shooting_skill = None
     
     def _update_meteor(self):
         """Update meteor skill phases."""

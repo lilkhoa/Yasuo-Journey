@@ -136,7 +136,7 @@ class BossTest:
         self.player = Player(640, 500)
         
         # Spawn Boss
-        boss_x = 500
+        boss_x = 1000
         boss_y = 300
         self.boss = Boss(boss_x, boss_y, self.sprite_factory, None, self.renderer, self.projectile_manager)
         self.boss.set_player(self.player)
