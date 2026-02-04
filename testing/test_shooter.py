@@ -87,7 +87,12 @@ class ShooterTest:
                 print(f"SDL2_image initialization failed: {sdlimage.IMG_GetError()}")
         else:
             print("Warning: SDL2_image not available")
-        
+
+        if sdl2.sdlmixer.Mix_OpenAudio(44100, sdl2.sdlmixer.MIX_DEFAULT_FORMAT, 2, 2048) != 0:
+            print(f"SDL2_mixer initialization failed: {sdl2.sdlmixer.Mix_GetError()}")
+        else:
+            print("SDL2_mixer initialized successfully")
+            
         # Create window
         self.window = sdl2.SDL_CreateWindow(
             b"Shooter NPC Chase Test - Use Arrow Keys to Move Player",

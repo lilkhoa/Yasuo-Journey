@@ -2,6 +2,7 @@ import os
 import ctypes
 import sdl2
 import sdl2.ext
+import sdl2.sdlmixer
 import random
 from enum import Enum
 from settings import (
@@ -606,6 +607,13 @@ class NPC:
 
 
 class Ghost(NPC):
+    def cleanup(self):
+        """Clean up Ghost resources including sound."""
+        if hasattr(self, 'attack_sound') and self.attack_sound:
+            sdl2.sdlmixer.Mix_FreeChunk(self.attack_sound)
+            self.attack_sound = None
+        super().cleanup()
+    
     def __init__(self, x, y, sprite_factory, texture_factory, renderer, projectile_manager=None):
         """
         Initialize Ghost NPC.
@@ -631,6 +639,25 @@ class Ghost(NPC):
         
         self.projectile_manager = projectile_manager
         self.projectile_fired_this_attack = False
+        
+        # Load attack sound
+        self.attack_sound = None
+        self._load_attack_sound()
+    
+    def _load_attack_sound(self):
+        """Load Ghost attack sound effect."""
+        sound_path = os.path.join("assets", "NPC", "Ghost", "attack_sound.mp3")
+        if os.path.exists(sound_path):
+            try:
+                self.attack_sound = sdl2.sdlmixer.Mix_LoadWAV(sound_path.encode('utf-8'))
+                if self.attack_sound:
+                    print(f"[Ghost] Loaded attack sound from {sound_path}")
+                else:
+                    print(f"[Ghost] Failed to load attack sound: {sdl2.sdlmixer.Mix_GetError()}")
+            except Exception as e:
+                print(f"[Ghost] Error loading attack sound: {e}")
+        else:
+            print(f"[Ghost] Attack sound not found at {sound_path}")
     
     def _get_npc_folder_name(self):
         """Get the folder name for Ghost sprites."""
@@ -773,9 +800,20 @@ class Ghost(NPC):
         self.attack_cooldown = self.attack_cooldown_max
         self.velocity_x = 0
         self.projectile_fired_this_attack = False  # Reset for new attack
+        
+        # Play attack sound
+        if self.attack_sound:
+            sdl2.sdlmixer.Mix_PlayChannel(-1, self.attack_sound, 0)
 
 
 class Shooter(NPC):
+    def cleanup(self):
+        """Clean up Shooter resources including sound."""
+        if hasattr(self, 'attack_sound') and self.attack_sound:
+            sdl2.sdlmixer.Mix_FreeChunk(self.attack_sound)
+            self.attack_sound = None
+        super().cleanup()
+    
     def __init__(self, x, y, sprite_factory, texture_factory, renderer, projectile_manager=None):
         """
         Initialize Shooter NPC.
@@ -804,6 +842,25 @@ class Shooter(NPC):
         
         # Track which frame to fire projectile (mid-attack animation)
         self.projectile_fired_this_attack = False
+        
+        # Load attack sound
+        self.attack_sound = None
+        self._load_attack_sound()
+    
+    def _load_attack_sound(self):
+        """Load Shooter attack sound effect."""
+        sound_path = os.path.join("assets", "NPC", "Shooter", "attack_sound.mp3")
+        if os.path.exists(sound_path):
+            try:
+                self.attack_sound = sdl2.sdlmixer.Mix_LoadWAV(sound_path.encode('utf-8'))
+                if self.attack_sound:
+                    print(f"[Shooter] Loaded attack sound from {sound_path}")
+                else:
+                    print(f"[Shooter] Failed to load attack sound: {sdl2.sdlmixer.Mix_GetError()}")
+            except Exception as e:
+                print(f"[Shooter] Error loading attack sound: {e}")
+        else:
+            print(f"[Shooter] Attack sound not found at {sound_path}")
     
     def _get_npc_folder_name(self):
         """Get the folder name for Shooter sprites."""
@@ -941,9 +998,22 @@ class Shooter(NPC):
         self.attack_cooldown = self.attack_cooldown_max
         self.velocity_x = 0
         self.projectile_fired_this_attack = False  # Reset for new attack
+        
+        # Play attack sound
+        if self.attack_sound:
+            sdl2.sdlmixer.Mix_PlayChannel(-1, self.attack_sound, 0)
 
 
 class Onre(NPC):
+    def cleanup(self):
+        """Clean up Onre resources including sounds."""
+        if hasattr(self, 'attack_sounds'):
+            for sound in self.attack_sounds:
+                if sound:
+                    sdl2.sdlmixer.Mix_FreeChunk(sound)
+            self.attack_sounds = [None, None, None]
+        super().cleanup()
+    
     def __init__(self, x, y, sprite_factory, texture_factory, renderer):
         """
         Initialize Onre NPC.
@@ -979,6 +1049,28 @@ class Onre(NPC):
             NPCState.ATTACK_2: [1, 2, 3],
             NPCState.ATTACK_3: [1, 2, 3]
         }
+        
+        # Load attack sounds (3 sounds for 3 attack types)
+        self.attack_sounds = [None, None, None]
+        self._load_attack_sounds()
+    
+    def _load_attack_sounds(self):
+        """Load Onre's three attack sound effects."""
+        base_path = os.path.join("assets", "NPC", "Onre")
+        
+        for i in range(3):
+            sound_path = os.path.join(base_path, f"attack_sound_{i+1}.mp3")
+            if os.path.exists(sound_path):
+                try:
+                    self.attack_sounds[i] = sdl2.sdlmixer.Mix_LoadWAV(sound_path.encode('utf-8'))
+                    if self.attack_sounds[i]:
+                        print(f"[Onre] Loaded attack sound {i+1} from {sound_path}")
+                    else:
+                        print(f"[Onre] Failed to load attack sound {i+1}: {sdl2.sdlmixer.Mix_GetError()}")
+                except Exception as e:
+                    print(f"[Onre] Error loading attack sound {i+1}: {e}")
+            else:
+                print(f"[Onre] Attack sound {i+1} not found at {sound_path}")
     
     def _get_npc_folder_name(self):
         """Get the folder name for Onre sprites."""
@@ -1144,6 +1236,12 @@ class Onre(NPC):
         self.attack_cooldown = self.attack_cooldown_max
         self.velocity_x = 0
         self.has_dealt_damage = False  # Reset damage flag for new attack
+        
+        # Play attack sound corresponding to current attack cycle
+        sound_index = self.current_attack_cycle - 1  # Convert 1-3 to 0-2 index
+        if 0 <= sound_index < len(self.attack_sounds) and self.attack_sounds[sound_index]:
+            sdl2.sdlmixer.Mix_PlayChannel(-1, self.attack_sounds[sound_index], 0)
+        
         self.current_attack_cycle = (self.current_attack_cycle % 3) + 1
 
 
