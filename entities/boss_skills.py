@@ -18,6 +18,8 @@ from settings import (
     METEOR_VELOCITY_Y_MIN,
     METEOR_VELOCITY_Y_MAX,
     WINDOW_WIDTH,
+    SUMMON_CHARGE_DURATION,
+    SUMMON_WAIT_DURATION,
 )
 
 
@@ -307,3 +309,112 @@ class MeteorSkill:
         )
         
         print(f"[MeteorSkill] Spawned meteor at ({spawn_x:.0f}, {spawn_y:.0f}), vel=({velocity_x:.1f}, {velocity_y:.1f})")
+
+
+class SummonMinionsSkill:
+    """
+    Summon Minions Skill: Boss summons minions based on current HP.
+    
+    Phases:
+    0 - CHARGING: Boss charges up (casting animation)
+    1 - COMPLETE: Skill finished
+    
+    Minion count based on boss HP:
+    - 75-100% HP: 2 minions
+    - 50-75% HP: 3 minions
+    - 25-50% HP: 4 minions
+    - 0-25% HP: 5 minions
+    """
+    
+    def __init__(self, boss):
+        """
+        Initialize summon minions skill.
+        
+        Args:
+            boss: Reference to Boss instance
+        """
+        self.boss = boss
+        self.phase = 0  # 0: charging, 1: complete
+        self.timer = 0
+        
+        # Skill parameters
+        self.charge_duration = SUMMON_CHARGE_DURATION
+        self.wait_duration = SUMMON_WAIT_DURATION
+    
+    def start(self):
+        """Start the skill execution."""
+        from entities.boss import BossState
+        
+        self.phase = 0
+        self.timer = 0
+        
+        # Boss stands still in CASTING state
+        self.boss.state = BossState.CASTING
+        self.boss.current_frame = 0
+        self.boss.frame_counter = 0
+        self.boss.velocity_x = 0
+        self.boss.velocity_y = 0
+        
+        print(f"[SummonMinionsSkill] Started - Boss charging at position ({self.boss.x:.0f}, {self.boss.y:.0f})")
+    
+    def update(self):
+        """
+        Update skill execution.
+        
+        Returns:
+            bool: True if skill is complete, False otherwise
+        """
+        from entities.boss import BossState
+        
+        if self.phase == 0:
+            # Phase 0: Charging
+            self.timer += 1
+            
+            # Advance casting animation
+            self.boss.frame_counter += self.boss.animation_speed
+            if self.boss.frame_counter >= 1.0:
+                self.boss.frame_counter = 0
+                sprite_data = self.boss.sprites[BossState.CASTING]
+                self.boss.current_frame = (self.boss.current_frame + 1) % sprite_data['frames']
+            
+            if self.timer >= self.charge_duration:
+                # Charge complete, spawn minions
+                self.phase = 1
+                self.timer = 0
+                self._spawn_minions()
+                return True
+        
+        return False
+    
+    def _spawn_minions(self):
+        """Spawn minions based on boss HP."""
+        # Determine number of minions based on boss HP
+        hp_percent = (self.boss.health / self.boss.max_health) * 100
+        
+        if hp_percent >= 75:
+            num_minions = 2
+        elif hp_percent >= 50:
+            num_minions = 3
+        elif hp_percent >= 25:
+            num_minions = 4
+        else:
+            num_minions = 5
+        
+        # Calculate spawn positions around boss
+        boss_center_x = self.boss.x + self.boss.width / 2
+        boss_center_y = self.boss.y + self.boss.height / 2
+        
+        # Spawn minions in a circle around boss with radius 150
+        spawn_radius = 150
+        
+        for i in range(num_minions):
+            angle = (360 / num_minions) * i
+            angle_rad = math.radians(angle)
+            
+            spawn_x = boss_center_x + math.cos(angle_rad) * spawn_radius - 48  # Center minion (96/2)
+            spawn_y = boss_center_y + math.sin(angle_rad) * spawn_radius - 48
+            
+            # Spawn minion directly via boss
+            self.boss.spawn_minion(spawn_x, spawn_y)
+        
+        print(f"[SummonMinionsSkill] Spawned {num_minions} minions at boss HP {hp_percent:.1f}%")

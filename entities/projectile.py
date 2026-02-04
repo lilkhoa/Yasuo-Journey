@@ -1291,6 +1291,139 @@ class BossExplosionEffect(Projectile):
         self.frame_textures = []
 
 
+class MinionFireballProjectile(Projectile):
+    """
+    Boss Minion fireball projectile.
+    
+    Smaller flame projectile (48x48) that travels in a straight line.
+    Used by boss minions to attack the player.
+    """
+    
+    def __init__(self, x, y, velocity_x, velocity_y, direction, owner, renderer, damage, preloaded_textures=None):
+        """
+        Initialize Minion fireball projectile.
+        
+        Args:
+            x: Initial x position
+            y: Initial y position
+            velocity_x: Horizontal velocity
+            velocity_y: Vertical velocity
+            direction: Direction (1 for right, -1 for left)
+            owner: The BossMinion entity
+            renderer: PySDL2 renderer
+            damage: Damage value
+            preloaded_textures: List of preloaded textures (optional)
+        """
+        super().__init__(x, y, velocity_x, velocity_y, damage, direction, owner, renderer)
+        
+        from settings import BOSS_MINION_FIREBALL_SIZE
+        
+        # Size for minion fireballs
+        self.width = BOSS_MINION_FIREBALL_SIZE
+        self.height = BOSS_MINION_FIREBALL_SIZE
+        
+        # Standard lifetime
+        self.lifetime = 180  # 3 seconds at 60 FPS
+        
+        # Load or use preloaded flame projectile sprites
+        self.frame_textures = []
+        if preloaded_textures:
+            # Use preloaded textures
+            self.frame_textures = preloaded_textures
+            if self.frame_textures:
+                w = ctypes.c_int()
+                h = ctypes.c_int()
+                sdl2.SDL_QueryTexture(self.frame_textures[0], None, None, 
+                                     ctypes.byref(w), ctypes.byref(h))
+                self.sprite_data = {
+                    'frames': len(self.frame_textures),
+                    'width': w.value,
+                    'height': h.value
+                }
+                self.animation_speed = 0.25
+        else:
+            # Fallback: load from disk
+            self._load_frames()
+    
+    def _load_frames(self):
+        """Load individual frame textures from disk (fallback)."""
+        base_path = os.path.join("assets", "Projectile", "Boss", "Flame")
+        
+        for i in range(1, 9):  # 8 frames
+            filename = f"{i}.png"
+            filepath = os.path.join(base_path, filename)
+            
+            if os.path.exists(filepath):
+                try:
+                    surface = sdl2.ext.load_image(filepath)
+                    texture = sdl2.SDL_CreateTextureFromSurface(self.renderer, surface)
+                    sdl2.SDL_FreeSurface(surface)
+                    
+                    if texture:
+                        self.frame_textures.append(texture)
+                except Exception as e:
+                    print(f"Failed to load minion fireball frame {filepath}: {e}")
+        
+        if self.frame_textures:
+            print(f"Loaded Minion fireball: {len(self.frame_textures)} frames")
+        else:
+            print("Error: No Minion fireball frames loaded!")
+        
+        self.animation_speed = 0.25
+    
+    def _update_animation(self):
+        """Update animation frame."""
+        if not self.frame_textures:
+            return
+        
+        self.frame_counter += self.animation_speed
+        
+        if self.frame_counter >= 1.0:
+            self.frame_counter = 0
+            self.current_frame = (self.current_frame + 1) % len(self.frame_textures)
+    
+    def render(self, camera_x=0, camera_y=0):
+        """Render minion fireball projectile.
+        
+        Args:
+            camera_x: Camera x offset
+            camera_y: Camera y offset
+        """
+        if not self.active or not self.frame_textures:
+            return
+        
+        # Get current frame texture
+        texture = self.frame_textures[self.current_frame]
+        
+        # Destination rectangle
+        dest_rect = sdl2.SDL_Rect(
+            int(self.x - camera_x),
+            int(self.y - camera_y),
+            self.width,
+            self.height
+        )
+        
+        # Determine flip based on velocity direction
+        flip = sdl2.SDL_FLIP_NONE
+        if self.velocity_x < 0:
+            flip = sdl2.SDL_FLIP_HORIZONTAL
+        
+        # Render
+        sdl2.SDL_RenderCopyEx(
+            self.renderer,
+            texture,
+            None,
+            dest_rect,
+            0,
+            None,
+            flip
+        )
+    
+    def cleanup(self):
+        """Clean up resources."""
+        self.frame_textures = []
+
+
 class ProjectileManager:
     """
     Manager class for handling multiple projectiles.
@@ -1313,6 +1446,7 @@ class ProjectileManager:
         self.boss_circular_flame_textures = None
         self.boss_meteor_textures = None
         self.boss_explosion_textures = None
+        self.minion_fireball_textures = None
         
         # Preload boss projectile textures
         self._preload_boss_projectile_textures()
@@ -1397,6 +1531,11 @@ class ProjectileManager:
         
         if self.boss_explosion_textures:
             print(f"[ProjectileManager] Preloaded {len(self.boss_explosion_textures)} boss explosion textures")
+        
+        # Preload minion fireball textures (reuse boss flame assets)
+        self.minion_fireball_textures = self.boss_flame_textures  # Reuse same textures, different rendering size
+        if self.minion_fireball_textures:
+            print(f"[ProjectileManager] Preloaded {len(self.minion_fireball_textures)} minion fireball textures (shared)")
     
     def spawn_ghost_projectile(self, x, y, direction, owner, charge_type=1):
         """
@@ -1533,6 +1672,27 @@ class ProjectileManager:
         self.projectiles.append(explosion)
         return explosion
     
+    def spawn_minion_fireball(self, x, y, velocity_x, velocity_y, damage, direction, owner):
+        """
+        Spawn a Boss Minion fireball projectile.
+        
+        Args:
+            x: Spawn x position
+            y: Spawn y position
+            velocity_x: Horizontal velocity
+            velocity_y: Vertical velocity
+            damage: Damage value
+            direction: Direction (1 for right, -1 for left)
+            owner: The BossMinion entity
+            
+        Returns:
+            MinionFireballProjectile: The spawned projectile
+        """
+        projectile = MinionFireballProjectile(x, y, velocity_x, velocity_y, direction, owner, self.renderer, damage, self.minion_fireball_textures)
+        self.projectiles.append(projectile)
+        print(f"[PROJECTILE] Minion fireball spawned at ({x:.1f}, {y:.1f}), vel=({velocity_x:.1f}, {velocity_y:.1f}), damage={damage}")
+        return projectile
+    
     def update_all(self, delta_time=1):
         """Update all projectiles."""
         for projectile in self.projectiles:
@@ -1624,3 +1784,6 @@ class ProjectileManager:
                     sdl2.SDL_DestroyTexture(texture)
             self.boss_explosion_textures = None
             print("[ProjectileManager] Cleaned up boss explosion textures")
+        
+        # Minion fireball textures are shared with boss flame, no separate cleanup needed
+        self.minion_fireball_textures = None

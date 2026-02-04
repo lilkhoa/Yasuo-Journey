@@ -24,7 +24,8 @@ from settings import (
     WINDOW_WIDTH,
     WINDOW_HEIGHT
 )
-from entities.boss_skills import CircularShootingSkill, MeteorSkill
+from entities.boss_skills import CircularShootingSkill, MeteorSkill, SummonMinionsSkill
+from entities.boss_minion import BossMinion
 
 
 class BossState(Enum):
@@ -180,6 +181,7 @@ class Boss:
         # Skill instances
         self.circular_shooting_skill = None
         self.meteor_skill = None
+        self.summon_minions_skill = None
         
         # HP threshold tracking for meteor skill
         self.meteor_triggered_75 = False
@@ -220,8 +222,56 @@ class Boss:
         self.player = None
         self.projectile_manager = projectile_manager
         
+        # Summoned minions
+        self.minions = []
+        self.minion_textures_preloaded = None
+        
         # Load boss sprites
         self._load_sprites()
+        
+        # Preload minion textures to prevent lag on spawn
+        self._preload_minion_textures()
+    
+    def _preload_minion_textures(self):
+        """Preload minion textures to prevent lag during spawning."""
+        base_path = os.path.join("assets", "Boss", "Boss_NPCs")
+        
+        from entities.boss_minion import MinionState
+        
+        state_mapping = {
+            MinionState.IDLE: ("Idle", 12),
+            MinionState.IDLE_BLINK: ("Idle Blink", 10),
+            MinionState.WALKING: ("Walking", 12),
+            MinionState.ATTACKING: ("Attacking", 12),
+            MinionState.HURT: ("Hurt", 3),
+            MinionState.DYING: ("Dying", 15)
+        }
+        
+        self.minion_textures_preloaded = {}
+        
+        for state, (folder_name, frame_count) in state_mapping.items():
+            folder_path = os.path.join(base_path, folder_name)
+            textures = []
+            
+            for i in range(frame_count):
+                filepath = os.path.join(folder_path, f"{i}.png")
+                if os.path.exists(filepath):
+                    try:
+                        surface = sdl2.ext.load_image(filepath)
+                        texture = sdl2.SDL_CreateTextureFromSurface(self.renderer, surface)
+                        sdl2.SDL_FreeSurface(surface)
+                        if texture:
+                            textures.append(texture)
+                    except Exception as e:
+                        print(f"Failed to preload minion texture {filepath}: {e}")
+            
+            if textures:
+                self.minion_textures_preloaded[state] = {
+                    'textures': textures,
+                    'frames': len(textures)
+                }
+        
+        print(f"[Boss] Preloaded minion textures: {len(self.minion_textures_preloaded)} states")
     
     def _load_sprites(self):
         """Load all boss sprite sequences from assets folder."""
@@ -356,6 +406,9 @@ class Boss:
         # Update jumping physics
         if self.is_jumping:
             self._update_jump()
+        
+        # Update summoned minions
+        self._update_minions()
         
         # Random skill usage (if cooldown ready and not attacking)
         if self.skill_cooldown >= self.skill_cooldown_max and not self.is_attacking:
@@ -622,15 +675,15 @@ class Boss:
         self.frame_counter = 0
     
     def _start_summon_minions_skill(self):
-        """Start summon minions skill - summon shooter NPCs."""
+        """Start summon minions skill - summon minions based on HP."""
         self.current_skill = SkillType.SUMMON_MINIONS
-        self.skill_phase = 0  # 0: charge, 1: summon
+        self.skill_phase = 0
         self.skill_timer = 0
         self.skill_cooldown = 0
         
-        self.state = BossState.CASTING
-        self.current_frame = 0
-        self.frame_counter = 0
+        # Create and start skill instance
+        self.summon_minions_skill = SummonMinionsSkill(self)
+        self.summon_minions_skill.start()
     
     def _update_skill(self):
         """Update current skill execution."""
@@ -727,39 +780,14 @@ class Boss:
     
     def _update_summon_minions(self):
         """Update summon minions skill phases."""
-        if self.skill_phase == 0:
-            # Phase 0: Charging
-            self.skill_timer += 1
+        if self.summon_minions_skill:
+            # Delegate to skill instance
+            skill_complete = self.summon_minions_skill.update()
             
-            # Advance casting animation
-            self.frame_counter += self.animation_speed
-            if self.frame_counter >= 1.0:
-                self.frame_counter = 0
-                sprite_data = self.sprites[BossState.CASTING]
-                self.current_frame = (self.current_frame + 1) % sprite_data['frames']
-            
-            if self.skill_timer >= 60:  # 1 second charge
-                # Charge complete, summon minions
-                self.skill_phase = 1
-                self.skill_timer = 0
-                self._summon_shooter_minions()
-        
-        elif self.skill_phase == 1:
-            # Phase 1: Summon complete, wait a bit
-            self.skill_timer += 1
-            
-            if self.skill_timer >= 30:  # 0.5 second wait
-                # Summon complete
+            if skill_complete:
+                # Skill finished, clean up
                 self._end_skill()
-    
-    def _summon_shooter_minions(self):
-        """Summon 2-3 shooter minions at random positions."""
-        # This will need to interface with the game's NPC spawning system
-        # For now, just log the summon
-        num_minions = random.randint(2, 3)
-       
-        # Minions would be spawned by the game manager
-        # game_manager.spawn_boss_minion(x, y, "shooter")
+                self.summon_minions_skill = None
     
     def _end_skill(self):
         """End current skill and return to idle."""
@@ -861,6 +889,23 @@ class Boss:
             self.vel_y = 0
             self.is_jumping = False
     
+    def _update_minions(self):
+        """Update all summoned minions."""
+        for minion in self.minions[:]:
+            minion.update()
+            # Remove dead minions
+            if minion.ready_for_removal:
+                self.minions.remove(minion)
+                minion.cleanup()
+    
+    def spawn_minion(self, x, y):
+        """Spawn a minion at the specified position."""
+        minion = BossMinion(x, y, self.sprite_factory, self.renderer, self.projectile_manager, self.minion_textures_preloaded)
+        minion.set_player(self.player)
+        self.minions.append(minion)
+        print(f"[Boss] Spawned minion at ({x:.0f}, {y:.0f}), player set: {self.player is not None}")
+        return minion
+    
     def take_damage(self, amount):
         """
         Apply damage to boss.
@@ -906,6 +951,10 @@ class Boss:
             camera_x: Camera x offset
             camera_y: Camera y offset
         """
+        # Render minions first (behind boss)
+        for minion in self.minions:
+            minion.render(camera_x, camera_y)
+        
         if self.state not in self.sprites:
             return
         
@@ -963,7 +1012,22 @@ class Boss:
         return self.health > 0
     
     def cleanup(self):
-        """Clean up loaded textures."""
+        """Clean up loaded textures and minions."""
+        # Clean up minions (don't destroy their textures, they're shared)
+        for minion in self.minions:
+            minion.cleanup_shared()
+        self.minions.clear()
+        
+        # Clean up preloaded minion textures
+        if self.minion_textures_preloaded:
+            for state_data in self.minion_textures_preloaded.values():
+                for texture in state_data.get('textures', []):
+                    if texture:
+                        sdl2.SDL_DestroyTexture(texture)
+            self.minion_textures_preloaded = None
+            print("[Boss] Cleaned up preloaded minion textures")
+        
+        # Clean up boss textures
         for state, sprite_data in self.sprites.items():
             for texture in sprite_data.get('textures', []):
                 if texture:
