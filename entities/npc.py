@@ -966,6 +966,19 @@ class Onre(NPC):
             attack_cooldown_max=NPC_ONRE_ATTACK_COOLDOWN
         )
         self.current_attack_cycle = 1
+        self.has_dealt_damage = False  # Flag to prevent multiple hits in one attack
+        
+        # Melee hitbox configuration
+        self.melee_hitbox_width = 20
+        self.melee_hitbox_height = 60
+        self.melee_hitbox_offset = 20
+        
+        # Dangerous frames for each attack type
+        self.dangerous_frames_map = {
+            NPCState.ATTACK_1: [2, 3, 4],
+            NPCState.ATTACK_2: [1, 2, 3],
+            NPCState.ATTACK_3: [1, 2, 3]
+        }
     
     def _get_npc_folder_name(self):
         """Get the folder name for Onre sprites."""
@@ -1039,6 +1052,65 @@ class Onre(NPC):
         return [NPCState.ATTACK_1, NPCState.ATTACK_2, NPCState.ATTACK_3, 
                 NPCState.HURT, NPCState.DEAD]
     
+    def update(self, delta_time=1):
+        """Update Onre NPC with melee hitbox collision detection."""
+        # Call parent update
+        super().update(delta_time)
+        
+        # Check melee hitbox during attack animation
+        if self.is_attacking and self.player:
+            self._check_melee_hit()
+    
+    def _calculate_melee_hitbox(self):
+        """Calculate melee hitbox rectangle based on current position and direction.
+        
+        Returns:
+            sdl2.SDL_Rect: The hitbox rectangle
+        """
+        if self.direction == Direction.RIGHT:
+            hitbox_x = self.x + self.width / 2 + self.melee_hitbox_offset
+        else:
+            hitbox_x = self.x + self.width / 2 - self.melee_hitbox_offset - self.melee_hitbox_width
+        
+        hitbox_y = self.y + (self.height - self.melee_hitbox_height) / 2
+        
+        return sdl2.SDL_Rect(
+            int(hitbox_x),
+            int(hitbox_y),
+            self.melee_hitbox_width,
+            self.melee_hitbox_height
+        )
+    
+    def _check_melee_hit(self):
+        """Check if blade hitbox collides with player during dangerous frames."""
+        # Only check during attack states
+        if self.state not in [NPCState.ATTACK_1, NPCState.ATTACK_2, NPCState.ATTACK_3]:
+            return
+        
+        # Only deal damage once per attack
+        if self.has_dealt_damage:
+            return
+        
+        # Check if current frame is dangerous
+        if self.current_frame not in self.dangerous_frames_map.get(self.state, []):
+            return
+        
+        # Calculate hitbox using helper method
+        hitbox = self._calculate_melee_hitbox()
+        
+        # Create player rectangle
+        player_rect = sdl2.SDL_Rect(
+            int(self.player.x),
+            int(self.player.y),
+            int(self.player.width),
+            int(self.player.height)
+        )
+        
+        # Check collision using SDL's built-in function
+        if sdl2.SDL_HasIntersection(hitbox, player_rect):
+            self.player.take_damage(self.damage)
+            self.has_dealt_damage = True
+    
     def move_left(self):
         """Move Onre to the left."""
         if self.state not in self._get_non_interruptible_states():
@@ -1071,7 +1143,7 @@ class Onre(NPC):
         self.is_attacking = True
         self.attack_cooldown = self.attack_cooldown_max
         self.velocity_x = 0
-
+        self.has_dealt_damage = False  # Reset damage flag for new attack
         self.current_attack_cycle = (self.current_attack_cycle % 3) + 1
 
 

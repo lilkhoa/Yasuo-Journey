@@ -11,7 +11,7 @@ except ImportError:
 # Add parent directory to path for imports
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
-from entities.npc import Onre
+from entities.npc import Onre, NPCState
 from entities.projectile import ProjectileManager
 
 
@@ -121,28 +121,29 @@ class OnreTest:
         # Create player
         self.player = Player(40, 300)
         
-        # Spawn Ghost NPC with patrol and chase behavior
-        self.ghost = Onre(600, 300, self.sprite_factory, None, self.renderer)
+        # Spawn Onre NPC with patrol and chase behavior
+        self.onre = Onre(600, 300, self.sprite_factory, None, self.renderer)
         # Patrol bounds are automatically calculated from spawn position and patrol_radius in NPC class
-        self.ghost.set_player(self.player)  # Enable chase behavior
-        self.ghost.start_patrol()
+        self.onre.set_player(self.player)  # Enable chase behavior
+        self.onre.start_patrol()
         
         self._print_instructions()
     
     def _print_instructions(self):
         """Print control instructions."""
         print("\n" + "="*70)
-        print("Ghost NPC Chase Behavior Test")
+        print("Onre NPC Melee Attack Test")
         print("="*70)
         print("\nCONTROLS:")
         print("  Left/Right Arrow - Move player (blue rectangle)")
         print("  ESC              - Exit")
         print("\nBEHAVIOR:")
-        print("  - Ghost patrols automatically between yellow boundaries")
-        print("  - When player enters orange detection range, Ghost chases")
-        print("  - When player is in attack range, Ghost attacks")
-        print("  - When player leaves detection area, Ghost returns to patrol")
-        print("  - Red marker shows Ghost spawn position")
+        print("  - Onre patrols automatically between yellow boundaries")
+        print("  - When player enters orange detection range, Onre chases")
+        print("  - When player is in melee range, Onre attacks with blade")
+        print("  - RED HITBOX shows blade collision area during dangerous frames")
+        print("  - When player leaves detection area, Onre returns to patrol")
+        print("  - Red marker shows Onre spawn position")
         print("="*70 + "\n")
     
     def handle_events(self):
@@ -179,8 +180,8 @@ class OnreTest:
         # Update player
         self.player.update()
         
-        # Update Ghost NPC (includes chase logic)
-        self.ghost.update()
+        # Update Onre NPC (includes chase and melee logic)
+        self.onre.update()
         
         # Update projectiles and check collisions with player
         self.projectile_manager.update_all()
@@ -198,15 +199,18 @@ class OnreTest:
         # Render player
         self.player.render(self.renderer)
         
-        # Render Ghost
-        self.ghost.render()
+        # Render Onre
+        self.onre.render()
+        
+        # Draw melee hitbox visualization (during attack)
+        self._draw_melee_hitbox()
         
         # Render projectiles
         self.projectile_manager.render_all()
         
         # Draw health bars
         self._draw_health_bar(self.player)
-        self._draw_health_bar(self.ghost)
+        self._draw_health_bar(self.onre)
         
         # Draw UI info
         self._draw_ui()
@@ -221,21 +225,21 @@ class OnreTest:
         # Left bound
         for y in range(0, WINDOW_HEIGHT, 20):
             sdl2.SDL_RenderDrawLine(self.renderer, 
-                                   int(self.ghost.patrol_left_bound), y,
-                                   int(self.ghost.patrol_left_bound), y + 10)
+                                   int(self.onre.patrol_left_bound), y,
+                                   int(self.onre.patrol_left_bound), y + 10)
         
         # Right bound
         for y in range(0, WINDOW_HEIGHT, 20):
             sdl2.SDL_RenderDrawLine(self.renderer,
-                                   int(self.ghost.patrol_right_bound), y,
-                                   int(self.ghost.patrol_right_bound), y + 10)
+                                   int(self.onre.patrol_right_bound), y,
+                                   int(self.onre.patrol_right_bound), y + 10)
     
     def _draw_detection_range(self):
         """Draw detection range boundaries."""
         sdl2.SDL_SetRenderDrawColor(self.renderer, 200, 100, 0, 100)
         
-        detection_left = int(self.ghost.spawn_x - self.ghost.detection_range)
-        detection_right = int(self.ghost.spawn_x + self.ghost.detection_range)
+        detection_left = int(self.onre.spawn_x - self.onre.detection_range)
+        detection_right = int(self.onre.spawn_x + self.onre.detection_range)
         
         # Left detection bound
         for y in range(0, WINDOW_HEIGHT, 15):
@@ -250,8 +254,8 @@ class OnreTest:
     def _draw_spawn_marker(self):
         """Draw spawn position marker."""
         sdl2.SDL_SetRenderDrawColor(self.renderer, 255, 0, 0, 255)
-        spawn_x = int(self.ghost.spawn_x)
-        spawn_y = int(self.ghost.spawn_y)
+        spawn_x = int(self.onre.spawn_x)
+        spawn_y = int(self.onre.spawn_y)
         
         # Draw cross marker
         sdl2.SDL_RenderDrawLine(self.renderer, spawn_x - 10, spawn_y, spawn_x + 10, spawn_y)
@@ -263,8 +267,41 @@ class OnreTest:
             y1 = spawn_y + int(15 * math.sin(math.radians(angle)))
             x2 = spawn_x + int(15 * math.cos(math.radians(angle + 10)))
             y2 = spawn_y + int(15 * math.sin(math.radians(angle + 10)))
-            sdl2.SDL_RenderDrawLine(self.renderer, x1, y1, x2, y2)
-    
+            sdl2.SDL_RenderDrawLine(self.renderer, x1, y1, x2, y2)    
+    def _draw_melee_hitbox(self):
+        """Visualize the melee attack hitbox during dangerous frames."""
+        
+        # Only draw during attack states
+        if self.onre.state not in [NPCState.ATTACK_1, NPCState.ATTACK_2, NPCState.ATTACK_3]:
+            return
+        
+        # Calculate hitbox using NPC's method
+        hitbox_rect = self.onre._calculate_melee_hitbox()
+        
+        # Check if current frame is dangerous
+        current_dangerous = self.onre.dangerous_frames_map.get(self.onre.state, [])
+        is_dangerous = self.onre.current_frame in current_dangerous
+        
+        # Draw hitbox based on frame
+        if is_dangerous:
+            # DANGEROUS FRAME - Draw solid red (blade is swinging)
+            sdl2.SDL_SetRenderDrawColor(self.renderer, 255, 0, 0, 180)
+            sdl2.SDL_RenderFillRect(self.renderer, hitbox_rect)
+            
+            # Border in bright red
+            sdl2.SDL_SetRenderDrawColor(self.renderer, 255, 0, 0, 255)
+            sdl2.SDL_RenderDrawRect(self.renderer, hitbox_rect)
+            
+            # Draw "HIT" indicator
+            center_x = hitbox_rect.x + hitbox_rect.w // 2
+            center_y = hitbox_rect.y + hitbox_rect.h // 2
+            # Draw cross pattern
+            sdl2.SDL_RenderDrawLine(self.renderer, center_x - 10, center_y, center_x + 10, center_y)
+            sdl2.SDL_RenderDrawLine(self.renderer, center_x, center_y - 10, center_x, center_y + 10)
+        else:
+            # NON-DANGEROUS FRAME - Draw outline only (blade not active)
+            sdl2.SDL_SetRenderDrawColor(self.renderer, 100, 100, 100, 100)
+            sdl2.SDL_RenderDrawRect(self.renderer, hitbox_rect)    
     def _draw_health_bar(self, entity):
         """Draw health bar above entity."""
         bar_width = 60
@@ -306,11 +343,12 @@ class OnreTest:
             "Walk": (100, 200, 100),
             "Chase": (255, 100, 100),
             "Run": (100, 100, 200),
-            "Attack_3": (255, 0, 0),
-            "Attack_4": (255, 100, 0)
+            "Attack_1": (255, 0, 0),
+            "Attack_2": (255, 50, 0),
+            "Attack_3": (255, 100, 0)
         }
         
-        color = state_colors.get(self.ghost.state.value, (200, 200, 200))
+        color = state_colors.get(self.onre.state.value, (200, 200, 200))
         sdl2.SDL_SetRenderDrawColor(self.renderer, *color, 255)
         state_rect = sdl2.SDL_Rect(20, 20, 230, 25)
         sdl2.SDL_RenderFillRect(self.renderer, state_rect)
@@ -332,7 +370,7 @@ class OnreTest:
         print("\n[CLEANUP] Shutting down...")
         
         # Clean up entities
-        self.ghost.cleanup()
+        self.onre.cleanup()
         
         # Clean up projectiles
         self.projectile_manager.cleanup()
