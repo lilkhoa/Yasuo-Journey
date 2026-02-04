@@ -12,6 +12,7 @@ from camera import Camera
 # --- THÊM IMPORTS CHO PLAYER VÀ NPC ---
 from entities.player import Player
 from entities.npc import NPCManager
+from entities.projectile import ProjectileManager
 from core.event import handle_input
 from combat.skill_q import update_q_logic
 from combat.skill_w import update_w_logic
@@ -130,14 +131,20 @@ def run():
     software_factory = sdl2.ext.SpriteFactory(sdl2.ext.SOFTWARE) # Player cần Software factory
     
     player = Player(world, software_factory, 100, 350) # Spawn gần mặt đất
-    npc_manager = NPCManager(software_factory, None, renderer.sdlrenderer)
     
-    # Spawn NPC
-    g1 = npc_manager.spawn_ghost(600, 350)
+    # Initialize ProjectileManager for NPC projectiles
+    projectile_manager = ProjectileManager(renderer.sdlrenderer)
+    npc_manager = NPCManager(software_factory, None, renderer.sdlrenderer, projectile_manager)
+    
+    # Spawn NPC closer to player for testing (within detection range)
+    g1 = npc_manager.spawn_ghost(350, 350)  # 250 pixels from player (within 300 detection range)
+    g1.set_player(player)
     make_npc_compatible(g1)
-    s1 = npc_manager.spawn_shooter(900, 350)
+    s1 = npc_manager.spawn_shooter(700, 350)  # 600 pixels from player
+    s1.set_player(player)
     make_npc_compatible(s1)
-    o1 = npc_manager.spawn_onre(1200, 350)
+    o1 = npc_manager.spawn_onre(1000, 350)  # Far away for later
+    o1.set_player(player)
     make_npc_compatible(o1)
     
     active_tornadoes = []
@@ -202,6 +209,13 @@ def run():
         elif player.state == 'dashing_e' and not player.skill_e.is_dashing: player.state = 'idle'
 
         npc_manager.update_all(dt)
+        projectile_manager.update_all(dt)
+        
+        # Check NPC projectile collisions with player
+        for projectile in projectile_manager.projectiles[:]:
+            if projectile.check_collision(player):
+                player.take_damage(projectile.damage)
+                projectile.on_hit()
 
         # Render
         renderer.clear()
@@ -226,7 +240,10 @@ def run():
                                        w.sprite.y - camera.camera.y)
         
         # Render NPCs
-        npc_manager.render_all()
+        npc_manager.render_all(camera.camera.x, camera.camera.y)
+        
+        # Render NPC Projectiles (with camera offset)
+        projectile_manager.render_all(camera.camera.x, camera.camera.y)
         
         # Render Player (với camera offset)
         p_dst = SDL_Rect(int(player.entity.sprite.x - camera.camera.x), 
@@ -240,6 +257,7 @@ def run():
         sdl2.SDL_Delay(1000 // FPS)
 
     npc_manager.cleanup()
+    projectile_manager.cleanup()
     sdl2.ext.quit()
 
 if __name__ == "__main__":
