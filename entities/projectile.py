@@ -6,6 +6,7 @@ import os
 import ctypes
 import sdl2
 import sdl2.ext
+import math
 from enum import Enum
 from settings import (
     NPC_GHOST_DAMAGE,
@@ -13,8 +14,11 @@ from settings import (
 
     NPC_SHOOTER_DAMAGE,
     NPC_SHOOTER_PROJECTILE_SPEED,
-)
 
+    METEOR_GROUND_Y,
+    METEOR_SIZE_WIDTH,
+    METEOR_SIZE_HEIGHT,
+)
 
 class ProjectileType(Enum):
     """Enumeration for projectile types."""
@@ -962,12 +966,10 @@ class BossMeteorProjectile(Projectile):
         """
         super().__init__(x, y, velocity_x, velocity_y, damage, 1, owner, renderer)
         
-        from settings import METEOR_SIZE, METEOR_ROTATION_ANGLE
-        
-        self.width = METEOR_SIZE
-        self.height = METEOR_SIZE
+        self.width = METEOR_SIZE_WIDTH
+        self.height = METEOR_SIZE_HEIGHT
         self.ground_y = ground_y
-        self.rotation_angle = METEOR_ROTATION_ANGLE
+        self.rotation_angle = math.degrees(math.atan2(velocity_y, velocity_x)) - 180
         
         # Longer lifetime for meteors (they travel from top of screen)
         self.lifetime = 600  # 10 seconds (plenty of time to cross screen)
@@ -1509,7 +1511,6 @@ class ProjectileManager:
         Returns:
             BossMeteorProjectile: The spawned projectile
         """
-        from settings import METEOR_GROUND_Y
         
         projectile = BossMeteorProjectile(x, y, velocity_x, velocity_y, owner, self.renderer, damage, METEOR_GROUND_Y, self.boss_meteor_textures)
         self.projectiles.append(projectile)
