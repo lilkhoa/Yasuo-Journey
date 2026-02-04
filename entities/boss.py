@@ -270,8 +270,6 @@ class Boss:
                     'textures': textures,
                     'frames': len(textures)
                 }
-        
-        print(f"[Boss] Preloaded minion textures: {len(self.minion_textures_preloaded)} states")
     
     def _load_sprites(self):
         """Load all boss sprite sequences from assets folder."""
@@ -393,14 +391,13 @@ class Boss:
         # Check HP thresholds for meteor skill (priority)
         self._check_meteor_thresholds()
         
+        # Update movement if moving for skill (must be before skill update)
+        if self.is_moving_to_center or self.is_returning_from_center:
+            self._update_skill_movement()
+        
         # Update skill execution if active
         if self.current_skill is not None:
             self._update_skill()
-            return
-        
-        # Update movement if moving for skill
-        if self.is_moving_to_center or self.is_returning_from_center:
-            self._update_skill_movement()
             return
         
         # Update jumping physics
@@ -410,9 +407,8 @@ class Boss:
         # Update summoned minions
         self._update_minions()
         
-        # Random skill usage (if cooldown ready and not attacking)
         if self.skill_cooldown >= self.skill_cooldown_max and not self.is_attacking:
-            if random.random() < 0.01:  # 1% chance per frame to use skill
+            if random.random() < 0.2:  # 2% chance per frame (~1 skill every 3-4 seconds on average)
                 self._choose_random_skill()
                 return
         
@@ -511,7 +507,16 @@ class Boss:
             self.current_frame = (self.current_frame + 1) % sprite_data['frames']
     
     def _update_combat_ai(self):
-        """Update boss combat AI - attack player based on distance."""
+        """
+        Update boss combat AI - attack player based on distance.
+        
+        Boss behavior during normal combat:
+        - Stands still at current position (no horizontal movement)
+        - Can jump in place during ranged attacks
+        - Faces the player
+        - Uses melee attack if player is within melee range
+        - Uses ranged attack if player is beyond melee range
+        """
         if not self.player or self.attack_cooldown > 0:
             return
         
@@ -520,7 +525,7 @@ class Boss:
         boss_center_x = self.x + self.width / 2
         distance_to_player = abs(boss_center_x - player_center_x)
         
-        # Face player
+        # Face player (no horizontal movement, only direction change)
         if player_center_x > boss_center_x:
             self.direction = Direction.RIGHT
         else:
@@ -561,7 +566,6 @@ class Boss:
     def _deliver_melee_damage(self):
         """Spawn melee attack effect projectile."""
         if not self.projectile_manager:
-            print("[Boss] Cannot spawn melee effect - no projectile manager")
             return
         
         # Spawn melee effect at boss center position
@@ -574,12 +578,9 @@ class Boss:
             self.direction.value, self, self.melee_damage
         )
         
-        print(f"[Boss] Melee effect spawned at ({boss_center_x:.0f}, {boss_center_y:.0f})")
-    
     def _fire_ranged_projectile(self):
         """Fire ranged projectile toward player."""
         if not self.projectile_manager or not self.player:
-            print("[Boss] Cannot fire projectile - missing manager or player")
             return
         
         # Calculate projectile spawn position (center of boss)
@@ -607,11 +608,18 @@ class Boss:
             spawn_x, spawn_y, velocity_x, velocity_y, 
             self.direction.value, self, self.ranged_damage
         )
-        
-        print(f"[Boss] Flame projectile fired at ({velocity_x:.1f}, {velocity_y:.1f})")
     
     def _check_meteor_thresholds(self):
-        """Check HP thresholds and trigger meteor skill."""
+        """
+        Check HP thresholds and trigger meteor skill at specific HP percentages.
+        
+        Meteor skill is ONLY triggered at:
+        - 75% HP (first meteor)
+        - 50% HP (second meteor)
+        - 25% HP (third meteor)
+        
+        This skill is NOT part of random skill selection.
+        """
         hp_percent = (self.health / self.max_health) * 100
         
         if hp_percent <= 75 and not self.meteor_triggered_75:
@@ -625,7 +633,16 @@ class Boss:
             self._start_meteor_skill()
     
     def _choose_random_skill(self):
-        """Randomly choose and start a special skill."""
+        """
+        Randomly choose and start a special skill from the available skill pool.
+        
+        Random skill pool includes:
+        - Circular Shooting: Boss fires fireballs in circular patterns
+        - Kamehameha: Boss fires a stationary laser beam
+        - Summon Minions: Boss summons 2-5 minions based on HP
+        
+        Meteor skill is NOT included in random selection - it's HP threshold-based only.
+        """
         skills = [
             SkillType.CIRCULAR_SHOOTING,
             SkillType.KAMEHAMEHA,
@@ -736,7 +753,7 @@ class Boss:
                 self._kamehameha_fired = True
                 self._fire_kamehameha()
             
-            if self.skill_timer >= 100:  # Total duration: 2.5 seconds (charge + laser)
+            if self.skill_timer >= 100:
                 # Skill complete
                 self._kamehameha_fired = False  # Reset for next use
                 self._end_skill()
@@ -765,8 +782,6 @@ class Boss:
         self.projectile_manager.spawn_boss_kamehameha(
             spawn_x, spawn_y, direction, self, self.laser_damage
         )
-        
-        print(f"[BOSS] Kamehameha laser fired at ({spawn_x:.1f}, {spawn_y:.1f}), direction={direction}")
     
     def _update_summon_minions(self):
         """Update summon minions skill phases."""
@@ -893,7 +908,6 @@ class Boss:
         minion = BossMinion(x, y, self.sprite_factory, self.renderer, self.projectile_manager, self.minion_textures_preloaded)
         minion.set_player(self.player)
         self.minions.append(minion)
-        print(f"[Boss] Spawned minion at ({x:.0f}, {y:.0f}), player set: {self.player is not None}")
         return minion
     
     def take_damage(self, amount):
@@ -1015,7 +1029,6 @@ class Boss:
                     if texture:
                         sdl2.SDL_DestroyTexture(texture)
             self.minion_textures_preloaded = None
-            print("[Boss] Cleaned up preloaded minion textures")
         
         # Clean up boss textures
         for state, sprite_data in self.sprites.items():

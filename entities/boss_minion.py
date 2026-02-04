@@ -94,7 +94,6 @@ class BossMinion:
             return
         
         # Fallback: load from disk (will cause lag)
-        print("[BossMinion] Warning: Loading textures from disk, may cause lag")
         base_path = os.path.join("assets", "Boss", "Boss_NPCs")
         
         state_mapping = {

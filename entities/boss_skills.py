@@ -82,8 +82,6 @@ class CircularShootingSkill:
         self.boss.target_y = self.boss.ground_y
         self.boss.is_moving_to_center = True
         self.boss.state = BossState.WALKING
-        
-        print(f"[CircularShootingSkill] Started - Dashing to center from ({self.original_x:.0f}, {self.original_y:.0f})")
     
     def update(self):
         """
@@ -103,7 +101,6 @@ class CircularShootingSkill:
                 self.boss.state = BossState.CASTING
                 self.boss.current_frame = 0
                 self.boss.frame_counter = 0
-                print(f"[CircularShootingSkill] Phase 1: Charging at center ({self.boss.x:.0f}, {self.boss.y:.0f})")
         
         elif self.phase == SkillPhase.CHARGING:
             # Phase 1: Charging
@@ -121,7 +118,6 @@ class CircularShootingSkill:
                 self.phase = SkillPhase.EXECUTING
                 self.timer = self.shoot_duration
                 self._fire_volleys()
-                print(f"[CircularShootingSkill] Phase 2: Executing - Firing circular barrages")
         
         elif self.phase == SkillPhase.EXECUTING:
             # Phase 2: Shooting circular projectiles
@@ -145,14 +141,12 @@ class CircularShootingSkill:
                 self.boss.target_y = self.original_y
                 self.boss.is_returning_from_center = True
                 self.boss.state = BossState.WALKING
-                print(f"[CircularShootingSkill] Phase 3: Returning to original position ({self.original_x:.0f}, {self.original_y:.0f})")
         
         elif self.phase == SkillPhase.RETURNING:
             # Phase 3: Returning to original position (handled by boss._update_skill_movement)
             if not self.boss.is_returning_from_center:
                 # Returned, skill complete
                 self.phase = SkillPhase.COMPLETE
-                print(f"[CircularShootingSkill] Phase 4: Complete")
                 return True
         
         return False
@@ -192,9 +186,6 @@ class CircularShootingSkill:
                     direction,
                     self.boss
                 )
-        
-        print(f"[CircularShootingSkill] Fired {self.num_streams * self.projectiles_per_stream} projectiles in circular pattern")
-
 
 class MeteorSkill:
     """
@@ -235,8 +226,6 @@ class MeteorSkill:
         self.boss.frame_counter = 0
         self.boss.velocity_x = 0
         self.boss.velocity_y = 0
-        
-        print(f"[MeteorSkill] Started - Boss charging at position ({self.boss.x:.0f}, {self.boss.y:.0f})")
     
     def update(self):
         """
@@ -262,7 +251,6 @@ class MeteorSkill:
                 # Charge complete, start meteors
                 self.phase = 1
                 self.timer = 0
-                print(f"[MeteorSkill] Phase 1: Meteors falling")
         
         elif self.phase == 1:
             # Phase 1: Meteors falling
@@ -282,7 +270,6 @@ class MeteorSkill:
             if self.timer >= self.meteor_duration:
                 # Meteor skill complete
                 self.phase = 2
-                print(f"[MeteorSkill] Complete")
                 return True
         
         return False
@@ -307,8 +294,6 @@ class MeteorSkill:
             self.boss.meteor_damage,
             self.boss
         )
-        
-        print(f"[MeteorSkill] Spawned meteor at ({spawn_x:.0f}, {spawn_y:.0f}), vel=({velocity_x:.1f}, {velocity_y:.1f})")
 
 
 class SummonMinionsSkill:
@@ -354,8 +339,6 @@ class SummonMinionsSkill:
         self.boss.frame_counter = 0
         self.boss.velocity_x = 0
         self.boss.velocity_y = 0
-        
-        print(f"[SummonMinionsSkill] Started - Boss charging at position ({self.boss.x:.0f}, {self.boss.y:.0f})")
     
     def update(self):
         """
@@ -416,5 +399,3 @@ class SummonMinionsSkill:
             
             # Spawn minion directly via boss
             self.boss.spawn_minion(spawn_x, spawn_y)
-        
-        print(f"[SummonMinionsSkill] Spawned {num_minions} minions at boss HP {hp_percent:.1f}%")

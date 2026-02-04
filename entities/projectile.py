@@ -280,7 +280,6 @@ class GhostProjectile(Projectile):
                         'frames': frames
                     }
                     
-                    print(f"Loaded Ghost {filename}: {w.value}x{h.value} pixels, {frames} frames")
             except Exception as e:
                 print(f"Failed to load {filepath}: {e}")
         else:
@@ -356,8 +355,6 @@ class ShooterProjectile(Projectile):
                 'width': w.value,
                 'height': h.value
             }
-            
-            print(f"Loaded Shooter projectile: {len(self.frame_textures)} frames, {w.value}x{h.value} pixels")
         else:
             print("Error: No Shooter projectile frames loaded!")
     
@@ -471,7 +468,6 @@ class BossMeleeEffect(Projectile):
         # Load or use preloaded melee effect sprites
         self.frame_textures = []
         if preloaded_textures:
-            # Use preloaded textures (no disk I/O - prevents lag)
             self.frame_textures = preloaded_textures
             if self.frame_textures:
                 w = ctypes.c_int()
@@ -486,7 +482,6 @@ class BossMeleeEffect(Projectile):
                 # Fast animation speed for quick melee effect
                 self.animation_speed = 0.6
         else:
-            # Fallback: load from disk (will cause lag)
             self._load_frames()
     
     def _load_frames(self):
@@ -524,8 +519,6 @@ class BossMeleeEffect(Projectile):
                 'width': w.value,
                 'height': h.value
             }
-            
-            print(f"Loaded Boss melee effect: {len(self.frame_textures)} frames, {w.value}x{h.value} pixels")
         else:
             print("Error: No Boss melee effect frames loaded!")
         
@@ -738,8 +731,6 @@ class BossFlameProjectile(Projectile):
                 'width': w.value,
                 'height': h.value
             }
-            
-            print(f"Loaded Boss flame projectile: {len(self.frame_textures)} frames, {w.value}x{h.value} pixels")
         else:
             print("Error: No Boss flame projectile frames loaded!")
         
@@ -850,10 +841,7 @@ class BossCircularFlameProjectile(Projectile):
                 }
                 # Medium animation speed
                 self.animation_speed = 0.25
-                print(f"[BossCircularFlame] Created with {len(self.frame_textures)} preloaded textures, size {self.width}×{self.height}")
         else:
-            # Fallback: load from disk (will cause lag)
-            print("[BossCircularFlame] Warning: No preloaded textures, loading from disk")
             self._load_frames()
     
     def _load_frames(self):
@@ -880,8 +868,6 @@ class BossCircularFlameProjectile(Projectile):
             h = ctypes.c_int()
             sdl2.SDL_QueryTexture(self.frame_textures[0], None, None, 
                                  ctypes.byref(w), ctypes.byref(h))
-            
-            print(f"Loaded Boss circular flame projectile: {len(self.frame_textures)} frames, {w.value}x{h.value} pixels")
         else:
             print("Error: No Boss circular flame projectile frames loaded!")
         
@@ -1015,11 +1001,6 @@ class BossMeteorProjectile(Projectile):
                         self.frame_textures.append(texture)
                 except Exception as e:
                     print(f"Failed to load meteor frame {filepath}: {e}")
-        
-        if self.frame_textures:
-            print(f"Loaded Boss meteor: {len(self.frame_textures)} frames")
-        else:
-            print("Error: No Boss meteor frames loaded!")
         
         self.animation_speed = 0.2
     
@@ -1185,10 +1166,8 @@ class BossExplosionEffect(Projectile):
                     print(f"Failed to load explosion frame {filepath}: {e}")
         
         if self.frame_textures:
-            print(f"Loaded Boss explosion: {len(self.frame_textures)} frames")
             self.lifetime = len(self.frame_textures) * 5
         else:
-            print("Error: No Boss explosion frames loaded!")
             self.lifetime = 30
         
         self.animation_speed = 0.3
@@ -1366,11 +1345,6 @@ class MinionFireballProjectile(Projectile):
                 except Exception as e:
                     print(f"Failed to load minion fireball frame {filepath}: {e}")
         
-        if self.frame_textures:
-            print(f"Loaded Minion fireball: {len(self.frame_textures)} frames")
-        else:
-            print("Error: No Minion fireball frames loaded!")
-        
         self.animation_speed = 0.25
     
     def _update_animation(self):
@@ -1478,7 +1452,6 @@ class BossKamehamehaProjectile(Projectile):
                                  ctypes.byref(w), ctypes.byref(h))
             self.frame_width = w.value // self.frame_count
             self.frame_height = h.value
-            print(f"[Kamehameha] Using preloaded texture: {self.frame_count} frames, {self.frame_width}x{self.frame_height} each")
         else:
             # Fallback: load from disk
             self._load_sprite_sheet()
@@ -1502,7 +1475,6 @@ class BossKamehamehaProjectile(Projectile):
                                          ctypes.byref(w), ctypes.byref(h))
                     self.frame_width = w.value // self.frame_count
                     self.frame_height = h.value
-                    print(f"[Kamehameha] Loaded sprite sheet: {self.frame_count} frames, {self.frame_width}x{self.frame_height} each")
             except Exception as e:
                 print(f"Failed to load Kamehameha sprite sheet {filepath}: {e}")
         else:
@@ -1649,9 +1621,6 @@ class ProjectileManager:
                 except Exception as e:
                     print(f"Failed to preload flame texture {filepath}: {e}")
         
-        if self.boss_flame_textures:
-            print(f"[ProjectileManager] Preloaded {len(self.boss_flame_textures)} boss flame textures")
-        
         # Preload circular flame textures (same assets as normal flame, will be scaled to 32×32)
         self.boss_circular_flame_textures = self.boss_flame_textures  # Reuse same textures, different rendering size
         
@@ -1671,9 +1640,6 @@ class ProjectileManager:
                 except Exception as e:
                     print(f"Failed to preload melee texture {filepath}: {e}")
         
-        if self.boss_melee_textures:
-            print(f"[ProjectileManager] Preloaded {len(self.boss_melee_textures)} boss melee textures")
-        
         # Preload meteor textures
         self.boss_meteor_textures = []
         base_path = os.path.join("assets", "Projectile", "Boss", "Meteor")
@@ -1689,9 +1655,6 @@ class ProjectileManager:
                         self.boss_meteor_textures.append(texture)
                 except Exception as e:
                     print(f"Failed to preload meteor texture {filepath}: {e}")
-        
-        if self.boss_meteor_textures:
-            print(f"[ProjectileManager] Preloaded {len(self.boss_meteor_textures)} boss meteor textures")
         
         # Preload explosion textures
         self.boss_explosion_textures = []
@@ -1709,14 +1672,8 @@ class ProjectileManager:
                 except Exception as e:
                     print(f"Failed to preload explosion texture {filepath}: {e}")
         
-        if self.boss_explosion_textures:
-            print(f"[ProjectileManager] Preloaded {len(self.boss_explosion_textures)} boss explosion textures")
-        
         # Preload minion fireball textures (reuse boss flame assets)
         self.minion_fireball_textures = self.boss_flame_textures  # Reuse same textures, different rendering size
-        if self.minion_fireball_textures:
-            print(f"[ProjectileManager] Preloaded {len(self.minion_fireball_textures)} minion fireball textures (shared)")
-        
         # Preload kamehameha laser beam sprite sheet
         filepath = os.path.join("assets", "Projectile", "Boss", "Kamekameha", "3.png")
         if os.path.exists(filepath):
@@ -1724,8 +1681,6 @@ class ProjectileManager:
                 surface = sdl2.ext.load_image(filepath)
                 self.boss_kamehameha_texture = sdl2.SDL_CreateTextureFromSurface(self.renderer, surface)
                 sdl2.SDL_FreeSurface(surface)
-                if self.boss_kamehameha_texture:
-                    print(f"[ProjectileManager] Preloaded boss kamehameha sprite sheet")
             except Exception as e:
                 print(f"Failed to preload kamehameha sprite sheet {filepath}: {e}")
     
@@ -1745,7 +1700,6 @@ class ProjectileManager:
         """
         projectile = GhostProjectile(x, y, direction, owner, self.renderer, charge_type)
         self.projectiles.append(projectile)
-        print(f"[PROJECTILE] Ghost projectile spawned at ({x}, {y}), dir={direction}, type={charge_type}, total={len(self.projectiles)}")
         return projectile
     
     def spawn_shooter_projectile(self, x, y, direction, owner, attack_type=1):
@@ -1764,7 +1718,6 @@ class ProjectileManager:
         """
         projectile = ShooterProjectile(x, y, direction, owner, self.renderer, attack_type)
         self.projectiles.append(projectile)
-        print(f"[PROJECTILE] Shooter projectile spawned at ({x}, {y}), dir={direction}, type={attack_type}, total={len(self.projectiles)}")
         return projectile
     
     def spawn_boss_melee_effect(self, x, y, direction, owner, damage):
@@ -1783,7 +1736,6 @@ class ProjectileManager:
         """
         melee_effect = BossMeleeEffect(x, y, direction, owner, self.renderer, damage, self.boss_melee_textures)
         self.projectiles.append(melee_effect)
-        print(f"[PROJECTILE] Boss melee effect spawned at ({x}, {y}), dir={direction}, damage={damage}")
         return melee_effect
     
     def spawn_boss_flame_projectile(self, x, y, velocity_x, velocity_y, direction, owner, damage):
@@ -1804,7 +1756,6 @@ class ProjectileManager:
         """
         projectile = BossFlameProjectile(x, y, velocity_x, velocity_y, direction, owner, self.renderer, damage, self.boss_flame_textures)
         self.projectiles.append(projectile)
-        print(f"[PROJECTILE] Boss flame projectile spawned at ({x:.1f}, {y:.1f}), vel=({velocity_x:.1f}, {velocity_y:.1f}), damage={damage}")
         return projectile
     
     def spawn_boss_circular_flame(self, x, y, velocity_x, velocity_y, damage, direction, owner):
@@ -1882,7 +1833,6 @@ class ProjectileManager:
         """
         projectile = MinionFireballProjectile(x, y, velocity_x, velocity_y, direction, owner, self.renderer, damage, self.minion_fireball_textures)
         self.projectiles.append(projectile)
-        print(f"[PROJECTILE] Minion fireball spawned at ({x:.1f}, {y:.1f}), vel=({velocity_x:.1f}, {velocity_y:.1f}), damage={damage}")
         return projectile
     
     def spawn_boss_kamehameha(self, x, y, direction, owner, damage):
@@ -1901,7 +1851,6 @@ class ProjectileManager:
         """
         laser = BossKamehamehaProjectile(x, y, direction, owner, self.renderer, damage, self.boss_kamehameha_texture)
         self.projectiles.append(laser)
-        print(f"[PROJECTILE] Boss Kamehameha laser spawned at ({x:.1f}, {y:.1f}), direction={direction}, damage={damage}")
         return laser
     
     def update_all(self, delta_time=1):
@@ -1919,8 +1868,6 @@ class ProjectileManager:
             camera_x: Camera x offset (world to screen conversion)
             camera_y: Camera y offset (world to screen conversion)
         """
-        if len(self.projectiles) > 0:
-            print(f"[RENDER] Rendering {len(self.projectiles)} projectiles")
         for projectile in self.projectiles:
             projectile.render(camera_x, camera_y)
     
@@ -1967,7 +1914,6 @@ class ProjectileManager:
                 if texture:
                     sdl2.SDL_DestroyTexture(texture)
             self.boss_flame_textures = None
-            print("[ProjectileManager] Cleaned up boss flame textures")
         
         # Clean up preloaded boss melee textures
         if self.boss_melee_textures:
@@ -1975,7 +1921,6 @@ class ProjectileManager:
                 if texture:
                     sdl2.SDL_DestroyTexture(texture)
             self.boss_melee_textures = None
-            print("[ProjectileManager] Cleaned up boss melee textures")
         
         # Circular flame textures are shared with normal flame, no separate cleanup needed
         self.boss_circular_flame_textures = None
@@ -1986,7 +1931,6 @@ class ProjectileManager:
                 if texture:
                     sdl2.SDL_DestroyTexture(texture)
             self.boss_meteor_textures = None
-            print("[ProjectileManager] Cleaned up boss meteor textures")
         
         # Clean up preloaded boss explosion textures
         if self.boss_explosion_textures:
@@ -1994,7 +1938,6 @@ class ProjectileManager:
                 if texture:
                     sdl2.SDL_DestroyTexture(texture)
             self.boss_explosion_textures = None
-            print("[ProjectileManager] Cleaned up boss explosion textures")
         
         # Minion fireball textures are shared with boss flame, no separate cleanup needed
         self.minion_fireball_textures = None
@@ -2003,4 +1946,3 @@ class ProjectileManager:
         if self.boss_kamehameha_texture:
             sdl2.SDL_DestroyTexture(self.boss_kamehameha_texture)
             self.boss_kamehameha_texture = None
-            print("[ProjectileManager] Cleaned up boss kamehameha texture")

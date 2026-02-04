@@ -1,6 +1,9 @@
 ﻿"""
 Ghost NPC Chase Behavior Test
 Test Ghost NPC patrol, chase, and attack behaviors with player-controlled rectangle.
+
+Sound Requirements:
+- Place attack sound file at: assets/NPC/Ghost/attack.wav
 """
 import sys
 import os
@@ -76,7 +79,7 @@ class GhostTest:
     def __init__(self):
         """Initialize testing application."""
         # Initialize SDL2
-        if sdl2.SDL_Init(sdl2.SDL_INIT_VIDEO) != 0:
+        if sdl2.SDL_Init(sdl2.SDL_INIT_VIDEO | sdl2.SDL_INIT_AUDIO) != 0:
             print(f"SDL2 initialization failed: {sdl2.SDL_GetError()}")
             sys.exit(1)
         
@@ -87,6 +90,12 @@ class GhostTest:
                 print(f"SDL2_image initialization failed: {sdlimage.IMG_GetError()}")
         else:
             print("Warning: SDL2_image not available")
+        
+        # Initialize SDL2_mixer for audio
+        if sdl2.sdlmixer.Mix_OpenAudio(44100, sdl2.sdlmixer.MIX_DEFAULT_FORMAT, 2, 2048) != 0:
+            print(f"SDL2_mixer initialization failed: {sdl2.sdlmixer.Mix_GetError()}")
+        else:
+            print("SDL2_mixer initialized successfully")
         
         # Create window
         self.window = sdl2.SDL_CreateWindow(
@@ -344,6 +353,9 @@ class GhostTest:
         # Clean up SDL2
         sdl2.SDL_DestroyRenderer(self.renderer)
         sdl2.SDL_DestroyWindow(self.window)
+        
+        # Clean up SDL2_mixer
+        sdl2.sdlmixer.Mix_CloseAudio()
         
         if sdlimage:
             sdlimage.IMG_Quit()
