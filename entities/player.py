@@ -94,6 +94,42 @@ class Player:
     @property
     def sprite(self):
         return self.entity.sprite
+    
+    # NPC compatibility properties
+    @property
+    def x(self):
+        """Get player x position (compatible with NPC chase system)"""
+        return self.entity.sprite.x
+    
+    @x.setter
+    def x(self, value):
+        """Set player x position"""
+        self.entity.sprite.x = value
+    
+    @property
+    def y(self):
+        """Get player y position (compatible with NPC chase system)"""
+        return self.entity.sprite.y
+    
+    @y.setter
+    def y(self, value):
+        """Set player y position"""
+        self.entity.sprite.y = value
+    
+    @property
+    def width(self):
+        """Get player width (compatible with NPC chase system)"""
+        return self.entity.sprite.size[0]
+    
+    @property
+    def height(self):
+        """Get player height (compatible with NPC chase system)"""
+        return self.entity.sprite.size[1]
+    
+    def get_bounds(self):
+        """Get player bounding box (compatible with NPC chase system)"""
+        return sdl2.SDL_Rect(self.entity.sprite.x, self.entity.sprite.y,
+                             self.entity.sprite.size[0], self.entity.sprite.size[1])
 
     def jump(self):
         """Hàm kích hoạt nhảy"""

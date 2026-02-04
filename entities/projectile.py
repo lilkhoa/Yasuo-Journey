@@ -85,14 +85,14 @@ class Projectile:
         Update projectile position and animation.
         
         Args:
-            delta_time: Time elapsed since last update
+            delta_time: Time elapsed since last update (not used for movement - speeds are per-frame)
         """
         if not self.active:
             return
         
-        # Update position
-        self.x += self.velocity_x * delta_time
-        self.y += self.velocity_y * delta_time
+        # Update position (speeds are already in pixels-per-frame)
+        self.x += self.velocity_x
+        self.y += self.velocity_y
         
         # Update animation
         self._update_animation()
@@ -117,8 +117,13 @@ class Projectile:
             self.frame_counter = 0
             self.current_frame = (self.current_frame + 1) % self.sprite_data['frames']
     
-    def render(self):
-        """Render projectile sprite."""
+    def render(self, camera_x=0, camera_y=0):
+        """Render projectile sprite.
+        
+        Args:
+            camera_x: Camera x offset (world to screen conversion)
+            camera_y: Camera y offset (world to screen conversion)
+        """
         if not self.active or not self.texture:
             return
         
@@ -133,10 +138,10 @@ class Projectile:
             frame_height
         )
         
-        # Destination rectangle
+        # Destination rectangle (apply camera offset for screen-space rendering)
         dest_rect = sdl2.SDL_Rect(
-            int(self.x),
-            int(self.y),
+            int(self.x - camera_x),
+            int(self.y - camera_y),
             self.width,
             self.height
         )
@@ -361,18 +366,23 @@ class ShooterProjectile(Projectile):
             self.frame_counter = 0
             self.current_frame = (self.current_frame + 1) % len(self.frame_textures)
     
-    def render(self):
-        """Render Shooter projectile with individual frame textures."""
+    def render(self, camera_x=0, camera_y=0):
+        """Render Shooter projectile with individual frame textures.
+        
+        Args:
+            camera_x: Camera x offset (world to screen conversion)
+            camera_y: Camera y offset (world to screen conversion)
+        """
         if not self.active or not self.frame_textures:
             return
         
         # Get current frame texture
         texture = self.frame_textures[self.current_frame]
         
-        # Destination rectangle
+        # Destination rectangle (apply camera offset for screen-space rendering)
         dest_rect = sdl2.SDL_Rect(
-            int(self.x),
-            int(self.y),
+            int(self.x - camera_x),
+            int(self.y - camera_y),
             self.width,
             self.height
         )
@@ -431,6 +441,7 @@ class ProjectileManager:
         """
         projectile = GhostProjectile(x, y, direction, owner, self.renderer, charge_type)
         self.projectiles.append(projectile)
+        print(f"[PROJECTILE] Ghost projectile spawned at ({x}, {y}), dir={direction}, type={charge_type}, total={len(self.projectiles)}")
         return projectile
     
     def spawn_shooter_projectile(self, x, y, direction, owner, attack_type=1):
@@ -449,6 +460,7 @@ class ProjectileManager:
         """
         projectile = ShooterProjectile(x, y, direction, owner, self.renderer, attack_type)
         self.projectiles.append(projectile)
+        print(f"[PROJECTILE] Shooter projectile spawned at ({x}, {y}), dir={direction}, type={attack_type}, total={len(self.projectiles)}")
         return projectile
     
     def update_all(self, delta_time=1):
@@ -459,10 +471,17 @@ class ProjectileManager:
         # Remove inactive projectiles
         self.projectiles = [p for p in self.projectiles if p.active]
     
-    def render_all(self):
-        """Render all projectiles."""
+    def render_all(self, camera_x=0, camera_y=0):
+        """Render all projectiles.
+        
+        Args:
+            camera_x: Camera x offset (world to screen conversion)
+            camera_y: Camera y offset (world to screen conversion)
+        """
+        if len(self.projectiles) > 0:
+            print(f"[RENDER] Rendering {len(self.projectiles)} projectiles")
         for projectile in self.projectiles:
-            projectile.render()
+            projectile.render(camera_x, camera_y)
     
     def check_collisions(self, targets):
         """

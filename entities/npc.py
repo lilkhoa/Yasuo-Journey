@@ -349,6 +349,7 @@ class NPC:
         
         if not self.is_chasing and player_in_detection:
             # Player entered detection area - start chasing
+            print(f"[NPC] Player detected at {player_x:.0f}! Starting chase. NPC at {self.x:.0f}")
             self._start_chase()
         elif self.is_chasing:
             # Add hysteresis buffer to prevent jittery behavior at boundary
@@ -371,6 +372,7 @@ class NPC:
                             self.direction = Direction.RIGHT
                         else:
                             self.direction = Direction.LEFT
+                        print(f"[NPC] Player in attack range! Distance={distance_to_player:.0f}, attacking...")
                         self._attack_player()
                 else:
                     # Player out of attack range - continue chasing if not attacking
@@ -379,6 +381,7 @@ class NPC:
     
     def _start_chase(self):
         """Start chasing the player."""
+        print(f"[NPC] Chase started! State: {self.state.value} -> CHASE")
         self.is_chasing = True
         self.returning_to_spawn = False
         # Don't stop patrol mode - we'll resume after chase
@@ -730,6 +733,7 @@ class Ghost(NPC):
             charge_type: 1 for Charge_1, 2 for Charge_2
         """
         if not self.projectile_manager:
+            print(f"[GHOST] ERROR: No projectile manager!")
             return
         
         # Calculate projectile spawn position (in front of Ghost)
@@ -738,6 +742,8 @@ class Ghost(NPC):
         proj_y = self.y + 20
         
         direction = 1 if self.direction == Direction.RIGHT else -1
+        
+        print(f"[GHOST] Firing projectile! Pos=({proj_x:.0f}, {proj_y:.0f}), dir={direction}, charge={charge_type}")
         
         # Spawn the projectile through the manager
         self.projectile_manager.spawn_ghost_projectile(
@@ -753,6 +759,8 @@ class Ghost(NPC):
         """
         if self.attack_cooldown > 0 or self.is_attacking:
             return
+        
+        print(f"[GHOST] Starting attack! Type={attack_type}, frame={self.current_frame}")
         
         attack_states = {
             3: NPCState.ATTACK_3,
