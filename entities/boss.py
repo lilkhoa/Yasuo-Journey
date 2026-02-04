@@ -501,22 +501,27 @@ class Boss:
             self._start_jump()
     
     def _deliver_melee_damage(self):
-        """Deliver melee damage to player if in range."""
-        if not self.player:
+        """Spawn melee attack effect projectile."""
+        if not self.projectile_manager:
+            print("[Boss] Cannot spawn melee effect - no projectile manager")
             return
         
-        player_center_x = self.player.x + self.player.width / 2
+        # Spawn melee effect at boss center position
         boss_center_x = self.x + self.width / 2
-        distance = abs(boss_center_x - player_center_x)
+        boss_center_y = self.y + self.height / 2
         
-        if distance <= self.melee_range:
-            # Player is in range, deal damage
-            if hasattr(self.player, 'take_damage'):
-                self.player.take_damage(self.melee_damage)
+        # Spawn melee effect projectile
+        self.projectile_manager.spawn_boss_melee_effect(
+            boss_center_x, boss_center_y, 
+            self.direction.value, self, self.melee_damage
+        )
+        
+        print(f"[Boss] Melee effect spawned at ({boss_center_x:.0f}, {boss_center_y:.0f})")
     
     def _fire_ranged_projectile(self):
         """Fire ranged projectile toward player."""
         if not self.projectile_manager or not self.player:
+            print("[Boss] Cannot fire projectile - missing manager or player")
             return
         
         # Calculate projectile spawn position (center of boss)
@@ -539,11 +544,13 @@ class Boss:
             velocity_x = self.projectile_speed if self.direction == Direction.RIGHT else -self.projectile_speed
             velocity_y = 0
         
-        # Spawn projectile (will be implemented with projectile system)
-        # self.projectile_manager.spawn_boss_projectile(
-        #     spawn_x, spawn_y, velocity_x, velocity_y, 
-        #     self.ranged_damage, self.direction.value
-        # )
+        # Spawn flame projectile
+        self.projectile_manager.spawn_boss_flame_projectile(
+            spawn_x, spawn_y, velocity_x, velocity_y, 
+            self.direction.value, self, self.ranged_damage
+        )
+        
+        print(f"[Boss] Flame projectile fired at ({velocity_x:.1f}, {velocity_y:.1f})")
     
     def _check_meteor_thresholds(self):
         """Check HP thresholds and trigger meteor skill."""

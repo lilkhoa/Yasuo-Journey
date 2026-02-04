@@ -136,7 +136,7 @@ class BossTest:
         self.player = Player(640, 500)
         
         # Spawn Boss
-        boss_x = 1000
+        boss_x = 500
         boss_y = 300
         self.boss = Boss(boss_x, boss_y, self.sprite_factory, None, self.renderer, self.projectile_manager)
         self.boss.set_player(self.player)
@@ -346,7 +346,8 @@ class BossTest:
         for projectile in self.projectile_manager.projectiles[:]:
             if projectile.check_collision(self.player):
                 self.player.take_damage(projectile.damage)
-                self.projectile_manager.projectiles.remove(projectile)
+                projectile.on_hit()
+                print(f"[Test] Player hit by projectile! Type: {type(projectile).__name__}")
     
     def render(self):
         """Render everything."""
@@ -409,12 +410,12 @@ class BossTest:
             sdl2.SDL_RenderDrawLine(self.renderer, x1, y1, x2, y2)
     
     def _draw_ranges(self):
-        """Draw attack ranges."""
+        """Draw attack ranges and hitboxes."""
         boss_center_x = int(self.boss.x + self.boss.width // 2)
         boss_center_y = int(self.boss.y + self.boss.height // 2)
         
-        # Melee range (red circle)
-        sdl2.SDL_SetRenderDrawColor(self.renderer, 255, 0, 0, 100)
+        # Melee range (red circle - just for reference)
+        sdl2.SDL_SetRenderDrawColor(self.renderer, 255, 0, 0, 50)
         for angle in range(0, 360, 5):
             x1 = boss_center_x + int(self.boss.melee_range * math.cos(math.radians(angle)))
             y1 = boss_center_y + int(self.boss.melee_range * math.sin(math.radians(angle)))
