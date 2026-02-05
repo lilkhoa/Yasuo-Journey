@@ -13,6 +13,7 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")
 
 from entities.npc import Onre, NPCState
 from entities.projectile import ProjectileManager
+from core.sound import get_sound_manager
 
 
 # Window constants
@@ -72,7 +73,7 @@ class OnreTest:
     def __init__(self):
         """Initialize testing application."""
         # Initialize SDL2
-        if sdl2.SDL_Init(sdl2.SDL_INIT_VIDEO) != 0:
+        if sdl2.SDL_Init(sdl2.SDL_INIT_VIDEO | sdl2.SDL_INIT_AUDIO) != 0:
             print(f"SDL2 initialization failed: {sdl2.SDL_GetError()}")
             sys.exit(1)
         
@@ -84,11 +85,11 @@ class OnreTest:
         else:
             print("Warning: SDL2_image not available")
         
-
-        if sdl2.sdlmixer.Mix_OpenAudio(44100, sdl2.sdlmixer.MIX_DEFAULT_FORMAT, 2, 2048) != 0:
-            print(f"SDL2_mixer initialization failed: {sdl2.sdlmixer.Mix_GetError()}")
-        else:
-            print("SDL2_mixer initialized successfully")
+        # Initialize centralized SoundManager
+        self.sound_manager = get_sound_manager()
+        self.sound_manager.initialize()
+        self.sound_manager.load_npc_sounds()
+        print("SoundManager initialized successfully")
 
         # Create window
         self.window = sdl2.SDL_CreateWindow(
@@ -128,7 +129,7 @@ class OnreTest:
         self.player = Player(40, 300)
         
         # Spawn Onre NPC with patrol and chase behavior
-        self.onre = Onre(600, 300, self.sprite_factory, None, self.renderer)
+        self.onre = Onre(600, 300, self.sprite_factory, None, self.renderer, self.sound_manager)
         # Patrol bounds are automatically calculated from spawn position and patrol_radius in NPC class
         self.onre.set_player(self.player)  # Enable chase behavior
         self.onre.start_patrol()
@@ -384,6 +385,9 @@ class OnreTest:
         # Clean up SDL2
         sdl2.SDL_DestroyRenderer(self.renderer)
         sdl2.SDL_DestroyWindow(self.window)
+        
+        # Clean up SoundManager
+        self.sound_manager.cleanup()
         
         if sdlimage:
             sdlimage.IMG_Quit()

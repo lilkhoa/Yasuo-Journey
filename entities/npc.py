@@ -607,14 +607,7 @@ class NPC:
 
 
 class Ghost(NPC):
-    def cleanup(self):
-        """Clean up Ghost resources including sound."""
-        if hasattr(self, 'attack_sound') and self.attack_sound:
-            sdl2.sdlmixer.Mix_FreeChunk(self.attack_sound)
-            self.attack_sound = None
-        super().cleanup()
-    
-    def __init__(self, x, y, sprite_factory, texture_factory, renderer, projectile_manager=None):
+    def __init__(self, x, y, sprite_factory, texture_factory, renderer, projectile_manager=None, sound_manager=None):
         """
         Initialize Ghost NPC.
         
@@ -639,25 +632,9 @@ class Ghost(NPC):
         
         self.projectile_manager = projectile_manager
         self.projectile_fired_this_attack = False
-        
-        # Load attack sound
+        self.sound_manager = sound_manager
         self.attack_sound = None
         self._load_attack_sound()
-    
-    def _load_attack_sound(self):
-        """Load Ghost attack sound effect."""
-        sound_path = os.path.join("assets", "NPC", "Ghost", "attack_sound.mp3")
-        if os.path.exists(sound_path):
-            try:
-                self.attack_sound = sdl2.sdlmixer.Mix_LoadWAV(sound_path.encode('utf-8'))
-                if self.attack_sound:
-                    print(f"[Ghost] Loaded attack sound from {sound_path}")
-                else:
-                    print(f"[Ghost] Failed to load attack sound: {sdl2.sdlmixer.Mix_GetError()}")
-            except Exception as e:
-                print(f"[Ghost] Error loading attack sound: {e}")
-        else:
-            print(f"[Ghost] Attack sound not found at {sound_path}")
     
     def _get_npc_folder_name(self):
         """Get the folder name for Ghost sprites."""
@@ -729,6 +706,12 @@ class Ghost(NPC):
     def _get_non_interruptible_states(self):
         """Get list of states that cannot be interrupted for Ghost."""
         return [NPCState.ATTACK_3, NPCState.ATTACK_4, NPCState.HURT, NPCState.DEAD]
+    
+    def _load_attack_sound(self):
+        """Load Ghost attack sound effect."""
+        sound_path = os.path.join("assets", "NPC", "Ghost", "attack_sound.mp3")
+        self.sound_manager.load_sound("ghost_attack", sound_path)
+        self.attack_sound = self.sound_manager.get_sound("ghost_attack")
     
     def update(self, delta_time=1):
         """
@@ -807,14 +790,7 @@ class Ghost(NPC):
 
 
 class Shooter(NPC):
-    def cleanup(self):
-        """Clean up Shooter resources including sound."""
-        if hasattr(self, 'attack_sound') and self.attack_sound:
-            sdl2.sdlmixer.Mix_FreeChunk(self.attack_sound)
-            self.attack_sound = None
-        super().cleanup()
-    
-    def __init__(self, x, y, sprite_factory, texture_factory, renderer, projectile_manager=None):
+    def __init__(self, x, y, sprite_factory, texture_factory, renderer, projectile_manager=None, sound_manager=None):
         """
         Initialize Shooter NPC.
         
@@ -844,23 +820,15 @@ class Shooter(NPC):
         self.projectile_fired_this_attack = False
         
         # Load attack sound
+        self.sound_manager = sound_manager
         self.attack_sound = None
         self._load_attack_sound()
     
     def _load_attack_sound(self):
         """Load Shooter attack sound effect."""
         sound_path = os.path.join("assets", "NPC", "Shooter", "attack_sound.mp3")
-        if os.path.exists(sound_path):
-            try:
-                self.attack_sound = sdl2.sdlmixer.Mix_LoadWAV(sound_path.encode('utf-8'))
-                if self.attack_sound:
-                    print(f"[Shooter] Loaded attack sound from {sound_path}")
-                else:
-                    print(f"[Shooter] Failed to load attack sound: {sdl2.sdlmixer.Mix_GetError()}")
-            except Exception as e:
-                print(f"[Shooter] Error loading attack sound: {e}")
-        else:
-            print(f"[Shooter] Attack sound not found at {sound_path}")
+        self.sound_manager.load_sound("shooter_attack", sound_path)
+        self.attack_sound = self.sound_manager.get_sound("shooter_attack")
     
     def _get_npc_folder_name(self):
         """Get the folder name for Shooter sprites."""
@@ -1005,16 +973,7 @@ class Shooter(NPC):
 
 
 class Onre(NPC):
-    def cleanup(self):
-        """Clean up Onre resources including sounds."""
-        if hasattr(self, 'attack_sounds'):
-            for sound in self.attack_sounds:
-                if sound:
-                    sdl2.sdlmixer.Mix_FreeChunk(sound)
-            self.attack_sounds = [None, None, None]
-        super().cleanup()
-    
-    def __init__(self, x, y, sprite_factory, texture_factory, renderer):
+    def __init__(self, x, y, sprite_factory, texture_factory, renderer, sound_manager=None):
         """
         Initialize Onre NPC.
         
@@ -1050,11 +1009,11 @@ class Onre(NPC):
             NPCState.ATTACK_3: [1, 2, 3]
         }
         
-        # Load attack sounds (3 sounds for 3 attack types)
+        self.sound_manager = sound_manager
         self.attack_sounds = [None, None, None]
         self._load_attack_sounds()
     
-    def _load_attack_sounds(self):
+    def _get_npc_folder_name(self):
         """Load Onre's three attack sound effects."""
         base_path = os.path.join("assets", "NPC", "Onre")
         
@@ -1143,6 +1102,12 @@ class Onre(NPC):
         """Get list of states that cannot be interrupted for Onre."""
         return [NPCState.ATTACK_1, NPCState.ATTACK_2, NPCState.ATTACK_3, 
                 NPCState.HURT, NPCState.DEAD]
+    
+    def _load_attack_sounds(self):
+        for i in range(3):
+            sound_path = os.path.join("assets", "NPC", "Onre", f"attack_sound_{i+1}.mp3")
+            self.sound_manager.load_sound(f"onre_attack{i+1}", sound_path)
+            self.attack_sounds[i] = self.sound_manager.get_sound(f"onre_attack{i+1}")
     
     def update(self, delta_time=1):
         """Update Onre NPC with melee hitbox collision detection."""
@@ -1237,16 +1202,16 @@ class Onre(NPC):
         self.velocity_x = 0
         self.has_dealt_damage = False  # Reset damage flag for new attack
         
-        # Play attack sound corresponding to current attack cycle
-        sound_index = self.current_attack_cycle - 1  # Convert 1-3 to 0-2 index
-        if 0 <= sound_index < len(self.attack_sounds) and self.attack_sounds[sound_index]:
-            sdl2.sdlmixer.Mix_PlayChannel(-1, self.attack_sounds[sound_index], 0)
+        # Play attack sound corresponding to current attack cycle through sound manager
+        if self.sound_manager:
+            sound_id = f"onre_attack{self.current_attack_cycle}"
+            self.sound_manager.play_sound(sound_id)
         
         self.current_attack_cycle = (self.current_attack_cycle % 3) + 1
 
 
 class NPCManager:
-    def __init__(self, sprite_factory, texture_factory, renderer, projectile_manager=None):
+    def __init__(self, sprite_factory, texture_factory, renderer, projectile_manager=None, sound_manager=None):
         """
         Initialize NPC Manager.
         
@@ -1255,12 +1220,14 @@ class NPCManager:
             texture_factory: PySDL2 texture factory
             renderer: PySDL2 renderer
             projectile_manager: ProjectileManager instance for NPC projectiles (optional)
+            sound_manager: SoundManager instance for audio (optional)
         """
         self.npcs = []
         self.sprite_factory = sprite_factory
         self.texture_factory = texture_factory
         self.renderer = renderer
         self.projectile_manager = projectile_manager
+        self.sound_manager = sound_manager
     
     def spawn_ghost(self, x, y):
         """
@@ -1273,8 +1240,8 @@ class NPCManager:
         Returns:
             Ghost: The spawned Ghost instance
         """
-        ghost = Ghost(x, y, self.sprite_factory, self.texture_factory, 
-                     self.renderer, self.projectile_manager)
+        ghost = Ghost(x, y, self.sprite_factory, self.texture_factory,
+                     self.renderer, self.projectile_manager, self.sound_manager)
         ghost.start_patrol()  # Auto-start patrol with spawn position as center
         self.npcs.append(ghost)
         return ghost
@@ -1290,8 +1257,8 @@ class NPCManager:
         Returns:
             Shooter: The spawned Shooter instance
         """
-        shooter = Shooter(x, y, self.sprite_factory, self.texture_factory, 
-                         self.renderer, self.projectile_manager)
+        shooter = Shooter(x, y, self.sprite_factory, self.texture_factory,
+                         self.renderer, self.projectile_manager, self.sound_manager)
         shooter.start_patrol()  # Auto-start patrol with spawn position as center
         self.npcs.append(shooter)
         return shooter
@@ -1307,7 +1274,7 @@ class NPCManager:
         Returns:
             Onre: The spawned Onre instance
         """
-        onre = Onre(x, y, self.sprite_factory, self.texture_factory, self.renderer)
+        onre = Onre(x, y, self.sprite_factory, self.texture_factory, self.renderer, self.sound_manager)
         onre.start_patrol()  # Auto-start patrol with spawn position as center
         self.npcs.append(onre)
         return onre
