@@ -20,6 +20,7 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")
 
 from entities.npc import Ghost, NPCState
 from entities.projectile import ProjectileManager
+from core.sound import get_sound_manager
 
 
 # Window constants
@@ -91,11 +92,10 @@ class GhostTest:
         else:
             print("Warning: SDL2_image not available")
         
-        # Initialize SDL2_mixer for audio
-        if sdl2.sdlmixer.Mix_OpenAudio(44100, sdl2.sdlmixer.MIX_DEFAULT_FORMAT, 2, 2048) != 0:
-            print(f"SDL2_mixer initialization failed: {sdl2.sdlmixer.Mix_GetError()}")
-        else:
-            print("SDL2_mixer initialized successfully")
+        # Initialize centralized SoundManager
+        self.sound_manager = get_sound_manager()
+        self.sound_manager.initialize()
+        print("SoundManager initialized successfully")
         
         # Create window
         self.window = sdl2.SDL_CreateWindow(
@@ -135,7 +135,7 @@ class GhostTest:
         self.player = Player(640, 300)
         
         # Spawn Ghost NPC with patrol and chase behavior
-        self.ghost = Ghost(600, 300, self.sprite_factory, None, self.renderer, self.projectile_manager)
+        self.ghost = Ghost(600, 300, self.sprite_factory, None, self.renderer, self.projectile_manager, self.sound_manager)
         # Patrol bounds are automatically calculated from spawn position and patrol_radius in NPC class
         self.ghost.set_player(self.player)  # Enable chase behavior
         self.ghost.start_patrol()
@@ -354,8 +354,8 @@ class GhostTest:
         sdl2.SDL_DestroyRenderer(self.renderer)
         sdl2.SDL_DestroyWindow(self.window)
         
-        # Clean up SDL2_mixer
-        sdl2.sdlmixer.Mix_CloseAudio()
+        # Clean up SoundManager
+        self.sound_manager.cleanup()
         
         if sdlimage:
             sdlimage.IMG_Quit()

@@ -16,8 +16,8 @@ except ImportError:
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 from entities.boss import Boss, BossState, SkillType
-from entities.projectile import ProjectileManager
-from settings import METEOR_GROUND_Y
+from entities.projectile import ProjectileManager, BossMeteorProjectile
+from core.sound import get_sound_manager
 
 
 # Window constants
@@ -133,13 +133,17 @@ class BossTest:
         # Initialize projectile manager
         self.projectile_manager = ProjectileManager(self.renderer)
         
+        # Initialize sound manager
+        self.sound_manager = get_sound_manager()
+        self.sound_manager.initialize()
+        self.sound_manager.load_boss_sounds()
         # Create player
         self.player = Player(640, 500)
         
         # Spawn Boss
         boss_x = 1000
         boss_y = 300
-        self.boss = Boss(boss_x, boss_y, self.sprite_factory, None, self.renderer, self.projectile_manager)
+        self.boss = Boss(boss_x, boss_y, self.sprite_factory, None, self.renderer, self.projectile_manager, self.sound_manager)
         self.boss.set_player(self.player)
         
         # Test control flags
@@ -256,7 +260,7 @@ class BossTest:
                 
                 # Combat testing
                 elif key == sdl2.SDLK_t:
-                    self.boss.take_damage(100)
+                    self.boss.take_damage(10)
                     print(f"[Test] Damaged boss -100 HP")
                 elif key == sdl2.SDLK_y:
                     target_hp = int(self.boss.max_health * 0.75)
@@ -348,7 +352,8 @@ class BossTest:
             if projectile.check_collision(self.player):
                 self.player.take_damage(projectile.damage)
                 projectile.on_hit()
-                print(f"[Test] Player hit by projectile! Type: {type(projectile).__name__}")
+                if isinstance(projectile, BossMeteorProjectile):
+                    projectile.explose()
     
     def render(self):
         """Render everything."""

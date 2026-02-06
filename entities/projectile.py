@@ -1020,7 +1020,8 @@ class BossMeteorProjectile(Projectile):
         if self.y + self.height >= self.ground_y:
             # Hit ground, spawn explosion
             if not self.explosion_spawned:
-                self._spawn_explosion()
+                self._spawn_explosion(explosion_x=self.x + self.width / 2,
+                                      explosion_y=self.ground_y - 64)
                 self.explosion_spawned = True
             # Deactivate meteor
             self.active = False
@@ -1030,18 +1031,22 @@ class BossMeteorProjectile(Projectile):
         if self.lifetime <= 0:
             self.active = False
     
-    def _spawn_explosion(self):
+    def _spawn_explosion(self, explosion_x=None, explosion_y=None):
         """Spawn explosion effect at impact point."""
         # Get projectile manager from owner
         if hasattr(self.owner, 'projectile_manager') and self.owner.projectile_manager:
-            explosion_x = self.x + self.width / 2
-            explosion_y = self.ground_y - 64  # Center explosion on ground
-            
             self.owner.projectile_manager.spawn_boss_explosion(
                 explosion_x, explosion_y,
                 self.damage,
                 self.owner
             )
+    
+    def explose(self):
+        if not self.explosion_spawned:
+            self._spawn_explosion(explosion_x=self.x + self.width / 2,
+                                  explosion_y=self.y + self.height / 2)
+            self.explosion_spawned = True
+        self.active = False
     
     def _update_animation(self):
         """Update animation frame."""
@@ -1811,6 +1816,10 @@ class ProjectileManager:
         Returns:
             BossExplosionEffect: The spawned explosion
         """
+        # Play explosion sound
+        if hasattr(owner, 'sound_manager') and owner.sound_manager:
+            owner.sound_manager.play_sound("boss_explosion")
+        
         explosion = BossExplosionEffect(x, y, owner, self.renderer, damage, self.boss_explosion_textures)
         self.projectiles.append(explosion)
         return explosion
