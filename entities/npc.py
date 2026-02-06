@@ -28,7 +28,11 @@ from settings import (
     NPC_ONRE_SPEED,
     NPC_ONRE_DETECTION_RANGE,
     NPC_ONRE_PATROL_RADIUS,
-    NPC_ONRE_ATTACK_COOLDOWN
+    NPC_ONRE_PATROL_RADIUS,
+    NPC_ONRE_ATTACK_COOLDOWN,
+    GRAVITY,
+    MAX_FALL_SPEED,
+    GROUND_Y
 )
 
 
@@ -123,6 +127,8 @@ class NPC:
         self.direction = Direction.RIGHT
         self.velocity_x = self.speed
         self.velocity_y = 0
+        self.is_flying = False
+        self.ground_y = GROUND_Y
         
         # State and animation
         self.state = NPCState.WALK
@@ -245,6 +251,25 @@ class NPC:
         # Update movement for movement states
         if self.state in [NPCState.WALK, NPCState.RUN, NPCState.IDLE, NPCState.CHASE]:
             self._update_movement()
+            
+        # --- GRAVITY & PHYSICS ---
+        if not self.is_flying:
+            self.velocity_y += GRAVITY
+            if self.velocity_y > MAX_FALL_SPEED:
+                self.velocity_y = MAX_FALL_SPEED
+                
+            self.y += self.velocity_y
+            
+            # Ground check
+            if self.y >= self.ground_y:
+                self.y = self.ground_y
+                self.velocity_y = 0
+                
+    def apply_knockup(self, force=-10):
+        """Apply vertical knockup force."""
+        if not self.is_flying:
+            self.velocity_y = force
+            self.y += force # Apply immediately to lift off ground
     
     def _update_animation(self):
         """Update animation frame based on current state."""
@@ -709,6 +734,8 @@ class Ghost(NPC):
     
     def _load_attack_sound(self):
         """Load Ghost attack sound effect."""
+        if not self.sound_manager:
+            return
         sound_path = os.path.join("assets", "NPC", "Ghost", "attack_sound.mp3")
         self.sound_manager.load_sound("ghost_attack", sound_path)
         self.attack_sound = self.sound_manager.get_sound("ghost_attack")
@@ -826,6 +853,8 @@ class Shooter(NPC):
     
     def _load_attack_sound(self):
         """Load Shooter attack sound effect."""
+        if not self.sound_manager:
+            return
         sound_path = os.path.join("assets", "NPC", "Shooter", "attack_sound.mp3")
         self.sound_manager.load_sound("shooter_attack", sound_path)
         self.attack_sound = self.sound_manager.get_sound("shooter_attack")
@@ -1104,6 +1133,8 @@ class Onre(NPC):
                 NPCState.HURT, NPCState.DEAD]
     
     def _load_attack_sounds(self):
+        if not self.sound_manager:
+            return
         for i in range(3):
             sound_path = os.path.join("assets", "NPC", "Onre", f"attack_sound_{i+1}.mp3")
             self.sound_manager.load_sound(f"onre_attack{i+1}", sound_path)

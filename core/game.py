@@ -7,7 +7,7 @@ from settings import *
 from world.map import GameMap
 from world.decoration import Decoration
 from sdl2 import SDL_Rect, SDL_RenderCopy
-from camera import Camera
+from core.camera import Camera
 
 # --- THÊM IMPORTS CHO PLAYER VÀ NPC ---
 from entities.player import Player
@@ -16,6 +16,7 @@ from entities.projectile import ProjectileManager
 from core.event import handle_input
 from combat.skill_q import update_q_logic
 from combat.skill_w import update_w_logic
+from ui.hud import SkillBarHUD
 
 # Long test map to test camera scroll: TERRAIN
 TEST_LEVEL = [
@@ -136,19 +137,32 @@ def run():
     projectile_manager = ProjectileManager(renderer.sdlrenderer)
     npc_manager = NPCManager(software_factory, None, renderer.sdlrenderer, projectile_manager)
     
+    # Initialize HUD
+    hud = SkillBarHUD(renderer.sdlrenderer, player)
+    
     # Spawn NPC closer to player for testing (within detection range)
-    g1 = npc_manager.spawn_ghost(350, 350)  # 250 pixels from player (within 300 detection range)
+    # GROUND_Y = 480, player sprite 128px, NPC sprite ~72-96px
+    # Player spawn ở y=350 (vì sprite 128px sẽ chạm đất ở 350+128=478)
+    # NPC spawn thấp hơn để chạm đất cùng level
+    npc_ground_y = 500  # Điều chỉnh để NPC đứng cùng mặt đất với player
+    
+    g1 = npc_manager.spawn_ghost(350, npc_ground_y)  # 250 pixels from player
     g1.set_player(player)
     make_npc_compatible(g1)
-    s1 = npc_manager.spawn_shooter(700, 350)  # 600 pixels from player
+    s1 = npc_manager.spawn_shooter(550, npc_ground_y)  # Gần hơn để test
     s1.set_player(player)
     make_npc_compatible(s1)
-    o1 = npc_manager.spawn_onre(1000, 350)  # Far away for later
+    o1 = npc_manager.spawn_onre(750, npc_ground_y)  # Gần hơn để test melee
     o1.set_player(player)
     make_npc_compatible(o1)
     
     active_tornadoes = []
     active_walls = []
+
+    # --- GAME STATS ---
+    kill_count = 0
+    game_over = False
+    game_over_timer = 0  # Đếm thời gian trước khi respawn
 
     # 4.  game loop
     running = True
@@ -211,11 +225,98 @@ def run():
         npc_manager.update_all(dt)
         projectile_manager.update_all(dt)
         
-        # Check NPC projectile collisions with player
-        for projectile in projectile_manager.projectiles[:]:
-            if projectile.check_collision(player):
-                player.take_damage(projectile.damage)
-                projectile.on_hit()
+        # ============== COMBAT COLLISION SYSTEM ==============
+        # Chỉ xử lý khi chưa game over
+        if not game_over:
+            # --- 1. NPC PROJECTILE -> PLAYER ---
+            for projectile in projectile_manager.projectiles[:]:
+                if projectile.check_collision(player):
+                    player.take_damage(projectile.damage)
+                    projectile.on_hit()
+                    print(f"[COMBAT] Player hit by projectile! HP: {int(player.hp)}/{player.max_hp}")
+            
+            # --- 2. NPC MELEE ATTACK -> PLAYER ---
+            for npc in alive_npcs:
+                # Check if NPC is in attacking state and can hit player
+                if hasattr(npc, 'is_attacking') and npc.is_attacking:
+                    # Get NPC attack hitbox (offset based on direction)
+                    npc_x, npc_y, npc_w, npc_h = npc.get_bounds()
+                    attack_range = getattr(npc, 'attack_range', 50)
+                    
+                    # Attack hitbox phía trước NPC
+                    if npc.direction == 1:  # Facing right
+                        attack_hitbox = (npc_x + npc_w, npc_y, attack_range, npc_h)
+                    else:  # Facing left (-1)
+                        attack_hitbox = (npc_x - attack_range, npc_y, attack_range, npc_h)
+                    
+                    # Player bounds
+                    px, py, pw, ph = player.x, player.y, player.width, player.height
+                    
+                    # AABB collision với attack hitbox
+                    ax, ay, aw, ah = attack_hitbox
+                    if (ax < px + pw and ax + aw > px and ay < py + ph and ay + ah > py):
+                        # Check if this attack hasn't hit player yet (prevent multi-hit)
+                        if not getattr(npc, '_attack_hit_player', False):
+                            npc._attack_hit_player = True
+                            player.take_damage(npc.damage)
+                            print(f"[COMBAT] Player melee'd by NPC! HP: {int(player.hp)}/{player.max_hp}")
+                else:
+                    # Reset hit flag when not attacking
+                    npc._attack_hit_player = False
+            
+            # --- 3. PLAYER ATTACK -> NPC ---
+            if player.state == 'attacking':
+                # Player attack hitbox (phía trước player)
+                px, py, pw, ph = player.x, player.y, player.width, player.height
+                player_attack_range = 60  # Tầm đánh thường
+                
+                if player.facing_right:
+                    attack_hitbox = (px + pw - 20, py + 20, player_attack_range, ph - 40)
+                else:
+                    attack_hitbox = (px - player_attack_range + 20, py + 20, player_attack_range, ph - 40)
+                
+                for npc in alive_npcs:
+                    if not getattr(player, '_attack_hit_npc_' + str(id(npc)), False):
+                        nx, ny, nw, nh = npc.get_bounds()
+                        ax, ay, aw, ah = attack_hitbox
+                        
+                        if (ax < nx + nw and ax + aw > nx and ay < ny + nh and ay + ah > ny):
+                            # Hit NPC!
+                            setattr(player, '_attack_hit_npc_' + str(id(npc)), True)
+                            npc.take_damage(PLAYER_ATTACK_DAMAGE)
+                            player.on_hit_enemy(PLAYER_ATTACK_DAMAGE)
+                            print(f"[COMBAT] Player hit NPC! NPC HP: {npc.health}")
+                            
+                            # Check if NPC died
+                            if not npc.is_alive():
+                                kill_count += 1
+                                player.on_kill_enemy()
+                                print(f"[COMBAT] NPC killed! Total kills: {kill_count}")
+            else:
+                # Reset attack hit flags khi hết attacking
+                for npc in npc_manager.npcs:
+                    if hasattr(player, '_attack_hit_npc_' + str(id(npc))):
+                        delattr(player, '_attack_hit_npc_' + str(id(npc)))
+            
+            # --- 4. CHECK PLAYER DEATH (GAME OVER) ---
+            if player.state == 'dead':
+                game_over = True
+                game_over_timer = 3.0  # 3 giây trước khi respawn
+                print("[GAME] Player died! Game Over in 3 seconds...")
+        
+        else:
+            # Game Over countdown
+            game_over_timer -= dt
+            if game_over_timer <= 0:
+                # Respawn player
+                player.hp = player.max_hp
+                player.stamina = player.max_stamina
+                player.state = 'idle'
+                player.entity.sprite.position = (100, 350)
+                player.is_blocking = False
+                player.invincible = False
+                game_over = False
+                print(f"[GAME] Player respawned! Kills: {kill_count}")
 
         # Render
         renderer.clear()
@@ -252,10 +353,14 @@ def run():
         p_tex = sdl2.SDL_CreateTextureFromSurface(sdl_renderer, player.entity.sprite.surface)
         sdl2.SDL_RenderCopy(sdl_renderer, p_tex, None, p_dst)
         sdl2.SDL_DestroyTexture(p_tex)
+        
+        # Render HUD (always on top, no camera offset)
+        hud.render()
 
         renderer.present()
         sdl2.SDL_Delay(1000 // FPS)
 
+    hud.cleanup()
     npc_manager.cleanup()
     projectile_manager.cleanup()
     sdl2.ext.quit()
