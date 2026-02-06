@@ -140,7 +140,8 @@ PLAYER_RUN_COST = 0.2           # Chạy tốn stamina
 SKILL_Q_COST = 20
 SKILL_W_COST = 30
 SKILL_E_COST = 15
-PLAYER_HURT_DURATION = 0.1 # Thời gian hiệu ứng Hurt
+PLAYER_HURT_DURATION = 0.5 # Thời gian hiệu ứng Hurt
+PLAYER_HITS_TO_STAGGER = 10 # Số lần bị đánh để kích hoạt Hurt stun
 
 # Mechanisms
 PLAYER_LIFESTEAL = 100          # Hút máu toàn phần (100%)
