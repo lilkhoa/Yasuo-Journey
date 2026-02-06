@@ -16,7 +16,7 @@ except ImportError:
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 from entities.boss import Boss, BossState, SkillType
-from entities.projectile import ProjectileManager
+from entities.projectile import ProjectileManager, BossMeteorProjectile
 from settings import METEOR_GROUND_Y
 
 
@@ -256,7 +256,7 @@ class BossTest:
                 
                 # Combat testing
                 elif key == sdl2.SDLK_t:
-                    self.boss.take_damage(100)
+                    self.boss.take_damage(200)
                     print(f"[Test] Damaged boss -100 HP")
                 elif key == sdl2.SDLK_y:
                     target_hp = int(self.boss.max_health * 0.75)
@@ -348,7 +348,8 @@ class BossTest:
             if projectile.check_collision(self.player):
                 self.player.take_damage(projectile.damage)
                 projectile.on_hit()
-                print(f"[Test] Player hit by projectile! Type: {type(projectile).__name__}")
+                if isinstance(projectile, BossMeteorProjectile):
+                    projectile.explose()
     
     def render(self):
         """Render everything."""

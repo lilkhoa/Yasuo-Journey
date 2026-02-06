@@ -137,19 +137,6 @@ class SoundManager:
         """
         sdl2.sdlmixer.Mix_Volume(-1, volume)
     
-    def load_npc_sounds(self):
-        """Load all NPC attack sounds."""
-        # Ghost attack sound
-        self.load_sound("ghost_attack", os.path.join("assets", "NPC", "Ghost", "attack_sound.mp3"))
-        
-        # Shooter attack sound
-        self.load_sound("shooter_attack", os.path.join("assets", "NPC", "Shooter", "attack.wav"))
-        
-        # Onre attack sounds (3 variants)
-        self.load_sound("onre_attack1", os.path.join("assets", "NPC", "Onre", "attack1.wav"))
-        self.load_sound("onre_attack2", os.path.join("assets", "NPC", "Onre", "attack2.wav"))
-        self.load_sound("onre_attack3", os.path.join("assets", "NPC", "Onre", "attack3.wav"))
-    
     def cleanup(self):
         """Clean up all loaded sounds and close audio."""
         if not self.initialized:

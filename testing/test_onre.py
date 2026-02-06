@@ -88,7 +88,6 @@ class OnreTest:
         # Initialize centralized SoundManager
         self.sound_manager = get_sound_manager()
         self.sound_manager.initialize()
-        self.sound_manager.load_npc_sounds()
         print("SoundManager initialized successfully")
 
         # Create window

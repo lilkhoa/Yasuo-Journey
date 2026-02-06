@@ -201,6 +201,14 @@ class Boss:
         self.death_animation_complete = False
         self.ready_for_removal = False
         
+        # Poise / Break Bar System (Super Armor)
+        self.poise = 100
+        self.max_poise = 100
+        self.poise_damage_per_hit = 10
+        self.poise_regen_rate = 0.5
+        self.damage_flash_timer = 0
+        self.damage_flash_duration = 8
+        
         # Idle blink system
         self.idle_blink_timer = 0
         self.idle_blink_chance = 0.01
@@ -368,6 +376,14 @@ class Boss:
                 self.frame_counter = 0
                 self.state = BossState.IDLE
             return
+        
+        # Update damage flash timer (red flash when taking damage without stagger)
+        if self.damage_flash_timer > 0:
+            self.damage_flash_timer -= 1
+        
+        # Regenerate poise slowly over time (not during HURT state)
+        if self.state != BossState.HURT and self.poise < self.max_poise:
+            self.poise = min(self.max_poise, self.poise + self.poise_regen_rate)
         
         # Update animation
         self._update_animation()
@@ -912,7 +928,14 @@ class Boss:
     
     def take_damage(self, amount):
         """
-        Apply damage to boss.
+        Apply damage to boss with poise/break bar system.
+        
+        Poise System:
+        - Boss has virtual armor (poise). Normal attacks do not stagger.
+        - Each hit reduces poise by poise_damage_per_hit.
+        - If poise > 0: Boss flashes red but continues attacking (super armor).
+        - If poise <= 0: Boss enters HURT state (stunned), poise resets.
+        - EXCEPTION: During skill execution, boss has complete super armor (never staggers).
         
         Args:
             amount: Damage amount
@@ -920,24 +943,39 @@ class Boss:
         if self.state == BossState.DYING:
             return
         
+        # Apply health damage
         self.health -= amount
         
         if self.health > 0:
-            # Enter hurt state (brief stun)
-            self.state = BossState.HURT
-            self.current_frame = 0
-            self.frame_counter = 0
-            self.hurt_animation_complete = False
-            self.velocity_x = 0
-            self.velocity_y = 0
-            
-            # Cancel current skill if any
+            # Check if boss is currently executing a skill - complete super armor during skills
             if self.current_skill is not None:
-                self.current_skill = None
-                self.skill_phase = 0
-                self.skill_timer = 0
-                self.is_moving_to_center = False
-                self.is_returning_from_center = False
+                # Boss is casting/executing a skill - has complete super armor
+                # Take damage but do NOT stagger, do NOT cancel skill
+                self.damage_flash_timer = self.damage_flash_duration
+                # Poise still decreases but doesn't cause stagger during skill
+                self.poise = max(0, self.poise - self.poise_damage_per_hit)
+                return
+            
+            # Normal poise system (not during skill execution)
+            # Reduce poise
+            self.poise -= self.poise_damage_per_hit
+            
+            # Check if poise is broken
+            if self.poise <= 0:
+                # Poise broken - Enter HURT state (stun/stagger)
+                self.state = BossState.HURT
+                self.current_frame = 0
+                self.frame_counter = 0
+                self.hurt_animation_complete = False
+                self.velocity_x = 0
+                self.velocity_y = 0
+                
+                # Reset poise
+                self.poise = self.max_poise
+            else:
+                # Poise still active - Super armor (no stagger)
+                # Show red flash effect but continue attacking/moving
+                self.damage_flash_timer = self.damage_flash_duration
         else:
             # Boss defeated
             self.health = 0
@@ -991,6 +1029,10 @@ class Boss:
         if self.direction == Direction.LEFT:
             flip = sdl2.SDL_FLIP_HORIZONTAL
         
+        # Apply red flash effect when taking damage without stagger (super armor)
+        if self.damage_flash_timer > 0:
+            sdl2.SDL_SetTextureColorMod(texture, 255, 100, 100)  # Red tint
+        
         # Render
         sdl2.SDL_RenderCopyEx(
             self.renderer,
@@ -1001,6 +1043,10 @@ class Boss:
             None,
             flip
         )
+        
+        # Reset texture color mod after rendering
+        if self.damage_flash_timer > 0:
+            sdl2.SDL_SetTextureColorMod(texture, 255, 255, 255)  # Reset to normal
     
     def get_bounds(self):
         """
