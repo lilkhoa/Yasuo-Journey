@@ -85,6 +85,8 @@ class Player:
         self.invincible = False # Cho Star Item
         self.invincible_timer = 0
         self.hurt_timer = 0
+        self.flash_timer = 0 # Visual red flash
+        self.hit_count = 0 # Stagger counter
         self.dead_animation_complete = False
         
         self.cooldowns = CooldownManager()
@@ -243,6 +245,10 @@ class Player:
                 self.state = 'idle'
                 self.hurt_timer = 0
         self.anim_timer += dt
+
+        # Visual Flash Timer
+        if self.flash_timer > 0:
+            self.flash_timer -= dt
         
         # Chọn bộ hướng (Trái/Phải)
         current_anims = self.anims_right if self.facing_right else self.anims_left
@@ -475,11 +481,18 @@ class Player:
         if self.hp <= 0:
             self.die()
         else:
-            # Trigger Hurt if not already dead
-            if self.state != 'dead':
-                self.state = 'hurt'
-                self.hurt_timer = 0
-                self.frame_index = 0
+            # Trigger Red Flash (Always)
+            self.flash_timer = 0.1 # 100ms flash
+            self.hit_count += 1
+            
+            # Trigger Hurt Stun ONLY if threshold reached
+            if self.hit_count >= PLAYER_HITS_TO_STAGGER:
+                if self.state != 'dead':
+                    self.state = 'hurt'
+                    self.hurt_timer = 0
+                    self.frame_index = 0
+                    self.hit_count = 0 # Reset counter
+                    print("Player Staggered!")
             
     def activate_star_skill(self, duration=5.0):
         """Kích hoạt bất tử (Star Item)"""

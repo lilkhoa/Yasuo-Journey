@@ -351,6 +351,11 @@ def run():
                          int(player.entity.sprite.y - camera.camera.y), 
                          128, 128)
         p_tex = sdl2.SDL_CreateTextureFromSurface(sdl_renderer, player.entity.sprite.surface)
+        
+        # [MỚI] RED FLASH EFFECT
+        if player.flash_timer > 0:
+            sdl2.SDL_SetTextureColorMod(p_tex, 255, 100, 100) # Tint Red (R=255, G=100, B=100) -> Bright Red
+        
         sdl2.SDL_RenderCopy(sdl_renderer, p_tex, None, p_dst)
         sdl2.SDL_DestroyTexture(p_tex)
         
