@@ -37,6 +37,10 @@ class Player:
         
         # [MỚI] Load Jump Animation (1 hàng 12 cột)
         self.anims_right['jump'] = load_grid_sprite_sheet(factory, os.path.join(PLAYER_ASSET_DIR, "Jump.png"), cols=12, rows=1)
+        
+        # [MỚI] Load Dead/Hurt Animation
+        self.anims_right['dead'] = load_grid_sprite_sheet(factory, os.path.join(PLAYER_ASSET_DIR, "Dead.png"), cols=3, rows=1)
+        self.anims_right['hurt'] = load_grid_sprite_sheet(factory, os.path.join(PLAYER_ASSET_DIR, "Hurt.png"), cols=2, rows=1)
 
         # Fallback nếu không load được
         if not self.anims_right['idle']: 
@@ -78,7 +82,10 @@ class Player:
         self.exhausted = False
         self.is_blocking = False 
         self.invincible = False # Cho Star Item
+        self.invincible = False # Cho Star Item
         self.invincible_timer = 0
+        self.hurt_timer = 0
+        self.dead_animation_complete = False
         
         self.cooldowns = CooldownManager()
 
@@ -90,6 +97,17 @@ class Player:
         self.skill_q = SkillQ(self)
         self.skill_w = SkillW(self)
         self.skill_e = SkillE(self)
+        
+        # --- STATS FOR HUD ---
+        self.attack_damage = PLAYER_ATTACK_DAMAGE
+        self.hp_regen = PLAYER_HEALTH_REGEN
+        self.stamina_regen = PLAYER_STAMINA_REGEN_WALK
+        self.armor = 10 # Base armor
+        self.magic_resist = 0
+        self.crit_chance = 0
+        self.life_steal = PLAYER_LIFESTEAL
+        self.attack_speed = 1.0 # Base (có thể tính từ cooldown)
+        self.attack_range = 60  # Base attack range for stats display
 
     @property
     def sprite(self):
@@ -153,7 +171,7 @@ class Player:
         # Jump và Attack có thể vừa đi vừa làm (Attack thì tùy)
         # Ở đây ta ưu tiên logic đi bộ/chạy đơn giản
         
-        if self.state in ['casting_q', 'casting_w', 'dashing_e', 'attacking', 'dead']:
+        if self.state in ['casting_q', 'casting_w', 'dashing_e', 'attacking', 'dead', 'hurt']:
             return
 
         # Check Run
@@ -218,7 +236,12 @@ class Player:
         else:
             self.is_jumping = True
 
-        # --- ANIMATION TIMER ---
+        # State management for HURT
+        if self.state == 'hurt':
+            self.hurt_timer += dt
+            if self.hurt_timer >= PLAYER_HURT_DURATION:
+                self.state = 'idle'
+                self.hurt_timer = 0
         self.anim_timer += dt
         
         # Chọn bộ hướng (Trái/Phải)
@@ -226,8 +249,14 @@ class Player:
         current_frames = []
 
         # --- [MỚI] LOGIC ƯU TIÊN ANIMATION ---
+        # 0. Ưu tiên TUYỆT ĐỐI: Chết
+        if self.state == 'dead':
+             current_frames = current_anims.get('dead', current_anims['idle'])
+        # 0.5. Ưu tiên: Bị thương
+        elif self.state == 'hurt':
+             current_frames = current_anims.get('hurt', current_anims['idle'])
         # 1. Ưu tiên cao nhất: Đang dùng Skill hoặc Đánh thường
-        if self.state == 'casting_q':
+        elif self.state == 'casting_q':
             current_frames = current_anims['q']
         elif self.state == 'casting_w':
             current_frames = current_anims['w']
@@ -259,8 +288,12 @@ class Player:
         
         if not current_frames: return
 
+        if not current_frames: return
+
         # Tốc độ Animation: Nhanh hơn nếu đang đánh thường (để cast nhanh như Attack_3)
-        effective_anim_speed = 0.05 if self.state == 'attacking' else self.anim_speed
+        effective_anim_speed = self.anim_speed
+        if self.state == 'attacking': effective_anim_speed = 0.05
+        elif self.state == 'hurt': effective_anim_speed = PLAYER_HURT_DURATION / len(current_frames) if len(current_frames) > 0 else 0.1
 
         # Chuyển frame
         if self.anim_timer >= effective_anim_speed:
@@ -278,6 +311,13 @@ class Player:
                      if not self.skill_e.is_dashing: self.state = 'idle'
                 elif self.state == 'attacking':
                     self.state = 'idle' # Kết thúc đánh thường
+                elif self.state == 'dead':
+                    self.frame_index = len(current_frames) - 1 # Giữ frame cuối
+                    self.dead_animation_complete = True
+                    return # Không reset frame_index về 0
+                elif self.state == 'hurt':
+                    # Timer xử lý việc kết thúc state hurt
+                    pass
                 
                 self.frame_index = 0
         
@@ -290,12 +330,15 @@ class Player:
         self.entity.sprite.position = old_x, old_y
 
     def start_q(self, direction=0):
-        # Kích hoạt Q (Tốn Stamina)
+        # Kích hoạt Q (Tốn Stamina + Cooldown)
         if self.stamina < SKILL_Q_COST: return
+        if not self.cooldowns.is_ready("skill_q"): return
         
         # Cho phép dùng Q kể cả khi đang nhảy, miễn là không đang dùng skill khác
         if self.state in ['idle', 'jumping', 'run', 'walk'] or (self.is_jumping and self.state == 'idle'):
             self.stamina -= SKILL_Q_COST
+            self.cooldowns.start_cooldown("skill_q", SKILL_Q_COOLDOWN)
+            
             if direction > 0: self.facing_right = True
             elif direction < 0: self.facing_right = False
             
@@ -305,8 +348,12 @@ class Player:
             
     def start_w(self, direction=0):
         if self.stamina < SKILL_W_COST: return
+        if not self.cooldowns.is_ready("skill_w"): return
+        
         if self.state == 'idle' or (self.is_jumping and self.state == 'idle'):
             self.stamina -= SKILL_W_COST
+            self.cooldowns.start_cooldown("skill_w", SKILL_W_COOLDOWN)
+            
             if direction > 0: self.facing_right = True
             elif direction < 0: self.facing_right = False
             
@@ -316,9 +363,13 @@ class Player:
             
     def start_e(self, world, factory, renderer, direction):
         if self.stamina < SKILL_E_COST: return
+        if not self.cooldowns.is_ready("skill_e"): return
+        
         if direction == 0: return
         if self.state != 'dashing_e':
             self.stamina -= SKILL_E_COST
+            self.cooldowns.start_cooldown("skill_e", SKILL_E_COOLDOWN)
+            
             if direction > 0: self.facing_right = True
             elif direction < 0: self.facing_right = False
             self.state = 'dashing_e'
@@ -420,8 +471,15 @@ class Player:
         
         self.hp -= final_damage
         print(f"Player took {final_damage} damage! HP: {int(self.hp)}/{self.max_hp}")
+        
         if self.hp <= 0:
             self.die()
+        else:
+            # Trigger Hurt if not already dead
+            if self.state != 'dead':
+                self.state = 'hurt'
+                self.hurt_timer = 0
+                self.frame_index = 0
             
     def activate_star_skill(self, duration=5.0):
         """Kích hoạt bất tử (Star Item)"""
@@ -433,6 +491,7 @@ class Player:
         """Xử lý khi chết"""
         print("Player Died!")
         self.state = 'dead'
+        self.frame_index = 0 # Reset animation to start
         # Thực hiện logic reset game hoặc game over ở đây
 
     def check_map_collision(self, x, y, game_map, check_bottom=False):

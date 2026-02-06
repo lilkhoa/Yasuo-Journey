@@ -94,7 +94,11 @@ def update_q_logic(tornado_obj, npcs, dt):
                 setattr(npc, hit_attr, True)
                 current_dmg = tornado_obj.damage_base * (tornado_obj.decay_rate ** tornado_obj.hit_count)
                 print(f"Q Hit! Dmg: {current_dmg:.2f}")
-                npc.sprite.y -= 20 
+                # Use knockup method which sets velocity_y
+                if hasattr(npc, 'apply_knockup'):
+                    npc.apply_knockup(-12) # Knockup force
+                else:
+                    npc.sprite.y -= 20 # Fallback 
                 tornado_obj.hit_count += 1
                 if tornado_obj.hit_count >= tornado_obj.max_hits:
                     tornado_obj.active = False

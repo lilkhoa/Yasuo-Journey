@@ -119,6 +119,7 @@ SKILL_W_COOLDOWN = 180
 SKILL_E_COOLDOWN = 90
 
 # Damage Settings [MỚI]
+PLAYER_ATTACK_DAMAGE = 25      # Sát thương đánh thường
 DAMAGE_NORMAL = 20
 DAMAGE_SKILL_E = 50
 DAMAGE_SKILL_Q = 100
@@ -139,6 +140,7 @@ PLAYER_RUN_COST = 0.2           # Chạy tốn stamina
 SKILL_Q_COST = 20
 SKILL_W_COST = 30
 SKILL_E_COST = 15
+PLAYER_HURT_DURATION = 0.1 # Thời gian hiệu ứng Hurt
 
 # Mechanisms
 PLAYER_LIFESTEAL = 100          # Hút máu toàn phần (100%)
