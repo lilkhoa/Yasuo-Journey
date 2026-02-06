@@ -1816,6 +1816,10 @@ class ProjectileManager:
         Returns:
             BossExplosionEffect: The spawned explosion
         """
+        # Play explosion sound
+        if hasattr(owner, 'sound_manager') and owner.sound_manager:
+            owner.sound_manager.play_sound("boss_explosion")
+        
         explosion = BossExplosionEffect(x, y, owner, self.renderer, damage, self.boss_explosion_textures)
         self.projectiles.append(explosion)
         return explosion

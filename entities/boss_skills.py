@@ -117,6 +117,11 @@ class CircularShootingSkill:
                 # Charge complete, start shooting
                 self.phase = SkillPhase.EXECUTING
                 self.timer = self.shoot_duration
+                
+                # Play flame projectile sound for circular shooting
+                if self.boss.sound_manager:
+                    self.boss.sound_manager.play_sound("boss_flame")
+                
                 self._fire_volleys()
         
         elif self.phase == SkillPhase.EXECUTING:
@@ -125,6 +130,8 @@ class CircularShootingSkill:
             
             # Fire volleys at intervals
             if self.timer % self.volley_interval == 0 and self.timer > 0:
+                if self.boss.sound_manager:
+                    self.boss.sound_manager.play_sound("boss_flame")
                 self._fire_volleys()
             
             # Continue casting animation

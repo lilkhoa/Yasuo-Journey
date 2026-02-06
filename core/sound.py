@@ -137,6 +137,53 @@ class SoundManager:
         """
         sdl2.sdlmixer.Mix_Volume(-1, volume)
     
+    def load_npc_sounds(self):
+        """
+        Load all NPC attack sounds.
+        
+        Returns:
+            bool: True if all sounds loaded successfully
+        """
+        success = True
+        
+        # Ghost attack sound
+        success &= self.load_sound("ghost_attack", os.path.join("assets", "NPC", "Ghost", "attack_sound.mp3"))
+        
+        # Shooter attack sound
+        success &= self.load_sound("shooter_attack", os.path.join("assets", "NPC", "Shooter", "attack_sound.mp3"))
+        
+        # Onre attack sounds (3 variants)
+        success &= self.load_sound("onre_attack1", os.path.join("assets", "NPC", "Onre", "attack_sound_1.mp3"))
+        success &= self.load_sound("onre_attack2", os.path.join("assets", "NPC", "Onre", "attack_sound_2.mp3"))
+        success &= self.load_sound("onre_attack3", os.path.join("assets", "NPC", "Onre", "attack_sound_3.mp3"))
+        
+        return success
+    
+    def load_boss_sounds(self):
+        """
+        Load all boss-related sounds (attacks, skills, hurt states).
+        
+        Returns:
+            bool: True if all sounds loaded successfully
+        """
+        success = True
+        
+        # Boss projectile sounds
+        success &= self.load_sound("boss_explosion", os.path.join("assets", "Projectile", "Boss", "Explosion", "sound.mp3"))
+        success &= self.load_sound("boss_flame", os.path.join("assets", "Projectile", "Boss", "Flame", "sound.mp3"))
+        success &= self.load_sound("boss_kamehameha", os.path.join("assets", "Projectile", "Boss", "Kamekameha", "sound.mp3"))
+        success &= self.load_sound("boss_melee", os.path.join("assets", "Projectile", "Boss", "Melee", "sound.mp3"))
+        success &= self.load_sound("boss_meteor", os.path.join("assets", "Projectile", "Boss", "Meteor", "sound.mp3"))
+        
+        # Boss skill casting sound (for circular shooting and summon minions)
+        success &= self.load_sound("boss_casting", os.path.join("assets", "Boss", "Boss", "Casting Spells", "sound.mp3"))
+        
+        # Boss hurt sounds
+        success &= self.load_sound("boss_on_hit", os.path.join("assets", "Boss", "Boss", "Hurt", "on_hit.mp3"))
+        success &= self.load_sound("boss_hurt", os.path.join("assets", "Boss", "Boss", "Hurt", "hurt.mp3"))
+        
+        return success
+    
     def cleanup(self):
         """Clean up all loaded sounds and close audio."""
         if not self.initialized:

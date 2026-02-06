@@ -107,7 +107,7 @@ class Boss:
         renderer: PySDL2 renderer
     """
     
-    def __init__(self, x, y, sprite_factory, texture_factory, renderer, projectile_manager=None):
+    def __init__(self, x, y, sprite_factory, texture_factory, renderer, projectile_manager=None, sound_manager=None):
         """
         Initialize Boss.
         
@@ -118,6 +118,7 @@ class Boss:
             texture_factory: PySDL2 texture factory
             renderer: PySDL2 renderer
             projectile_manager: ProjectileManager for spawning projectiles
+            sound_manager: SoundManager for audio playback
         """
         # Position and dimensions
         self.x = x
@@ -229,6 +230,7 @@ class Boss:
         # References
         self.player = None
         self.projectile_manager = projectile_manager
+        self.sound_manager = sound_manager
         
         # Summoned minions
         self.minions = []
@@ -584,6 +586,10 @@ class Boss:
         if not self.projectile_manager:
             return
         
+        # Play melee attack sound
+        if self.sound_manager:
+            self.sound_manager.play_sound("boss_melee")
+        
         # Spawn melee effect at boss center position
         boss_center_x = self.x + self.width / 2
         boss_center_y = self.y + self.height / 2
@@ -618,6 +624,10 @@ class Boss:
         else:
             velocity_x = self.projectile_speed if self.direction == Direction.RIGHT else -self.projectile_speed
             velocity_y = 0
+        
+        # Play flame projectile sound
+        if self.sound_manager:
+            self.sound_manager.play_sound("boss_flame")
         
         # Spawn flame projectile
         self.projectile_manager.spawn_boss_flame_projectile(
@@ -681,6 +691,10 @@ class Boss:
         self.skill_timer = 0
         self.skill_cooldown = 0
         
+        # Play casting spell sound
+        if self.sound_manager:
+            self.sound_manager.play_sound("boss_casting")
+        
         # Create and start skill instance
         self.circular_shooting_skill = CircularShootingSkill(self)
         self.circular_shooting_skill.start()
@@ -691,6 +705,10 @@ class Boss:
         self.skill_phase = 0
         self.skill_timer = 0
         self.skill_cooldown = 0
+        
+        # Play meteor sound
+        if self.sound_manager:
+            self.sound_manager.play_sound("boss_meteor")
         
         # Create and start skill instance
         self.meteor_skill = MeteorSkill(self)
@@ -703,6 +721,10 @@ class Boss:
         self.skill_timer = 0
         self.skill_cooldown = 0
         
+        # Play kamehameha charging sound
+        # if self.sound_manager:
+        #     self.sound_manager.play_sound("boss_kamehameha")
+        
         self.state = BossState.CASTING
         self.current_frame = 0
         self.frame_counter = 0
@@ -713,6 +735,10 @@ class Boss:
         self.skill_phase = 0
         self.skill_timer = 0
         self.skill_cooldown = 0
+        
+        # Play casting spell sound
+        if self.sound_manager:
+            self.sound_manager.play_sound("boss_casting")
         
         # Create and start skill instance
         self.summon_minions_skill = SummonMinionsSkill(self)
@@ -767,6 +793,8 @@ class Boss:
             # Fire laser once during charging (at 0.5 seconds)
             if self.skill_timer == 30 and not getattr(self, '_kamehameha_fired', False):
                 self._kamehameha_fired = True
+                if self.sound_manager:
+                    self.sound_manager.play_sound("boss_kamehameha")
                 self._fire_kamehameha()
             
             if self.skill_timer >= 100:
@@ -954,6 +982,11 @@ class Boss:
                 self.damage_flash_timer = self.damage_flash_duration
                 # Poise still decreases but doesn't cause stagger during skill
                 self.poise = max(0, self.poise - self.poise_damage_per_hit)
+                
+                # Play on_hit sound (taking damage without stagger)
+                if self.sound_manager:
+                    self.sound_manager.play_sound("boss_on_hit")
+                
                 return
             
             # Normal poise system (not during skill execution)
@@ -970,12 +1003,20 @@ class Boss:
                 self.velocity_x = 0
                 self.velocity_y = 0
                 
+                # Play hurt sound (staggered)
+                if self.sound_manager:
+                    self.sound_manager.play_sound("boss_hurt")
+                
                 # Reset poise
                 self.poise = self.max_poise
             else:
                 # Poise still active - Super armor (no stagger)
                 # Show red flash effect but continue attacking/moving
                 self.damage_flash_timer = self.damage_flash_duration
+                
+                # Play on_hit sound (taking damage without stagger)
+                if self.sound_manager:
+                    self.sound_manager.play_sound("boss_on_hit")
         else:
             # Boss defeated
             self.health = 0
