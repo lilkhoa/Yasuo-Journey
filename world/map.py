@@ -94,6 +94,45 @@ class GameMap:
                         if deco_char != ' ':
                             deco_handler.render(renderer, deco_char, x_index, y_index, camera)
                         
+    def get_tile_rects_around(self, start_x, start_y, width, height):
+        """
+            Return a list of SDL_Rect of surrounding block of soil or smth like that, with the target regoin
+            Use to check collision instead of feed the entire map
+        """
+        rects = []
+
+        # transform from pixel to grid coordinate
+        # adding padding (-1/+2) to check near by cells
+        start_col = int(start_x // TILE_SIZE) - 1
+        end_col = int((start_x + width) // TILE_SIZE) + 2
+
+        start_row = int(start_y // TILE_SIZE) - 1
+        end_row = int((start_y + height) // TILE_SIZE) + 2
+
+        # map limitation
+        start_col = max(0, start_col)
+        start_row = max(0, start_row)
+
+        if self.map_data:
+            end_col = min(len(self.map_data[0]), end_col)
+            end_row = min(len(self.map_data), end_row)
+
+        for y in range(start_row, end_row):
+            for x in range(start_col, end_col):
+                char = self.map_data[y][x]
+                if char in SOLID_TILES:
+                    # create an virtual Rect at position in Tile world
+                    # note: logic Y of tile '0' in render has a special offset
+                    # but for the stable physics, we should use grid (y * TILE_SIZE)
+                    # if we want absolutely matching with the image, we have to use char == '0' here
+                    tile_rect = SDL_Rect(x * TILE_SIZE, y * TILE_SIZE, TILE_SIZE, TILE_SIZE)
+                    rects.append(tile_rect)
+        
+        return rects
+
+
+
+
 
         
 

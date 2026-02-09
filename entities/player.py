@@ -92,6 +92,7 @@ class Player:
         self.cooldowns = CooldownManager()
 
         self.state = 'idle'
+        self.prev_state = 'idle'    # [SỬA LỖI] Theo dõi state cũ để reset frame
         self.frame_index = 0
         self.anim_timer = 0
         self.anim_speed = 0.10 # Animation nhanh hơn chút
@@ -207,6 +208,7 @@ class Player:
 
         # 2. Xử lý di chuyển ngang (X) & Collision X
         # Tốc độ di chuyển
+        # --- STEP 1: MOVE ALONG WITH X-AXIS ---
         dx = 0
         if self.state == 'run': dx = PLAYER_SPEED_RUN * dt
         elif self.state == 'walk': dx = PLAYER_SPEED_WALK * dt
@@ -214,29 +216,98 @@ class Player:
         if dx > 0:
             if not self.facing_right: dx = -dx
             
-            # Dự đoán vị trí X tiếp theo
-            next_x = self.entity.sprite.x + dx
-            
             # Check Collision X (Tạm bỏ theo yêu cầu User)
             # if self.check_map_collision(next_x, self.entity.sprite.y, game_map):
             #     dx = 0 # Va vào tường -> Dừng
             
             self.entity.sprite.x += int(dx)
 
-        # 3. Xử lý trọng lực (Y) & Simple Ground Check
+        # --- STEP 2: CHECK X-AXIS COLLISION ---
+        if game_map:
+            hitbox = self.get_hitbox()
+            nearby_tiles = game_map.get_tile_rects_around(hitbox.x, hitbox.y, hitbox.w, hitbox.h)
+
+            for tile in nearby_tiles:
+                # check collision between Hitbox and Tile
+                if sdl2.SDL_HasIntersection(hitbox, tile):
+                    # if collide, push the player out
+                    if dx > 0: # right forward -> collide with tile-left-edge
+                        self.entity.sprite.x = tile.x - 128 + 44    # 44 is the left offset, reversely calculate
+                        # simply calculate: push out the hitbox, then recalculate sprite position
+                        # hitbox.x = tile.x - hitbox.w
+                        # self.entity.sprite.x = hitbox.x - 44
+                    elif dx < 0: # left forward -> collide with right edge of tile
+                        self.entity.sprite.x = tile.x + tile.w - 44 # 44 is the edge of left hitbox to the right edge of tile?
+        
+        # --- STEP 3: MOVE ALONG WITH Y_AXIS (gravity)
         self.vel_y += self.gravity
         if self.vel_y > MAX_FALL_SPEED: self.vel_y = MAX_FALL_SPEED
-        
         self.entity.sprite.y += int(self.vel_y)
+
+        # --- STEP 4: CHECK THE COLLISION Y ---
+        on_ground = False
         
-        # Check Collision Y (Simple Ground)
-        # User yêu cầu "chưa cần collision", chỉ cần đi được
-        if self.entity.sprite.y >= GROUND_Y:
-            self.entity.sprite.y = GROUND_Y
-            self.vel_y = 0
-            self.is_jumping = False
-        else:
-            self.is_jumping = True
+        if game_map:
+            hitbox = self.get_hitbox()
+            nearby_tiles = game_map.get_tile_rects_around(hitbox.x, hitbox.y, hitbox.w, hitbox.h)
+            
+            # [QUAN TRỌNG] Tạo cảm biến dưới chân (mỏng 4px)
+            # Nó giúp phát hiện đất ngay cả khi hitbox chính chưa kịp chạm sâu
+            feet_rect = sdl2.SDL_Rect(hitbox.x + 10, hitbox.y + hitbox.h, hitbox.w - 20, 4)
+
+            for tile in nearby_tiles:
+                if sdl2.SDL_HasIntersection(hitbox, tile):
+                    if self.vel_y > 0: # Đang rơi xuống -> Chạm đất
+                        # Đặt chân nhân vật lên đầu tile
+                        # Tính toán: Hitbox.bottom = Tile.top
+                        # Sprite.y = Tile.top - Hitbox.height - offset_y
+                        align_y = tile.y - 80 - 48 # 80 là h, 48 là off_y
+                        
+                        # Snap vị trí nhân vật nằm ngay ngắn trên mặt tile
+                        align_y = tile.y - 80 - 48
+                        self.entity.sprite.y = align_y
+                        self.vel_y = 0
+                        self.ground_y = tile.y
+                        on_ground = True
+                            
+                    elif self.vel_y < 0: # Nhảy lên đụng trần
+                        align_y = tile.y + tile.h - 48
+                        self.entity.sprite.y = align_y
+                        self.vel_y = 0
+
+                # 4.2 Check cảm biến chân (Anti-Jitter)
+                # Chỉ check khi đang không bay lên (vel_y >= 0) và chưa được xác nhận chạm đất
+                elif not on_ground and self.vel_y >= 0:
+                    if sdl2.SDL_HasIntersection(feet_rect, tile):
+                        # Phát hiện đất ngay dưới chân -> Hút dính xuống
+                        align_y = tile.y - 80 - 48
+                        # Chỉ hút nếu khoảng cách rất gần (tránh hút từ xa)
+                        if abs(self.entity.sprite.y - align_y) <= 5: 
+                            self.entity.sprite.y = align_y
+                            self.vel_y = 0
+                            self.ground_y = tile.y
+                            on_ground = True
+
+        self.is_jumping = not on_ground
+
+        # Fallback an toàn: Không bao giờ rơi quá sâu khỏi map (chết)
+        if self.entity.sprite.y > 1000: # Ví dụ rơi xuống vực
+             self.die()
+
+        # # 3. Xử lý trọng lực (Y) & Simple Ground Check
+        # self.vel_y += self.gravity
+        # if self.vel_y > MAX_FALL_SPEED: self.vel_y = MAX_FALL_SPEED
+        
+        # self.entity.sprite.y += int(self.vel_y)
+        
+        # # Check Collision Y (Simple Ground)
+        # # User yêu cầu "chưa cần collision", chỉ cần đi được
+        # if self.entity.sprite.y >= GROUND_Y:
+        #     self.entity.sprite.y = GROUND_Y
+        #     self.vel_y = 0
+        #     self.is_jumping = False
+        # else:
+        #     self.is_jumping = True
 
         # State management for HURT
         if self.state == 'hurt':
@@ -294,7 +365,10 @@ class Player:
         
         if not current_frames: return
 
-        if not current_frames: return
+        # [SỬA LỖI] Reset frame index khi đổi state để tránh giật frame
+        if self.state != self.prev_state:
+            self.frame_index = 0
+            self.prev_state = self.state
 
         # Tốc độ Animation: Nhanh hơn nếu đang đánh thường (để cast nhanh như Attack_3)
         effective_anim_speed = self.anim_speed
@@ -506,6 +580,18 @@ class Player:
         self.state = 'dead'
         self.frame_index = 0 # Reset animation to start
         # Thực hiện logic reset game hoặc game over ở đây
+
+    def get_hitbox(self):
+        # adding helper functin to get standard Hitbox (smaller then sprite)
+        # sprite 128x128, we want hitbox at the range 40x80 stay at the middle of the bottom
+        hitbox_w = 40
+        hitbox_h = 80
+        offset_x = (128 - hitbox_w) // 2    # align the center of the row direction
+        offset_y = (128 - hitbox_h)         # align the bototm - or we can handle it by hand
+
+        return sdl2.SDL_Rect(int(self.entity.sprite.x + offset_x),
+                             int(self.entity.sprite.y + offset_y),
+                             hitbox_w, hitbox_h)
 
     def check_map_collision(self, x, y, game_map, check_bottom=False):
         """Kiểm tra va chạm với map tiles"""

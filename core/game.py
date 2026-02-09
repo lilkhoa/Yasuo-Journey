@@ -192,7 +192,7 @@ def run():
         player.handle_movement(keys)
         
         # Player Update (Physics, Animation, Skills)
-        player.update(dt, world, software_factory, None, active_tornadoes, active_walls, game_map=None)
+        player.update(dt, world, software_factory, None, active_tornadoes, active_walls, game_map=my_map)
         
         # Giới hạn Player trong Map
         if player.entity.sprite.x < 0:
