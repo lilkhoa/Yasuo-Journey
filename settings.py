@@ -12,6 +12,7 @@ SCALE_FACTOR = 4 # need to scale because our backgrounds have size 320x180 => Sc
 TILE_SIZE_RAW = 24
 TILE_SIZE = TILE_SIZE_RAW * SCALE_FACTOR # this is the standard unit we use to do other works later
 # so we have 7.5 rows => ceil to 8 rows. 7 full rows and 1/2 the last row.
+SOLID_TILES = ['(', '-', ')', '[', '=', ']', '0', '1', '2', '3', '4', '5', '6', '7', '8']
 
 # Game settings
 GAME_TITLE = "A3 Yasuo - Action Game"
