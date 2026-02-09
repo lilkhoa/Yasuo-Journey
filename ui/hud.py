@@ -12,6 +12,8 @@ from settings import (
     SKILL_Q_COOLDOWN, SKILL_W_COOLDOWN, SKILL_E_COOLDOWN, ATTACK_COOLDOWN
 )
 
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+FONT_PATH = os.path.join(BASE_DIR, "..", "assets/fonts/arial.ttf")
 
 class SkillBarHUD:
     """
@@ -75,11 +77,9 @@ class SkillBarHUD:
         self.stat_icons = {}
         self._load_textures()
         
-        # Font Manager
-        font_path = os.path.join(os.environ['WINDIR'], 'Fonts', 'arial.ttf')
         try:
-            self.font_manager = sdl2.ext.FontManager(font_path, size=14, color=(255, 255, 255))
-            self.font_cd = sdl2.ext.FontManager(font_path, size=10, color=(255, 255, 255)) # Smaller font for CD (10px)
+            self.font_manager = sdl2.ext.FontManager(FONT_PATH, size=14, color=(255, 255, 255))
+            self.font_cd = sdl2.ext.FontManager(FONT_PATH, size=10, color=(255, 255, 255)) # Smaller font for CD (10px)
         except Exception as e:
             print(f"[HUD] Failed to load font: {e}")
             self.font_manager = None
