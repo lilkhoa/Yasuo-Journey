@@ -199,7 +199,7 @@ class Player:
                 self.state = 'idle'
             self.is_running = False
 
-    def update(self, dt, world, factory, renderer, active_list_q, active_list_w, game_map=None):
+    def update(self, dt, world, factory, renderer, active_list_q, active_list_w, game_map=None, boxes=None):
         # --- [MỚI] CẬP NHẬT VẬT LÝ & STATS VỚI MAP ---
         
         # 1. Hồi phục & Cooldown
@@ -219,8 +219,29 @@ class Player:
             # Check Collision X (Tạm bỏ theo yêu cầu User)
             # if self.check_map_collision(next_x, self.entity.sprite.y, game_map):
             #     dx = 0 # Va vào tường -> Dừng
+
+            # Pushing box logic
+            actual_dx = int(dx)
+
+            if boxes:
+                player_rect = self.get_hitbox()
+                # predict the player position
+                future_player_rect = sdl2.SDL_Rect(player_rect.x + int(dx), player_rect.y, player_rect.w, player_rect.h)
+
+                for box in boxes:
+                    if sdl2.SDL_HasIntersection(future_player_rect, box.rect):
+                        # Collide with box -> try to push
+                        moved, box_dx = box.push(dx, dt, game_map)
+
+                        if moved:
+                            # if the box moves, player move with the box speed
+                            actual_dx = int(box_dx)
+                        else: 
+                            # if not enough force or stuck with the wall, player is blocked
+                            actual_dx = 0
+                        break   # interact one box at a time
             
-            self.entity.sprite.x += int(dx)
+            self.entity.sprite.x += actual_dx
 
         # --- STEP 2: CHECK X-AXIS COLLISION ---
         if game_map:

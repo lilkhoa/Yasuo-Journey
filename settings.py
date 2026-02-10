@@ -163,3 +163,7 @@ COLOR_RED = (255, 0, 0, 255)
 COLOR_GREEN = (0, 255, 0, 255)
 COLOR_BLUE = (0, 0, 255, 255)
 COLOR_BACKGROUND = (20, 20, 30, 255)
+
+BOX_WIDTH = 44
+BOX_HEIGHT = 44
+BOX_MASS = 2.0      # simulate weight of the box
