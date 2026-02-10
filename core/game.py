@@ -5,6 +5,7 @@ import sdl2
 import sdl2.ext
 from settings import *
 from world.map import GameMap
+from world.interactable import Box
 from world.decoration import Decoration
 from sdl2 import SDL_Rect, SDL_RenderCopy
 from core.camera import Camera
@@ -26,7 +27,7 @@ TEST_LEVEL = [
     "  2233                    2233                    ", 
     "          (- - 8 8 8 8 8 8        (- - 8 8 8 8 8 8", 
     "      [== 78 8 0 0 0 0 0 0    [== 78 8 0 0 0 0 0 0", 
-    "-5= =5- - - 68 0 0 0 0 0 0-5= =5- - - 68 0 0 0 0 0", 
+    "-5===5------68 0 0 0 0 0 0-5= =5- - - 68 0 0 0 0 0", 
     "0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 ", 
 ]
 
@@ -39,6 +40,19 @@ DECO_MAP = [
     "                          S                       ", # f: hàng rào, S: Shop
     "          g g              l      g g             ", # g: cỏ, l: đèn
     "      r   r                       r               ", # r: đá
+    "                                                  ", 
+    "                                                  ", 
+]
+
+# BOX MAP (Mask Map cho vật thể tương tác)
+# 'B' đại diện cho Box
+BOX_MAP = [
+    "                                                  ", 
+    "                                                  ", 
+    "                                                  ", 
+    "                                                  ", 
+    "                                                  ", # Đặt thử 1 cái thùng
+    " B                                                ", 
     "                                                  ", 
     "                                                  ", 
 ]
@@ -116,6 +130,9 @@ def run():
         bg3_sprite = factory.from_image("assets/Map/background/background_layer_3.png") # near forest
         bg3_tex = bg3_sprite.texture
 
+        box_tileset_sprite = factory.from_image("assets/Map/interactable_objects/TX Village Props.png")
+        box_tileset_texture = box_tileset_sprite.texture
+
     except Exception as e:
         print(f"Load sprite error: {e}")
         return
@@ -131,6 +148,21 @@ def run():
     world = sdl2.ext.World()
     software_factory = sdl2.ext.SpriteFactory(sdl2.ext.SOFTWARE) # Player cần Software factory
     
+    # 4. Boxes initialization
+    boxes = []
+    for y, row in enumerate(BOX_MAP):
+        for x, char in enumerate(row):
+            if char == "B":
+                # calculate the real position
+                real_x = x * TILE_SIZE
+                # align Y for box to lie on the top of the ground of this row
+                # because height is (44 -> 24) * SCALE FACTOR
+                real_y = (y * TILE_SIZE) # because we scale the block has the same size to the ground block
+
+                new_box = Box(real_x, real_y, box_tileset_texture)
+                boxes.append(new_box)
+            
+
     player = Player(world, software_factory, 100, 350) # Spawn gần mặt đất
     
     # Initialize ProjectileManager for NPC projectiles
@@ -192,13 +224,17 @@ def run():
         player.handle_movement(keys)
         
         # Player Update (Physics, Animation, Skills)
-        player.update(dt, world, software_factory, None, active_tornadoes, active_walls, game_map=my_map)
+        player.update(dt, world, software_factory, None, active_tornadoes, active_walls, game_map=my_map, boxes=boxes)
         
         # Giới hạn Player trong Map
         if player.entity.sprite.x < 0:
             player.entity.sprite.x = 0
         if player.entity.sprite.x > my_map.width_pixel - 128:
             player.entity.sprite.x = my_map.width_pixel - 128
+
+        # Box updating
+        for box in boxes:
+            box.update(dt, my_map)
         
         # update Camera theo Player (dùng SDL_Rect để tương thích)
         player_rect = SDL_Rect(int(player.entity.sprite.x), int(player.entity.sprite.y), 128, 128)
@@ -340,6 +376,10 @@ def run():
                                        w.sprite.x - camera.camera.x, 
                                        w.sprite.y - camera.camera.y)
         
+        # Box rendering
+        for box in boxes:
+            box.render(sdl_renderer, camera)
+
         # Render NPCs
         npc_manager.render_all(camera.camera.x, camera.camera.y)
         
