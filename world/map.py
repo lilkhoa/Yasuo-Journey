@@ -101,6 +101,9 @@ class GameMap:
         """
         rects = []
 
+        # Tiles that are 48px source (2x normal width) -> cover 2 grid columns
+        WIDE_TILES = {'-', '=', '0', '1', '8'}
+
         # transform from pixel to grid coordinate
         # adding padding (-1/+2) to check near by cells
         start_col = int(start_x // TILE_SIZE) - 1
@@ -121,11 +124,11 @@ class GameMap:
             for x in range(start_col, end_col):
                 char = self.map_data[y][x]
                 if char in SOLID_TILES:
-                    # create an virtual Rect at position in Tile world
-                    # note: logic Y of tile '0' in render has a special offset
-                    # but for the stable physics, we should use grid (y * TILE_SIZE)
-                    # if we want absolutely matching with the image, we have to use char == '0' here
-                    tile_rect = SDL_Rect(x * TILE_SIZE, y * TILE_SIZE, TILE_SIZE, TILE_SIZE)
+                    # Wide tiles (48px source) cover 2 grid columns
+                    if char in WIDE_TILES:
+                        tile_rect = SDL_Rect(x * TILE_SIZE, y * TILE_SIZE, TILE_SIZE * 2, TILE_SIZE)
+                    else:
+                        tile_rect = SDL_Rect(x * TILE_SIZE, y * TILE_SIZE, TILE_SIZE, TILE_SIZE)
                     rects.append(tile_rect)
         
         return rects

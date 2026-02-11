@@ -71,6 +71,7 @@ class Player:
         self.gravity = GRAVITY
         self.jump_force = -PLAYER_JUMP_POWER
         self.is_jumping = False
+        self.jump_count = 0  # Double jump counter
 
         # --- [MỚI] CHỈ SỐ PLAYER (Stamina System) ---
         self.max_hp = PLAYER_MAX_HEALTH
@@ -153,13 +154,11 @@ class Player:
                              self.entity.sprite.size[0], self.entity.sprite.size[1])
 
     def jump(self):
-        """Hàm kích hoạt nhảy"""
-        # Chỉ nhảy được khi đang ở dưới đất
-        if not self.is_jumping:
+        """Hàm kích hoạt nhảy (hỗ trợ double jump)"""
+        if self.jump_count < PLAYER_MAX_JUMPS:
             self.vel_y = self.jump_force
             self.is_jumping = True
-            # Không thay đổi self.state thành 'jump' ở đây
-            # để tránh xung đột với việc đang cast skill
+            self.jump_count += 1
 
     def handle_movement(self, keys):
         """Xử lý input di chuyển liên tục (Walk/Run)"""
@@ -216,30 +215,21 @@ class Player:
         if dx > 0:
             if not self.facing_right: dx = -dx
             
-            # Check Collision X (Tạm bỏ theo yêu cầu User)
-            # if self.check_map_collision(next_x, self.entity.sprite.y, game_map):
-            #     dx = 0 # Va vào tường -> Dừng
-
-            # Pushing box logic
             actual_dx = int(dx)
 
+            # --- Box collision (both directions) ---
             if boxes:
                 player_rect = self.get_hitbox()
-                # predict the player position
                 future_player_rect = sdl2.SDL_Rect(player_rect.x + int(dx), player_rect.y, player_rect.w, player_rect.h)
 
                 for box in boxes:
                     if sdl2.SDL_HasIntersection(future_player_rect, box.rect):
-                        # Collide with box -> try to push
                         moved, box_dx = box.push(dx, dt, game_map)
-
                         if moved:
-                            # if the box moves, player move with the box speed
                             actual_dx = int(box_dx)
-                        else: 
-                            # if not enough force or stuck with the wall, player is blocked
+                        else:
                             actual_dx = 0
-                        break   # interact one box at a time
+                        break
             
             self.entity.sprite.x += actual_dx
 
@@ -260,10 +250,14 @@ class Player:
                     elif dx < 0: # left forward -> collide with right edge of tile
                         self.entity.sprite.x = tile.x + tile.w - 44 # 44 is the edge of left hitbox to the right edge of tile?
         
-        # --- STEP 3: MOVE ALONG WITH Y_AXIS (gravity)
-        self.vel_y += self.gravity
-        if self.vel_y > MAX_FALL_SPEED: self.vel_y = MAX_FALL_SPEED
-        self.entity.sprite.y += int(self.vel_y)
+        # --- STEP 3: MOVE ALONG WITH Y_AXIS (gravity) ---
+        # Chỉ áp dụng gravity khi đang trên không (tránh micro-bounce gây lún)
+        if self.is_jumping:
+            self.vel_y += self.gravity
+            if self.vel_y > MAX_FALL_SPEED: self.vel_y = MAX_FALL_SPEED
+        
+        if self.vel_y != 0:
+            self.entity.sprite.y += int(self.vel_y)
 
         # --- STEP 4: CHECK THE COLLISION Y ---
         on_ground = False
@@ -272,19 +266,13 @@ class Player:
             hitbox = self.get_hitbox()
             nearby_tiles = game_map.get_tile_rects_around(hitbox.x, hitbox.y, hitbox.w, hitbox.h)
             
-            # [QUAN TRỌNG] Tạo cảm biến dưới chân (mỏng 4px)
-            # Nó giúp phát hiện đất ngay cả khi hitbox chính chưa kịp chạm sâu
+            # Cảm biến dưới chân (mỏng 4px) - detect ground ngay cả khi hitbox chưa overlap
             feet_rect = sdl2.SDL_Rect(hitbox.x + 10, hitbox.y + hitbox.h, hitbox.w - 20, 4)
 
             for tile in nearby_tiles:
                 if sdl2.SDL_HasIntersection(hitbox, tile):
-                    if self.vel_y > 0: # Đang rơi xuống -> Chạm đất
-                        # Đặt chân nhân vật lên đầu tile
-                        # Tính toán: Hitbox.bottom = Tile.top
-                        # Sprite.y = Tile.top - Hitbox.height - offset_y
-                        align_y = tile.y - 80 - 48 # 80 là h, 48 là off_y
-                        
-                        # Snap vị trí nhân vật nằm ngay ngắn trên mặt tile
+                    if self.vel_y >= 0: # Đang rơi hoặc đứng yên -> Chạm đất
+                        # Snap: hitbox.bottom = tile.top
                         align_y = tile.y - 80 - 48
                         self.entity.sprite.y = align_y
                         self.vel_y = 0
@@ -296,39 +284,53 @@ class Player:
                         self.entity.sprite.y = align_y
                         self.vel_y = 0
 
-                # 4.2 Check cảm biến chân (Anti-Jitter)
-                # Chỉ check khi đang không bay lên (vel_y >= 0) và chưa được xác nhận chạm đất
+                # Cảm biến chân (Anti-Jitter) - giữ player dính mặt đất khi đi ngang
                 elif not on_ground and self.vel_y >= 0:
                     if sdl2.SDL_HasIntersection(feet_rect, tile):
-                        # Phát hiện đất ngay dưới chân -> Hút dính xuống
                         align_y = tile.y - 80 - 48
-                        # Chỉ hút nếu khoảng cách rất gần (tránh hút từ xa)
-                        if abs(self.entity.sprite.y - align_y) <= 5: 
+                        if abs(self.entity.sprite.y - align_y) <= 8:
                             self.entity.sprite.y = align_y
                             self.vel_y = 0
                             self.ground_y = tile.y
                             on_ground = True
 
+        # --- Box Y collision (land on top / hit from below) ---
+        if boxes and not on_ground:
+            hitbox = self.get_hitbox()
+            box_feet_rect = sdl2.SDL_Rect(hitbox.x + 10, hitbox.y + hitbox.h, hitbox.w - 20, 4)
+            for box in boxes:
+                if sdl2.SDL_HasIntersection(hitbox, box.rect):
+                    if self.vel_y >= 0:  # Landing on box
+                        align_y = box.rect.y - 80 - 48
+                        self.entity.sprite.y = align_y
+                        self.vel_y = 0
+                        on_ground = True
+                        break
+                    elif self.vel_y < 0:  # Hitting box from below
+                        self.vel_y = 0
+                # Feet sensor: anti-jitter when standing on box
+                elif self.vel_y >= 0:
+                    if sdl2.SDL_HasIntersection(box_feet_rect, box.rect):
+                        align_y = box.rect.y - 80 - 48
+                        if abs(self.entity.sprite.y - align_y) <= 8:
+                            self.entity.sprite.y = align_y
+                            self.vel_y = 0
+                            on_ground = True
+                            break
+
         self.is_jumping = not on_ground
+        
+        # Reset jump counter when on ground
+        if on_ground:
+            self.jump_count = 0
+        
+        # Khi vừa rời khỏi mặt đất (bước xuống vực), bắt đầu rơi
+        if self.is_jumping and self.vel_y == 0:
+            self.vel_y = self.gravity
 
-        # Fallback an toàn: Không bao giờ rơi quá sâu khỏi map (chết)
-        if self.entity.sprite.y > 1000: # Ví dụ rơi xuống vực
+        # Fallback: rơi quá sâu -> chết
+        if self.entity.sprite.y > 1000:
              self.die()
-
-        # # 3. Xử lý trọng lực (Y) & Simple Ground Check
-        # self.vel_y += self.gravity
-        # if self.vel_y > MAX_FALL_SPEED: self.vel_y = MAX_FALL_SPEED
-        
-        # self.entity.sprite.y += int(self.vel_y)
-        
-        # # Check Collision Y (Simple Ground)
-        # # User yêu cầu "chưa cần collision", chỉ cần đi được
-        # if self.entity.sprite.y >= GROUND_Y:
-        #     self.entity.sprite.y = GROUND_Y
-        #     self.vel_y = 0
-        #     self.is_jumping = False
-        # else:
-        #     self.is_jumping = True
 
         # State management for HURT
         if self.state == 'hurt':
