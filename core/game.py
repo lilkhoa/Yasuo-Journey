@@ -13,11 +13,15 @@ from core.camera import Camera
 # --- THÊM IMPORTS CHO PLAYER VÀ NPC ---
 from entities.player import Player
 from entities.npc import NPCManager
+from entities.boss import BossManager
 from entities.projectile import ProjectileManager
 from core.event import handle_input
 from combat.skill_q import update_q_logic
 from combat.skill_w import update_w_logic
 from ui.hud import SkillBarHUD
+
+# Sound manager
+from core.sound import get_sound_manager
 
 # Long test map to test camera scroll: TERRAIN
 TEST_LEVEL = [
@@ -115,6 +119,10 @@ def run():
     window.show()
     renderer = sdl2.ext.Renderer(window, flags=sdl2.SDL_RENDERER_PRESENTVSYNC)
     factory = sdl2.ext.SpriteFactory(sdl2.ext.TEXTURE, renderer=renderer)
+    sound_manager = get_sound_manager()
+    sound_manager.initialize()
+    sound_manager.load_npc_sounds()
+    sound_manager.load_boss_sounds()
     
     try:
         tileset_sprite = factory.from_image("assets/Map/oak_woods_tileset.png")
@@ -167,7 +175,8 @@ def run():
     
     # Initialize ProjectileManager for NPC projectiles
     projectile_manager = ProjectileManager(renderer.sdlrenderer)
-    npc_manager = NPCManager(software_factory, None, renderer.sdlrenderer, projectile_manager)
+    npc_manager = NPCManager(software_factory, None, renderer.sdlrenderer, projectile_manager, sound_manager)
+    boss_manager = BossManager(software_factory, None, renderer.sdlrenderer, projectile_manager, sound_manager, camera)
     
     # Initialize HUD
     hud = SkillBarHUD(renderer.sdlrenderer, player)
@@ -187,6 +196,11 @@ def run():
     o1 = npc_manager.spawn_onre(750, npc_ground_y)  # Gần hơn để test melee
     o1.set_player(player)
     make_npc_compatible(o1)
+
+    # Boss spawn
+    boss = boss_manager.spawn_boss(4500, npc_ground_y - 400)
+    boss.set_player(player)
+    make_npc_compatible(boss)
     
     active_tornadoes = []
     active_walls = []
@@ -242,8 +256,17 @@ def run():
         
         # Skill Updates
         alive_npcs = [n for n in npc_manager.npcs if n.is_alive()]
+        alive_bosses = boss_manager.get_alive_bosses()
+        # Gather all minions from all bosses
+        all_minions = []
+        for boss in alive_bosses:
+            all_minions.extend([m for m in boss.minions if m.health > 0])
+        
+        # Combine all combat targets for skills
+        all_combat_targets = alive_npcs + alive_bosses + all_minions
+        
         for t in active_tornadoes[:]:
-            update_q_logic(t, alive_npcs, dt)
+            update_q_logic(t, all_combat_targets, dt)
             if not t.active: 
                 t.delete()
                 active_tornadoes.remove(t)
@@ -254,11 +277,12 @@ def run():
                 w.delete()
                 active_walls.remove(w)
                 
-        player.skill_e.update_dash(dt, alive_npcs, boxes)
+        player.skill_e.update_dash(dt, all_combat_targets, boxes)
         if player.skill_e.is_dashing: player.state = 'dashing_e'
         elif player.state == 'dashing_e' and not player.skill_e.is_dashing: player.state = 'idle'
 
         npc_manager.update_all(dt, my_map)
+        boss_manager.update_all(dt, my_map)
         projectile_manager.update_all(dt)
         
         # ============== COMBAT COLLISION SYSTEM ==============
@@ -279,7 +303,8 @@ def run():
                     projectile.on_hit()
                     print(f"[COMBAT] Player hit by projectile! HP: {int(player.hp)}/{player.max_hp}")
             
-            # --- 2. NPC MELEE ATTACK -> PLAYER ---
+            # --- 2. NPC/BOSS/MINION MELEE ATTACK -> PLAYER ---
+            # Check NPCs
             for npc in alive_npcs:
                 # Check if NPC is in attacking state and can hit player
                 if hasattr(npc, 'is_attacking') and npc.is_attacking:
@@ -308,7 +333,31 @@ def run():
                     # Reset hit flag when not attacking
                     npc._attack_hit_player = False
             
-            # --- 3. PLAYER ATTACK -> NPC ---
+            # Check Boss attacks (using melee_range from boss)
+            for boss in alive_bosses:
+                if boss.is_attacking and boss.attack_type == 'melee':
+                    boss_x, boss_y, boss_w, boss_h = boss.get_bounds()
+                    
+                    # Boss melee range is larger
+                    if boss.direction.value == 1:  # Facing right
+                        attack_hitbox = (boss_x + boss_w, boss_y, boss.melee_range, boss_h)
+                    else:  # Facing left
+                        attack_hitbox = (boss_x - boss.melee_range, boss_y, boss.melee_range, boss_h)
+                    
+                    px, py, pw, ph = player.x, player.y, player.width, player.height
+                    ax, ay, aw, ah = attack_hitbox
+                    
+                    if (ax < px + pw and ax + aw > px and ay < py + ph and ay + ah > py):
+                        if not getattr(boss, '_attack_hit_player', False):
+                            boss._attack_hit_player = True
+                            player.take_damage(boss.melee_damage)
+                            print(f"[COMBAT] Player hit by BOSS melee! HP: {int(player.hp)}/{player.max_hp}")
+                else:
+                    boss._attack_hit_player = False
+            
+            # Minions don't have melee attacks (they use projectiles)
+            
+            # --- 3. PLAYER ATTACK -> NPC/BOSS/MINION ---
             if player.state == 'attacking':
                 # Player attack hitbox (phía trước player)
                 px, py, pw, ph = player.x, player.y, player.width, player.height
@@ -319,6 +368,7 @@ def run():
                 else:
                     attack_hitbox = (px - player_attack_range + 20, py + 20, player_attack_range, ph - 40)
                 
+                # Hit NPCs
                 for npc in alive_npcs:
                     if not getattr(player, '_attack_hit_npc_' + str(id(npc)), False):
                         nx, ny, nw, nh = npc.get_bounds()
@@ -336,11 +386,55 @@ def run():
                                 kill_count += 1
                                 player.on_kill_enemy()
                                 print(f"[COMBAT] NPC killed! Total kills: {kill_count}")
+                
+                # Hit Bosses
+                for boss in alive_bosses:
+                    if not getattr(player, '_attack_hit_boss_' + str(id(boss)), False):
+                        bx, by, bw, bh = boss.get_bounds()
+                        ax, ay, aw, ah = attack_hitbox
+                        
+                        if (ax < bx + bw and ax + aw > bx and ay < by + bh and ay + ah > by):
+                            # Hit Boss!
+                            setattr(player, '_attack_hit_boss_' + str(id(boss)), True)
+                            boss.take_damage(PLAYER_ATTACK_DAMAGE)
+                            player.on_hit_enemy(PLAYER_ATTACK_DAMAGE)
+                            print(f"[COMBAT] Player hit BOSS! Boss HP: {boss.health}/{boss.max_health}")
+                            
+                            # Check if boss died
+                            if not boss.is_alive():
+                                kill_count += 1
+                                player.on_kill_enemy()
+                                print(f"[COMBAT] *** BOSS DEFEATED! *** Total kills: {kill_count}")
+                
+                # Hit Minions
+                for minion in all_minions:
+                    if not getattr(player, '_attack_hit_minion_' + str(id(minion)), False):
+                        mx, my, mw, mh = minion.get_bounds()
+                        ax, ay, aw, ah = attack_hitbox
+                        
+                        if (ax < mx + mw and ax + aw > mx and ay < my + mh and ay + ah > my):
+                            # Hit Minion!
+                            setattr(player, '_attack_hit_minion_' + str(id(minion)), True)
+                            minion.take_damage(PLAYER_ATTACK_DAMAGE)
+                            player.on_hit_enemy(PLAYER_ATTACK_DAMAGE)
+                            print(f"[COMBAT] Player hit Boss Minion! Minion HP: {minion.health}")
+                            
+                            # Check if minion died
+                            if minion.health <= 0:
+                                kill_count += 1
+                                player.on_kill_enemy()
+                                print(f"[COMBAT] Minion killed! Total kills: {kill_count}")
             else:
                 # Reset attack hit flags khi hết attacking
                 for npc in npc_manager.npcs:
                     if hasattr(player, '_attack_hit_npc_' + str(id(npc))):
                         delattr(player, '_attack_hit_npc_' + str(id(npc)))
+                for boss in boss_manager.bosses:
+                    if hasattr(player, '_attack_hit_boss_' + str(id(boss))):
+                        delattr(player, '_attack_hit_boss_' + str(id(boss)))
+                    for minion in boss.minions:
+                        if hasattr(player, '_attack_hit_minion_' + str(id(minion))):
+                            delattr(player, '_attack_hit_minion_' + str(id(minion)))
             
             # --- 4. CHECK PLAYER DEATH (GAME OVER) ---
             if player.state == 'dead':
@@ -390,6 +484,9 @@ def run():
 
         # Render NPCs
         npc_manager.render_all(camera.camera.x, camera.camera.y)
+
+        # Render Boss
+        boss_manager.render_all(camera.camera.x, camera.camera.y)
         
         # Render NPC Projectiles (with camera offset)
         projectile_manager.render_all(camera.camera.x, camera.camera.y)
