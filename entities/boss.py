@@ -107,7 +107,7 @@ class Boss:
         renderer: PySDL2 renderer
     """
     
-    def __init__(self, x, y, sprite_factory, texture_factory, renderer, projectile_manager=None, sound_manager=None):
+    def __init__(self, x, y, sprite_factory, texture_factory, renderer, projectile_manager=None, sound_manager=None, camera=None):
         """
         Initialize Boss.
         
@@ -119,6 +119,7 @@ class Boss:
             renderer: PySDL2 renderer
             projectile_manager: ProjectileManager for spawning projectiles
             sound_manager: SoundManager for audio playback
+            camera: Camera instance for screen position calculations
         """
         # Position and dimensions
         self.x = x
@@ -128,9 +129,6 @@ class Boss:
         self.width = 256
         self.height = 256
         
-        # Screen center for circular shooting skill
-        self.center_x = WINDOW_WIDTH // 2 - self.width // 2
-        self.center_y = WINDOW_HEIGHT // 2 - self.height // 2
         
         # Combat stats from settings
         self.health = BOSS_HEALTH
@@ -231,6 +229,7 @@ class Boss:
         self.player = None
         self.projectile_manager = projectile_manager
         self.sound_manager = sound_manager
+        self.camera = camera
         
         # Summoned minions
         self.minions = []
@@ -344,6 +343,25 @@ class Boss:
         """
         self.player = player
     
+    def is_on_screen(self):
+        """
+        Check if boss is visible on screen.
+        
+        Returns:
+            bool: True if boss is visible on current screen, False otherwise
+        """
+        if not self.camera:
+            return True  # Always active if no camera reference
+        
+        # Calculate boss screen position
+        boss_screen_x = self.x - self.camera.camera.x
+        boss_screen_right = boss_screen_x + self.width
+        
+        # Check if boss is within screen bounds (with small margin)
+        margin = 100
+        return (boss_screen_right > -margin and 
+                boss_screen_x < WINDOW_WIDTH + margin)
+    
     def update(self, delta_time=1):
         """
         Update boss AI, state, animation, and movement.
@@ -425,7 +443,8 @@ class Boss:
         # Update summoned minions
         self._update_minions()
         
-        if self.skill_cooldown >= self.skill_cooldown_max and not self.is_attacking:
+        # Boss only uses skills when visible on screen
+        if self.skill_cooldown >= self.skill_cooldown_max and not self.is_attacking and self.is_on_screen():
             if random.random() < 0.2:  # 2% chance per frame (~1 skill every 3-4 seconds on average)
                 self._choose_random_skill()
                 return
@@ -534,8 +553,13 @@ class Boss:
         - Faces the player
         - Uses melee attack if player is within melee range
         - Uses ranged attack if player is beyond melee range
+        - ONLY attacks when visible on screen
         """
         if not self.player or self.attack_cooldown > 0:
+            return
+        
+        # Boss only attacks when visible on screen
+        if not self.is_on_screen():
             return
         
         # Calculate distance to player
@@ -720,6 +744,7 @@ class Boss:
         self.skill_phase = 0  # 0: charge, 1: fire laser
         self.skill_timer = 0
         self.skill_cooldown = 0
+        self._kamehameha_fired = False  # Reset flag to ensure laser fires exactly once
         
         # Play kamehameha charging sound
         # if self.sound_manager:
@@ -843,7 +868,7 @@ class Boss:
         self.current_skill = None
         self.skill_phase = 0
         self.skill_timer = 0
-        self.skill_cooldown = 0
+        # Do NOT reset skill_cooldown - let it regenerate naturally to prevent rapid skill spam
         self.state = BossState.IDLE
         self.current_frame = 0
         self.frame_counter = 0
@@ -1133,7 +1158,7 @@ class BossManager:
     Similar to NPCManager but for Boss entities.
     """
     
-    def __init__(self, sprite_factory, texture_factory, renderer, projectile_manager=None, sound_manager=None):
+    def __init__(self, sprite_factory, texture_factory, renderer, projectile_manager=None, sound_manager=None, camera=None):
         """
         Initialize Boss Manager.
         
@@ -1143,6 +1168,7 @@ class BossManager:
             renderer: PySDL2 renderer
             projectile_manager: ProjectileManager instance for boss projectiles (optional)
             sound_manager: SoundManager instance for audio (optional)
+            camera: Camera instance for boss positioning (optional)
         """
         self.bosses = []
         self.sprite_factory = sprite_factory
@@ -1150,6 +1176,7 @@ class BossManager:
         self.renderer = renderer
         self.projectile_manager = projectile_manager
         self.sound_manager = sound_manager
+        self.camera = camera
     
     def spawn_boss(self, x, y):
         """
@@ -1163,7 +1190,7 @@ class BossManager:
             Boss: The spawned Boss instance
         """
         boss = Boss(x, y, self.sprite_factory, self.texture_factory,
-                   self.renderer, self.projectile_manager, self.sound_manager)
+                   self.renderer, self.projectile_manager, self.sound_manager, self.camera)
         self.bosses.append(boss)
         return boss
     

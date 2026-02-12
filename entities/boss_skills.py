@@ -77,8 +77,18 @@ class CircularShootingSkill:
         self.original_x = self.boss.x
         self.original_y = self.boss.y
         
-        # Set movement to center
-        self.boss.target_x = self.boss.center_x
+        # Calculate world-space screen center based on camera position
+        if self.boss.camera:
+            # World coordinate of screen center = camera offset + half screen width
+            world_center_x = self.boss.camera.camera.x + WINDOW_WIDTH // 2 - self.boss.width // 2
+            self.boss.target_x = world_center_x
+        else:
+            # Fallback: use player position as approximate screen center (camera follows player)
+            if self.boss.player:
+                self.boss.target_x = self.boss.player.x
+            else:
+                self.boss.target_x = self.boss.x  # Stay in place if no reference
+        
         self.boss.target_y = self.boss.ground_y
         self.boss.is_moving_to_center = True
         self.boss.state = BossState.WALKING
@@ -286,8 +296,16 @@ class MeteorSkill:
         if not self.boss.projectile_manager:
             return
         
-        # Random X position across screen width
-        spawn_x = random.uniform(0, WINDOW_WIDTH)
+        # Calculate visible screen area in world coordinates
+        if self.boss.camera:
+            # Spawn meteors across the visible screen area (world coordinates)
+            world_left = self.boss.camera.camera.x
+            world_right = self.boss.camera.camera.x + WINDOW_WIDTH
+            spawn_x = random.uniform(world_left, world_right)
+        else:
+            # Fallback: spawn at screen coordinates (for static camera scenarios)
+            spawn_x = random.uniform(0, WINDOW_WIDTH)
+        
         spawn_y = -100  # Spawn above screen
         
         # Diagonal velocity (right-to-left = negative X, top-to-bottom = positive Y)

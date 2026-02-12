@@ -21,7 +21,7 @@ from combat.skill_w import update_w_logic
 from ui.hud import SkillBarHUD
 
 # Sound manager
-from core.sound import SoundManager
+from core.sound import get_sound_manager
 
 # Long test map to test camera scroll: TERRAIN
 TEST_LEVEL = [
@@ -119,7 +119,10 @@ def run():
     window.show()
     renderer = sdl2.ext.Renderer(window, flags=sdl2.SDL_RENDERER_PRESENTVSYNC)
     factory = sdl2.ext.SpriteFactory(sdl2.ext.TEXTURE, renderer=renderer)
-    sound_manager = SoundManager()
+    sound_manager = get_sound_manager()
+    sound_manager.initialize()
+    sound_manager.load_npc_sounds()
+    sound_manager.load_boss_sounds()
     
     try:
         tileset_sprite = factory.from_image("assets/Map/oak_woods_tileset.png")
@@ -173,7 +176,7 @@ def run():
     # Initialize ProjectileManager for NPC projectiles
     projectile_manager = ProjectileManager(renderer.sdlrenderer)
     npc_manager = NPCManager(software_factory, None, renderer.sdlrenderer, projectile_manager, sound_manager)
-    boss_manager = BossManager(software_factory, None, renderer.sdlrenderer, projectile_manager, sound_manager)
+    boss_manager = BossManager(software_factory, None, renderer.sdlrenderer, projectile_manager, sound_manager, camera)
     
     # Initialize HUD
     hud = SkillBarHUD(renderer.sdlrenderer, player)
