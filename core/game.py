@@ -20,6 +20,9 @@ from combat.skill_q import update_q_logic
 from combat.skill_w import update_w_logic
 from ui.hud import SkillBarHUD
 
+# [MỚI] IMPORT ITEM
+from items.item import ItemManager, ItemType
+
 # Sound manager
 from core.sound import get_sound_manager
 
@@ -36,7 +39,6 @@ TEST_LEVEL = [
 ]
 
 # DECO MAP (Mask Map)
-# Lưu ý: the length must be compatible
 DECO_MAP = [
     "                                                  ", 
     "    ff                                            ", 
@@ -49,7 +51,6 @@ DECO_MAP = [
 ]
 
 # BOX MAP (Mask Map cho vật thể tương tác)
-# 'B' đại diện cho Box
 BOX_MAP = [
     "                                                  ", 
     "                                                  ", 
@@ -95,20 +96,11 @@ def render_surface_to_texture(sdl_renderer, surface, x, y):
     sdl2.SDL_DestroyTexture(texture)
 
 def draw_bg(renderer, texture, camera_x, speed_factor):
-    """
-        speed_factor:
-            0.0 -> do not move
-            0.5 -> move to opposite direction, with speed = 1/2 player
-            1.0 -> equal to player
-    """
     bg_width = WINDOW_WIDTH
-
     relative_x = (camera_x * speed_factor) % bg_width
-
     src_rect = SDL_Rect(0, 0, 320, 180)
     dst_rect1 = SDL_Rect(int(-relative_x), 0, WINDOW_WIDTH, WINDOW_HEIGHT)
     SDL_RenderCopy(renderer, texture, src_rect, dst_rect1)
-
     if relative_x > 0:
         dst_rect2 = SDL_Rect(int(-relative_x + bg_width), 0, WINDOW_WIDTH, WINDOW_HEIGHT)
         SDL_RenderCopy(renderer, texture, src_rect, dst_rect2)
@@ -124,18 +116,19 @@ def run():
     sound_manager.load_npc_sounds()
     sound_manager.load_boss_sounds()
     
+    # [MỚI] KHỞI TẠO ITEM MANAGER
+    item_manager = ItemManager(renderer)
+
     try:
         tileset_sprite = factory.from_image("assets/Map/oak_woods_tileset.png")
         tileset_texture = tileset_sprite.texture
 
-        # Load 3 Background layers (far to near order)
-        bg1_sprite = factory.from_image("assets/Map/background/background_layer_1.png") # sky
+        # Load 3 Background layers
+        bg1_sprite = factory.from_image("assets/Map/background/background_layer_1.png")
         bg1_tex = bg1_sprite.texture
-        
-        bg2_sprite = factory.from_image("assets/Map/background/background_layer_2.png") # far forest
+        bg2_sprite = factory.from_image("assets/Map/background/background_layer_2.png")
         bg2_tex = bg2_sprite.texture
-
-        bg3_sprite = factory.from_image("assets/Map/background/background_layer_3.png") # near forest
+        bg3_sprite = factory.from_image("assets/Map/background/background_layer_3.png")
         bg3_tex = bg3_sprite.texture
 
         box_tileset_sprite = factory.from_image("assets/Map/interactable_objects/TX Village Props.png")
@@ -152,48 +145,37 @@ def run():
     # 2. init Camera
     camera = Camera(WINDOW_WIDTH, WINDOW_HEIGHT)
 
-    # 3. KHỞI TẠO PLAYER VÀ NPC (Thay cho FakePlayer)
+    # 3. KHỞI TẠO PLAYER VÀ NPC
     world = sdl2.ext.World()
-    software_factory = sdl2.ext.SpriteFactory(sdl2.ext.SOFTWARE) # Player cần Software factory
+    software_factory = sdl2.ext.SpriteFactory(sdl2.ext.SOFTWARE) 
     
     # 4. Boxes initialization
     boxes = []
     for y, row in enumerate(BOX_MAP):
         for x, char in enumerate(row):
             if char == "B":
-                # calculate the real position
                 real_x = x * TILE_SIZE
-                # align Y for box to lie on the top of the ground of this row
-                # because height is (44 -> 24) * SCALE FACTOR
-                real_y = (y * TILE_SIZE) # because we scale the block has the same size to the ground block
-
+                real_y = (y * TILE_SIZE) 
                 new_box = Box(real_x, real_y, box_tileset_texture)
                 boxes.append(new_box)
             
-
-    player = Player(world, software_factory, 100, 350) # Spawn gần mặt đất
+    player = Player(world, software_factory, 100, 350) 
     
-    # Initialize ProjectileManager for NPC projectiles
     projectile_manager = ProjectileManager(renderer.sdlrenderer)
     npc_manager = NPCManager(software_factory, None, renderer.sdlrenderer, projectile_manager, sound_manager)
     boss_manager = BossManager(software_factory, None, renderer.sdlrenderer, projectile_manager, sound_manager, camera)
     
-    # Initialize HUD
     hud = SkillBarHUD(renderer.sdlrenderer, player)
     
-    # Spawn NPC closer to player for testing (within detection range)
-    # GROUND_Y = 480, player sprite 128px, NPC sprite ~72-96px
-    # Player spawn ở y=350 (vì sprite 128px sẽ chạm đất ở 350+128=478)
-    # NPC spawn thấp hơn để chạm đất cùng level
-    npc_ground_y = 500  # Điều chỉnh để NPC đứng cùng mặt đất với player
+    npc_ground_y = 500
     
-    g1 = npc_manager.spawn_ghost(350, npc_ground_y)  # 250 pixels from player
+    g1 = npc_manager.spawn_ghost(350, npc_ground_y)
     g1.set_player(player)
     make_npc_compatible(g1)
-    s1 = npc_manager.spawn_shooter(550, npc_ground_y)  # Gần hơn để test
+    s1 = npc_manager.spawn_shooter(550, npc_ground_y)
     s1.set_player(player)
     make_npc_compatible(s1)
-    o1 = npc_manager.spawn_onre(750, npc_ground_y)  # Gần hơn để test melee
+    o1 = npc_manager.spawn_onre(750, npc_ground_y)
     o1.set_player(player)
     make_npc_compatible(o1)
 
@@ -202,15 +184,22 @@ def run():
     boss.set_player(player)
     make_npc_compatible(boss)
     
+    # [MỚI] SPAWN CÁC VẬT PHẨM (TEST)
+    # Tọa độ Y=480 để nằm trên mặt đất của map test
+    item_manager.spawn_item(300, 480, ItemType.HEALTH_POTION)
+    item_manager.spawn_item(400, 480, ItemType.STAMINA_POTION)
+    item_manager.spawn_item(500, 480, ItemType.STR_POTION)
+    item_manager.spawn_item(600, 480, ItemType.INFINITY_SWORD)
+    item_manager.spawn_item(700, 480, ItemType.STAR)
+
     active_tornadoes = []
     active_walls = []
 
-    # --- GAME STATS ---
     kill_count = 0
     game_over = False
-    game_over_timer = 0  # Đếm thời gian trước khi respawn
+    game_over_timer = 0
 
-    # 4.  game loop
+    # 4. game loop
     running = True
     last_time = sdl2.SDL_GetTicks()
     
@@ -224,45 +213,35 @@ def run():
             if event.type == sdl2.SDL_QUIT:
                 running = False
                 break
-            # Xử lý input sự kiện (Skills, Jump, Attack)
             if not handle_input(event, player, world, software_factory, renderer, active_tornadoes, active_walls, npc_manager):
                 running = False
         
         # Update Logic
         keys = sdl2.SDL_GetKeyboardState(None)
-        
-        # Block Logic (S key)
         player.set_blocking(keys[sdl2.SDLK_s])
-        
-        # Movement Logic
         player.handle_movement(keys)
-        
-        # Player Update (Physics, Animation, Skills)
         player.update(dt, world, software_factory, None, active_tornadoes, active_walls, game_map=my_map, boxes=boxes)
         
-        # Giới hạn Player trong Map
-        if player.entity.sprite.x < 0:
-            player.entity.sprite.x = 0
-        if player.entity.sprite.x > my_map.width_pixel - 128:
-            player.entity.sprite.x = my_map.width_pixel - 128
+        if player.entity.sprite.x < 0: player.entity.sprite.x = 0
+        if player.entity.sprite.x > my_map.width_pixel - 128: player.entity.sprite.x = my_map.width_pixel - 128
 
-        # Box updating
         for box in boxes:
             box.update(dt, my_map)
         
-        # update Camera theo Player (dùng SDL_Rect để tương thích)
+        # [MỚI] UPDATE ITEMS
+        item_manager.update(dt)
+        item_manager.check_collision(player)
+
         player_rect = SDL_Rect(int(player.entity.sprite.x), int(player.entity.sprite.y), 128, 128)
         camera.update(player_rect, my_map.width_pixel)
         
         # Skill Updates
         alive_npcs = [n for n in npc_manager.npcs if n.is_alive()]
         alive_bosses = boss_manager.get_alive_bosses()
-        # Gather all minions from all bosses
         all_minions = []
         for boss in alive_bosses:
             all_minions.extend([m for m in boss.minions if m.health > 0])
         
-        # Combine all combat targets for skills
         all_combat_targets = alive_npcs + alive_bosses + all_minions
         
         for t in active_tornadoes[:]:
@@ -272,7 +251,7 @@ def run():
                 active_tornadoes.remove(t)
         
         for w in active_walls[:]:
-            update_w_logic(w)
+            update_w_logic(w, all_combat_targets, projectile_manager.projectiles, dt)
             if not w.active:
                 w.delete()
                 active_walls.remove(w)
@@ -286,9 +265,8 @@ def run():
         projectile_manager.update_all(dt)
         
         # ============== COMBAT COLLISION SYSTEM ==============
-        # Chỉ xử lý khi chưa game over
         if not game_over:
-            # --- 0. PROJECTILE -> BOX (destroy on hit) ---
+            # 0. PROJECTILE -> BOX
             for projectile in projectile_manager.projectiles[:]:
                 proj_rect = sdl2.SDL_Rect(int(projectile.x), int(projectile.y), projectile.width, projectile.height)
                 for box in boxes:
@@ -296,52 +274,40 @@ def run():
                         projectile.on_hit()
                         break
 
-            # --- 1. NPC PROJECTILE -> PLAYER ---
+            # 1. NPC PROJECTILE -> PLAYER
             for projectile in projectile_manager.projectiles[:]:
                 if projectile.check_collision(player):
                     player.take_damage(projectile.damage)
                     projectile.on_hit()
                     print(f"[COMBAT] Player hit by projectile! HP: {int(player.hp)}/{player.max_hp}")
             
-            # --- 2. NPC/BOSS/MINION MELEE ATTACK -> PLAYER ---
-            # Check NPCs
+            # 2. NPC/BOSS/MINION MELEE ATTACK -> PLAYER
             for npc in alive_npcs:
-                # Check if NPC is in attacking state and can hit player
                 if hasattr(npc, 'is_attacking') and npc.is_attacking:
-                    # Get NPC attack hitbox (offset based on direction)
                     npc_x, npc_y, npc_w, npc_h = npc.get_bounds()
                     attack_range = getattr(npc, 'attack_range', 50)
                     
-                    # Attack hitbox phía trước NPC
-                    if npc.direction == 1:  # Facing right
+                    if npc.direction == 1:
                         attack_hitbox = (npc_x + npc_w, npc_y, attack_range, npc_h)
-                    else:  # Facing left (-1)
+                    else:
                         attack_hitbox = (npc_x - attack_range, npc_y, attack_range, npc_h)
                     
-                    # Player bounds
                     px, py, pw, ph = player.x, player.y, player.width, player.height
-                    
-                    # AABB collision với attack hitbox
                     ax, ay, aw, ah = attack_hitbox
                     if (ax < px + pw and ax + aw > px and ay < py + ph and ay + ah > py):
-                        # Check if this attack hasn't hit player yet (prevent multi-hit)
                         if not getattr(npc, '_attack_hit_player', False):
                             npc._attack_hit_player = True
                             player.take_damage(npc.damage)
                             print(f"[COMBAT] Player melee'd by NPC! HP: {int(player.hp)}/{player.max_hp}")
                 else:
-                    # Reset hit flag when not attacking
                     npc._attack_hit_player = False
             
-            # Check Boss attacks (using melee_range from boss)
             for boss in alive_bosses:
                 if boss.is_attacking and boss.attack_type == 'melee':
                     boss_x, boss_y, boss_w, boss_h = boss.get_bounds()
-                    
-                    # Boss melee range is larger
-                    if boss.direction.value == 1:  # Facing right
+                    if boss.direction.value == 1:
                         attack_hitbox = (boss_x + boss_w, boss_y, boss.melee_range, boss_h)
-                    else:  # Facing left
+                    else:
                         attack_hitbox = (boss_x - boss.melee_range, boss_y, boss.melee_range, boss_h)
                     
                     px, py, pw, ph = player.x, player.y, player.width, player.height
@@ -355,13 +321,10 @@ def run():
                 else:
                     boss._attack_hit_player = False
             
-            # Minions don't have melee attacks (they use projectiles)
-            
-            # --- 3. PLAYER ATTACK -> NPC/BOSS/MINION ---
+            # 3. PLAYER ATTACK -> NPC/BOSS/MINION
             if player.state == 'attacking':
-                # Player attack hitbox (phía trước player)
                 px, py, pw, ph = player.x, player.y, player.width, player.height
-                player_attack_range = 60  # Tầm đánh thường
+                player_attack_range = 60
                 
                 if player.facing_right:
                     attack_hitbox = (px + pw - 20, py + 20, player_attack_range, ph - 40)
@@ -373,15 +336,11 @@ def run():
                     if not getattr(player, '_attack_hit_npc_' + str(id(npc)), False):
                         nx, ny, nw, nh = npc.get_bounds()
                         ax, ay, aw, ah = attack_hitbox
-                        
                         if (ax < nx + nw and ax + aw > nx and ay < ny + nh and ay + ah > ny):
-                            # Hit NPC!
                             setattr(player, '_attack_hit_npc_' + str(id(npc)), True)
-                            npc.take_damage(PLAYER_ATTACK_DAMAGE)
-                            player.on_hit_enemy(PLAYER_ATTACK_DAMAGE)
+                            npc.take_damage(player.attack_damage) # Sử dụng attack_damage mới (có buff)
+                            player.on_hit_enemy(player.attack_damage)
                             print(f"[COMBAT] Player hit NPC! NPC HP: {npc.health}")
-                            
-                            # Check if NPC died
                             if not npc.is_alive():
                                 kill_count += 1
                                 player.on_kill_enemy()
@@ -392,15 +351,11 @@ def run():
                     if not getattr(player, '_attack_hit_boss_' + str(id(boss)), False):
                         bx, by, bw, bh = boss.get_bounds()
                         ax, ay, aw, ah = attack_hitbox
-                        
                         if (ax < bx + bw and ax + aw > bx and ay < by + bh and ay + ah > by):
-                            # Hit Boss!
                             setattr(player, '_attack_hit_boss_' + str(id(boss)), True)
-                            boss.take_damage(PLAYER_ATTACK_DAMAGE)
-                            player.on_hit_enemy(PLAYER_ATTACK_DAMAGE)
+                            boss.take_damage(player.attack_damage)
+                            player.on_hit_enemy(player.attack_damage)
                             print(f"[COMBAT] Player hit BOSS! Boss HP: {boss.health}/{boss.max_health}")
-                            
-                            # Check if boss died
                             if not boss.is_alive():
                                 kill_count += 1
                                 player.on_kill_enemy()
@@ -411,21 +366,16 @@ def run():
                     if not getattr(player, '_attack_hit_minion_' + str(id(minion)), False):
                         mx, my, mw, mh = minion.get_bounds()
                         ax, ay, aw, ah = attack_hitbox
-                        
                         if (ax < mx + mw and ax + aw > mx and ay < my + mh and ay + ah > my):
-                            # Hit Minion!
                             setattr(player, '_attack_hit_minion_' + str(id(minion)), True)
-                            minion.take_damage(PLAYER_ATTACK_DAMAGE)
-                            player.on_hit_enemy(PLAYER_ATTACK_DAMAGE)
+                            minion.take_damage(player.attack_damage)
+                            player.on_hit_enemy(player.attack_damage)
                             print(f"[COMBAT] Player hit Boss Minion! Minion HP: {minion.health}")
-                            
-                            # Check if minion died
                             if minion.health <= 0:
                                 kill_count += 1
                                 player.on_kill_enemy()
                                 print(f"[COMBAT] Minion killed! Total kills: {kill_count}")
             else:
-                # Reset attack hit flags khi hết attacking
                 for npc in npc_manager.npcs:
                     if hasattr(player, '_attack_hit_npc_' + str(id(npc))):
                         delattr(player, '_attack_hit_npc_' + str(id(npc)))
@@ -436,17 +386,15 @@ def run():
                         if hasattr(player, '_attack_hit_minion_' + str(id(minion))):
                             delattr(player, '_attack_hit_minion_' + str(id(minion)))
             
-            # --- 4. CHECK PLAYER DEATH (GAME OVER) ---
+            # 4. CHECK PLAYER DEATH
             if player.state == 'dead':
                 game_over = True
-                game_over_timer = 3.0  # 3 giây trước khi respawn
+                game_over_timer = 3.0
                 print("[GAME] Player died! Game Over in 3 seconds...")
         
         else:
-            # Game Over countdown
             game_over_timer -= dt
             if game_over_timer <= 0:
-                # Respawn player
                 player.hp = player.max_hp
                 player.stamina = player.max_stamina
                 player.state = 'idle'
@@ -460,15 +408,16 @@ def run():
         renderer.clear()
         sdl_renderer = renderer.sdlrenderer
 
-        # RENDER BACKGROUND PARALLAX (GIỮ NGUYÊN)
         draw_bg(sdl_renderer, bg1_tex, camera.camera.x, 0.1) 
         draw_bg(sdl_renderer, bg2_tex, camera.camera.x, 0.4) 
         draw_bg(sdl_renderer, bg3_tex, camera.camera.x, 0.7)
 
-        # render Map (GIỮ NGUYÊN)
         my_map.render(sdl_renderer, tileset_texture, deco_mgr, camera)
         
-        # Render Skills (với camera offset)
+        # [MỚI] VẼ ITEMS
+        item_manager.render(camera.camera.x, camera.camera.y)
+
+        # Render Skills
         for t in active_tornadoes: 
              render_surface_to_texture(sdl_renderer, t.sprite.surface, 
                                        t.sprite.x - camera.camera.x, 
@@ -478,17 +427,11 @@ def run():
                                        w.sprite.x - camera.camera.x, 
                                        w.sprite.y - camera.camera.y)
         
-        # Box rendering
         for box in boxes:
             box.render(sdl_renderer, camera)
 
-        # Render NPCs
         npc_manager.render_all(camera.camera.x, camera.camera.y)
-
-        # Render Boss
         boss_manager.render_all(camera.camera.x, camera.camera.y)
-        
-        # Render NPC Projectiles (with camera offset)
         projectile_manager.render_all(camera.camera.x, camera.camera.y)
         
         # Render Player (với camera offset)
@@ -497,14 +440,18 @@ def run():
                          128, 128)
         p_tex = sdl2.SDL_CreateTextureFromSurface(sdl_renderer, player.entity.sprite.surface)
         
-        # [MỚI] RED FLASH EFFECT
+        # [CẬP NHẬT] PLAYER COLOR MOD (Hỗ trợ Buff Items + Red Flash)
+        # Nếu có Flash (bị đánh) -> Ưu tiên màu đỏ
+        # Nếu không -> Dùng màu buff (tím, vàng, hoặc trắng mặc định)
+        r, g, b = player.color_mod 
         if player.flash_timer > 0:
-            sdl2.SDL_SetTextureColorMod(p_tex, 255, 100, 100) # Tint Red (R=255, G=100, B=100) -> Bright Red
+            r, g, b = (255, 100, 100) # Tint Red
+        
+        sdl2.SDL_SetTextureColorMod(p_tex, int(r), int(g), int(b))
         
         sdl2.SDL_RenderCopy(sdl_renderer, p_tex, None, p_dst)
         sdl2.SDL_DestroyTexture(p_tex)
         
-        # Render HUD (always on top, no camera offset)
         hud.render()
 
         renderer.present()
