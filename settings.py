@@ -15,7 +15,7 @@ TILE_SIZE = TILE_SIZE_RAW * SCALE_FACTOR # this is the standard unit we use to d
 SOLID_TILES = ['(', '-', ')', '[', '=', ']', '0', '1', '2', '3', '4', '5', '6', '7', '8']
 
 # Game settings
-GAME_TITLE = "A3 Yasuo - Action Game"
+GAME_TITLE = "Yasuo Game"
 
 # Asset paths
 ASSETS_PATH = "assets"
