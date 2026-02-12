@@ -121,7 +121,7 @@ class NPC:
         self.damage = damage
         self.attack_range = attack_range
         self.detection_range = detection_range
-        self.vertical_detection_range = 1.5 * self.height
+        self.vertical_detection_range = self.height
         
         # Movement
         self.speed = speed
@@ -413,9 +413,11 @@ class NPC:
             # Add hysteresis buffer to prevent jittery behavior at boundary
             buffer_left = detection_left - self.chase_hysteresis_buffer
             buffer_right = detection_right + self.chase_hysteresis_buffer
+
+            player_out_of_x = not (buffer_left <= player_x <= buffer_right)
+            player_out_of_y = not is_on_same_vertical_level
             
-            if not (buffer_left <= player_x <= buffer_right):
-                # Player left detection area (with buffer) - stop chasing
+            if player_out_of_x or player_out_of_y:
                 self._stop_chase()
             else:
                 # Player still in detection range - check distance
