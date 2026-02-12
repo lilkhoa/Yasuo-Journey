@@ -121,6 +121,7 @@ class NPC:
         self.damage = damage
         self.attack_range = attack_range
         self.detection_range = detection_range
+        self.vertical_detection_range = self.height
         
         # Movement
         self.speed = speed
@@ -397,12 +398,14 @@ class NPC:
         detection_left = self.spawn_x - self.detection_range
         detection_right = self.spawn_x + self.detection_range
         
-        player_x = self.player.x + self.player.width / 2  # Use player center
+        player_x = self.player.x + self.player.width / 2
         
         # Check if player is within detection area
         player_in_detection = detection_left <= player_x <= detection_right
+        distance_y = abs((self.player.y + self.player.height / 2) - (self.y + self.height / 2))
+        is_on_same_vertical_level = distance_y <= self.vertical_detection_range
         
-        if not self.is_chasing and player_in_detection:
+        if not self.is_chasing and player_in_detection and is_on_same_vertical_level:
             # Player entered detection area - start chasing
             print(f"[NPC] Player detected at {player_x:.0f}! Starting chase. NPC at {self.x:.0f}")
             self._start_chase()
@@ -410,15 +413,18 @@ class NPC:
             # Add hysteresis buffer to prevent jittery behavior at boundary
             buffer_left = detection_left - self.chase_hysteresis_buffer
             buffer_right = detection_right + self.chase_hysteresis_buffer
+
+            player_out_of_x = not (buffer_left <= player_x <= buffer_right)
+            player_out_of_y = not is_on_same_vertical_level
             
-            if not (buffer_left <= player_x <= buffer_right):
-                # Player left detection area (with buffer) - stop chasing
+            if player_out_of_x or player_out_of_y:
                 self._stop_chase()
             else:
                 # Player still in detection range - check distance
                 distance_to_player = abs(self.x + self.width / 2 - player_x)
+                distance_y = abs((self.player.y + self.player.height / 2) - (self.y + self.height / 2))
                 
-                if distance_to_player <= self.attack_range:
+                if distance_to_player <= self.attack_range and distance_y <= self.vertical_detection_range:
                     # Player in attack range - update direction to face player before attacking
                     if not self.is_attacking and self.attack_cooldown == 0:
                         # Update direction to face player
