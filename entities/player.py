@@ -3,7 +3,7 @@ import sdl2.ext
 import os
 import sys
 
-# Giữ nguyên logic đường dẫn cũ của bạn
+# Cấu hình đường dẫn
 current_dir = os.path.dirname(os.path.abspath(__file__))
 root_dir = os.path.dirname(current_dir)
 if root_dir not in sys.path:
@@ -18,7 +18,6 @@ from combat.skill_e import SkillE
 from combat.utils import load_grid_sprite_sheet, flip_sprites_horizontal
 from settings import *
 from combat.cooldown import CooldownManager
-from combat.damage import DamageSystem
 
 class Player:
     def __init__(self, world, factory, x, y):
@@ -27,26 +26,20 @@ class Player:
         self.anims_right['idle'] = load_grid_sprite_sheet(factory, os.path.join(PLAYER_ASSET_DIR, "Idle.png"), cols=6, rows=1)
         self.anims_right['run']  = load_grid_sprite_sheet(factory, os.path.join(PLAYER_ASSET_DIR, "Run.png"), cols=8, rows=1)
         self.anims_right['walk'] = load_grid_sprite_sheet(factory, os.path.join(PLAYER_ASSET_DIR, "Walk.png"), cols=8, rows=1)
-        self.anims_right['walk'] = load_grid_sprite_sheet(factory, os.path.join(PLAYER_ASSET_DIR, "Walk.png"), cols=8, rows=1)
         self.anims_right['attack_normal'] = load_grid_sprite_sheet(factory, os.path.join(PLAYER_ASSET_DIR, "Attack_1.png"), cols=6, rows=1) 
         self.anims_right['block'] = load_grid_sprite_sheet(factory, os.path.join(PLAYER_ASSET_DIR, "Shield.png"), cols=2, rows=1) 
         self.anims_right['q']    = load_grid_sprite_sheet(factory, os.path.join(PLAYER_ASSET_DIR, "Attack_2.png"), cols=4, rows=1)
-        self.anims_right['w']    = load_grid_sprite_sheet(factory, os.path.join(PLAYER_ASSET_DIR, "Shield.png"), cols=2, rows=1) # W cũng dùng Shield tạm hoặc khác
+        self.anims_right['w']    = load_grid_sprite_sheet(factory, os.path.join(PLAYER_ASSET_DIR, "Shield.png"), cols=2, rows=1)
         self.anims_right['e']    = load_grid_sprite_sheet(factory, os.path.join(PLAYER_ASSET_DIR, "Attack_3.png"), cols=3, rows=1)
-        self.anims_right['e']    = load_grid_sprite_sheet(factory, os.path.join(PLAYER_ASSET_DIR, "Attack_3.png"), cols=3, rows=1)
-        
-        # [MỚI] Load Jump Animation (1 hàng 12 cột)
         self.anims_right['jump'] = load_grid_sprite_sheet(factory, os.path.join(PLAYER_ASSET_DIR, "Jump.png"), cols=12, rows=1)
-        
-        # [MỚI] Load Dead/Hurt Animation
         self.anims_right['dead'] = load_grid_sprite_sheet(factory, os.path.join(PLAYER_ASSET_DIR, "Dead.png"), cols=3, rows=1)
         self.anims_right['hurt'] = load_grid_sprite_sheet(factory, os.path.join(PLAYER_ASSET_DIR, "Hurt.png"), cols=2, rows=1)
 
-        # Fallback nếu không load được
+        # Fallback
         if not self.anims_right['idle']: 
             self.anims_right['idle'] = [factory.from_color(sdl2.ext.Color(255,0,0), (40,60))]
 
-        # --- 2. TẠO ANIMATION TRÁI (FLIP) ---
+        # --- 2. TẠO ANIMATION TRÁI ---
         self.anims_left = {}
         for key, sprites in self.anims_right.items():
             if sprites:
@@ -58,352 +51,238 @@ class Player:
         self.tornado_frames = load_tornado_assets(factory, SKILL_ASSET_DIR)
         self.wall_frames = load_wall_assets(factory, SKILL_ASSET_DIR)
 
+        # Entity
         self.entity = sdl2.ext.Entity(world)
         self.entity.sprite = self.anims_right['idle'][0]
         self.entity.sprite.position = x, y
         
+        # --- PHYSICS & MOVEMENT ---
         self.facing_right = True
-        self.move_speed = 300 # Tăng tốc độ chạy chút cho mượt
-        
-        # --- [MỚI] BIẾN VẬT LÝ NHẢY ---
-        self.ground_y = y   # Ghi nhớ mặt đất (tạm thời)
-        self.vel_y = 0      # Vận tốc trục dọc
+        self.move_speed = 300
+        self.ground_y = y
+        self.vel_y = 0
         self.gravity = GRAVITY
         self.jump_force = -PLAYER_JUMP_POWER
         self.is_jumping = False
-        self.jump_count = 0  # Double jump counter
+        self.jump_count = 0
+        self.is_running = False
 
-        # --- [MỚI] CHỈ SỐ PLAYER (Stamina System) ---
+        # --- STATS & COMBAT ---
         self.max_hp = PLAYER_MAX_HEALTH
         self.hp = self.max_hp
         self.max_stamina = PLAYER_MAX_STAMINA
-        self.stamina = self.max_stamina # Tên biến đúng ý user
+        self.stamina = self.max_stamina
+        self.base_attack_damage = PLAYER_ATTACK_DAMAGE
+        self.attack_damage = self.base_attack_damage # Damage thực tế (có buff)
         
-        self.is_running = False
+        self.is_blocking = False
         self.exhausted = False
-        self.is_blocking = False 
-        self.invincible = False # Cho Star Item
-        self.invincible = False # Cho Star Item
-        self.invincible_timer = 0
-        self.hurt_timer = 0
-        self.flash_timer = 0 # Visual red flash
-        self.hit_count = 0 # Stagger counter
-        self.dead_animation_complete = False
+        self.invincible = False # Bất tử (Star item)
+        self.flash_timer = 0    # Hiệu ứng nhấp nháy đỏ khi bị đánh
+        self.color_mod = (255, 255, 255) # Màu sắc nhân vật (dùng cho buff)
         
-        self.cooldowns = CooldownManager()
+        self.buffs = {} # {name: {'timer': float, 'value': float}}
 
         self.state = 'idle'
-        self.prev_state = 'idle'    # [SỬA LỖI] Theo dõi state cũ để reset frame
+        self.prev_state = 'idle'
         self.frame_index = 0
         self.anim_timer = 0
-        self.anim_speed = 0.10 # Animation nhanh hơn chút
+        self.anim_speed = 0.10
+        self.hurt_timer = 0
+        self.hit_count = 0
         
+        self.cooldowns = CooldownManager()
         self.skill_q = SkillQ(self)
         self.skill_w = SkillW(self)
         self.skill_e = SkillE(self)
-        
-        # --- STATS FOR HUD ---
-        self.attack_damage = PLAYER_ATTACK_DAMAGE
-        self.hp_regen = PLAYER_HEALTH_REGEN
-        self.stamina_regen = PLAYER_STAMINA_REGEN_WALK
-        self.armor = 10 # Base armor
-        self.magic_resist = 0
-        self.crit_chance = 0
-        self.life_steal = PLAYER_LIFESTEAL
-        self.attack_speed = 1.0 # Base (có thể tính từ cooldown)
-        self.attack_range = 60  # Base attack range for stats display
 
     @property
-    def sprite(self):
-        return self.entity.sprite
-    
-    # NPC compatibility properties
+    def sprite(self): return self.entity.sprite
     @property
-    def x(self):
-        """Get player x position (compatible with NPC chase system)"""
-        return self.entity.sprite.x
-    
-    @x.setter
-    def x(self, value):
-        """Set player x position"""
-        self.entity.sprite.x = value
-    
+    def x(self): return self.entity.sprite.x
     @property
-    def y(self):
-        """Get player y position (compatible with NPC chase system)"""
-        return self.entity.sprite.y
-    
-    @y.setter
-    def y(self, value):
-        """Set player y position"""
-        self.entity.sprite.y = value
-    
+    def y(self): return self.entity.sprite.y
     @property
-    def width(self):
-        """Get player width (compatible with NPC chase system)"""
-        return self.entity.sprite.size[0]
-    
+    def width(self): return self.entity.sprite.size[0]
     @property
-    def height(self):
-        """Get player height (compatible with NPC chase system)"""
-        return self.entity.sprite.size[1]
+    def height(self): return self.entity.sprite.size[1]
     
+    def get_hitbox(self):
+        hitbox_w = 40
+        hitbox_h = 80
+        offset_x = (128 - hitbox_w) // 2
+        offset_y = (128 - hitbox_h)
+        return sdl2.SDL_Rect(int(self.x + offset_x), int(self.y + offset_y), hitbox_w, hitbox_h)
+
+    # --- [FIX LỖI] THÊM HÀM NÀY ĐỂ TƯƠNG THÍCH VỚI PROJECTILE ---
     def get_bounds(self):
-        """Get player bounding box (compatible with NPC chase system)"""
-        return sdl2.SDL_Rect(self.entity.sprite.x, self.entity.sprite.y,
-                             self.entity.sprite.size[0], self.entity.sprite.size[1])
+        """Trả về (x, y, w, h) của hitbox để hệ thống đạn NPC sử dụng"""
+        rect = self.get_hitbox()
+        return (rect.x, rect.y, rect.w, rect.h)
 
-    def jump(self):
-        """Hàm kích hoạt nhảy (hỗ trợ double jump)"""
-        if self.jump_count < PLAYER_MAX_JUMPS:
-            self.vel_y = self.jump_force
-            self.is_jumping = True
-            self.jump_count += 1
+    # --- BUFF & STATS SYSTEM ---
+    def apply_buff(self, name, duration, value=0):
+        self.buffs[name] = {'timer': duration, 'value': value}
+        if name == "damage_boost":
+            self.update_stats()
 
-    def handle_movement(self, keys):
-        """Xử lý input di chuyển liên tục (Walk/Run)"""
-        if self.is_blocking: 
-            # Nếu đang block thì không đi được, nhưng nếu nhả S thì main.py sẽ set blocking False
-            # Ở đây ta check: nếu block -> Idle
-            if self.state not in ['idle', 'casting_q', 'casting_w', 'dashing_e', 'attacking']:
-                self.state = 'idle'
-            return
+    def activate_star_skill(self, duration=5.0):
+        self.invincible = True
+        self.apply_buff("star_invincible", duration)
 
-        # Chỉ xử lý state nếu không đang làm hành động ưu tiên (Dash, Cast)
-        # Jump và Attack có thể vừa đi vừa làm (Attack thì tùy)
-        # Ở đây ta ưu tiên logic đi bộ/chạy đơn giản
+    def handle_buffs(self, dt):
+        expired = []
+        for name, data in self.buffs.items():
+            data['timer'] -= dt
+            if data['timer'] <= 0:
+                expired.append(name)
         
-        if self.state in ['casting_q', 'casting_w', 'dashing_e', 'attacking', 'dead', 'hurt']:
-            return
+        for name in expired:
+            del self.buffs[name]
+            if name == "damage_boost":
+                self.update_stats()
+            elif name == "star_invincible":
+                self.invincible = False
+                self.color_mod = (255, 255, 255)
 
-        # Check Run
-        is_running_input = keys[sdl2.SDL_SCANCODE_LSHIFT] or keys[sdl2.SDL_SCANCODE_RSHIFT]
-        
-        has_input = False
-        if keys[sdl2.SDL_SCANCODE_RIGHT]:
-            self.facing_right = True
-            has_input = True
-        elif keys[sdl2.SDL_SCANCODE_LEFT]:
-            self.facing_right = False
-            has_input = True
-            
-        if has_input:
-            if is_running_input and self.try_run():
-                self.state = 'run'
+        # Hiệu ứng hình ảnh cho Buff
+        if "star_invincible" in self.buffs:
+            import time
+            # Nhấp nháy vàng
+            if int(time.time() * 10) % 2 == 0:
+                self.color_mod = (255, 255, 0)
             else:
-                self.state = 'walk'
-                self.is_running = False
+                self.color_mod = (255, 200, 200)
+        elif "damage_boost" in self.buffs:
+            self.color_mod = (200, 100, 255) # Tím
         else:
-            if not self.is_jumping:
-                self.state = 'idle'
-            self.is_running = False
+            self.color_mod = (255, 255, 255)
 
+    def update_stats(self):
+        # Tính damage
+        multiplier = 1.0
+        if "damage_boost" in self.buffs:
+            multiplier = self.buffs["damage_boost"]['value']
+        self.attack_damage = int(self.base_attack_damage * multiplier)
+
+    # --- LOGIC CHÍNH ---
     def update(self, dt, world, factory, renderer, active_list_q, active_list_w, game_map=None, boxes=None):
-        # --- [MỚI] CẬP NHẬT VẬT LÝ & STATS VỚI MAP ---
-        
-        # 1. Hồi phục & Cooldown
         self.regenerate()
         self.cooldowns.update(1)
-
-        # 2. Xử lý di chuyển ngang (X) & Collision X
-        # Tốc độ di chuyển
-        # --- STEP 1: MOVE ALONG WITH X-AXIS ---
+        self.handle_buffs(dt) # Cập nhật buff
+        
+        # 1. Di chuyển X
         dx = 0
         if self.state == 'run': dx = PLAYER_SPEED_RUN * dt
         elif self.state == 'walk': dx = PLAYER_SPEED_WALK * dt
         
         if dx > 0:
             if not self.facing_right: dx = -dx
-            
             actual_dx = int(dx)
 
-            # --- Box collision (both directions) ---
             if boxes:
                 player_rect = self.get_hitbox()
-                future_player_rect = sdl2.SDL_Rect(player_rect.x + int(dx), player_rect.y, player_rect.w, player_rect.h)
-
+                future = sdl2.SDL_Rect(player_rect.x + int(dx), player_rect.y, player_rect.w, player_rect.h)
                 for box in boxes:
-                    if sdl2.SDL_HasIntersection(future_player_rect, box.rect):
+                    if sdl2.SDL_HasIntersection(future, box.rect):
                         moved, box_dx = box.push(dx, dt, game_map)
-                        if moved:
-                            actual_dx = int(box_dx)
-                        else:
-                            actual_dx = 0
+                        actual_dx = int(box_dx) if moved else 0
                         break
-            
             self.entity.sprite.x += actual_dx
 
-        # --- STEP 2: CHECK X-AXIS COLLISION ---
+        # Map collision X
         if game_map:
             hitbox = self.get_hitbox()
-            nearby_tiles = game_map.get_tile_rects_around(hitbox.x, hitbox.y, hitbox.w, hitbox.h)
-
-            for tile in nearby_tiles:
-                # check collision between Hitbox and Tile
+            tiles = game_map.get_tile_rects_around(hitbox.x, hitbox.y, hitbox.w, hitbox.h)
+            for tile in tiles:
                 if sdl2.SDL_HasIntersection(hitbox, tile):
-                    # if collide, push the player out
-                    if dx > 0: # right forward -> collide with tile-left-edge
-                        self.entity.sprite.x = tile.x - 128 + 44    # 44 is the left offset, reversely calculate
-                        # simply calculate: push out the hitbox, then recalculate sprite position
-                        # hitbox.x = tile.x - hitbox.w
-                        # self.entity.sprite.x = hitbox.x - 44
-                    elif dx < 0: # left forward -> collide with right edge of tile
-                        self.entity.sprite.x = tile.x + tile.w - 44 # 44 is the edge of left hitbox to the right edge of tile?
-        
-        # --- STEP 3: MOVE ALONG WITH Y_AXIS (gravity) ---
-        # Chỉ áp dụng gravity khi đang trên không (tránh micro-bounce gây lún)
+                    if dx > 0: self.entity.sprite.x = tile.x - 128 + 44
+                    elif dx < 0: self.entity.sprite.x = tile.x + tile.w - 44
+
+        # 2. Vật lý Y
         if self.is_jumping:
             self.vel_y += self.gravity
             if self.vel_y > MAX_FALL_SPEED: self.vel_y = MAX_FALL_SPEED
-        
         if self.vel_y != 0:
             self.entity.sprite.y += int(self.vel_y)
 
-        # --- STEP 4: CHECK THE COLLISION Y ---
+        # Map collision Y
         on_ground = False
-        
         if game_map:
             hitbox = self.get_hitbox()
-            nearby_tiles = game_map.get_tile_rects_around(hitbox.x, hitbox.y, hitbox.w, hitbox.h)
+            tiles = game_map.get_tile_rects_around(hitbox.x, hitbox.y, hitbox.w, hitbox.h)
+            feet = sdl2.SDL_Rect(hitbox.x + 10, hitbox.y + hitbox.h, hitbox.w - 20, 4)
             
-            # Cảm biến dưới chân (mỏng 4px) - detect ground ngay cả khi hitbox chưa overlap
-            feet_rect = sdl2.SDL_Rect(hitbox.x + 10, hitbox.y + hitbox.h, hitbox.w - 20, 4)
-
-            for tile in nearby_tiles:
+            for tile in tiles:
                 if sdl2.SDL_HasIntersection(hitbox, tile):
-                    if self.vel_y >= 0: # Đang rơi hoặc đứng yên -> Chạm đất
-                        # Snap: hitbox.bottom = tile.top
-                        align_y = tile.y - 80 - 48
-                        self.entity.sprite.y = align_y
+                    if self.vel_y >= 0:
+                        self.entity.sprite.y = tile.y - 128
                         self.vel_y = 0
                         self.ground_y = tile.y
                         on_ground = True
-                            
-                    elif self.vel_y < 0: # Nhảy lên đụng trần
-                        align_y = tile.y + tile.h - 48
-                        self.entity.sprite.y = align_y
+                    elif self.vel_y < 0:
+                        self.entity.sprite.y = tile.y + tile.h - 48
                         self.vel_y = 0
-
-                # Cảm biến chân (Anti-Jitter) - giữ player dính mặt đất khi đi ngang
                 elif not on_ground and self.vel_y >= 0:
-                    if sdl2.SDL_HasIntersection(feet_rect, tile):
-                        align_y = tile.y - 80 - 48
-                        if abs(self.entity.sprite.y - align_y) <= 8:
-                            self.entity.sprite.y = align_y
+                     if sdl2.SDL_HasIntersection(feet, tile):
+                        if abs(self.entity.sprite.y - (tile.y - 128)) <= 8:
+                            self.entity.sprite.y = tile.y - 128
                             self.vel_y = 0
                             self.ground_y = tile.y
                             on_ground = True
 
-        # --- Box Y collision (land on top / hit from below) ---
+        # Box collision Y
         if boxes and not on_ground:
             hitbox = self.get_hitbox()
-            box_feet_rect = sdl2.SDL_Rect(hitbox.x + 10, hitbox.y + hitbox.h, hitbox.w - 20, 4)
             for box in boxes:
                 if sdl2.SDL_HasIntersection(hitbox, box.rect):
-                    if self.vel_y >= 0:  # Landing on box
-                        align_y = box.rect.y - 80 - 48
-                        self.entity.sprite.y = align_y
+                    if self.vel_y >= 0:
+                        self.entity.sprite.y = box.rect.y - 128
                         self.vel_y = 0
                         on_ground = True
                         break
-                    elif self.vel_y < 0:  # Hitting box from below
-                        self.vel_y = 0
-                # Feet sensor: anti-jitter when standing on box
-                elif self.vel_y >= 0:
-                    if sdl2.SDL_HasIntersection(box_feet_rect, box.rect):
-                        align_y = box.rect.y - 80 - 48
-                        if abs(self.entity.sprite.y - align_y) <= 8:
-                            self.entity.sprite.y = align_y
-                            self.vel_y = 0
-                            on_ground = True
-                            break
-
+        
         self.is_jumping = not on_ground
-        
-        # Reset jump counter when on ground
-        if on_ground:
-            self.jump_count = 0
-        
-        # Khi vừa rời khỏi mặt đất (bước xuống vực), bắt đầu rơi
-        if self.is_jumping and self.vel_y == 0:
-            self.vel_y = self.gravity
+        if on_ground: self.jump_count = 0
+        if self.is_jumping and self.vel_y == 0: self.vel_y = self.gravity
+        if self.entity.sprite.y > 1000: self.die()
 
-        # Fallback: rơi quá sâu -> chết
-        if self.entity.sprite.y > 1000:
-             self.die()
-
-        # State management for HURT
+        # Timers
         if self.state == 'hurt':
             self.hurt_timer += dt
-            if self.hurt_timer >= PLAYER_HURT_DURATION:
-                self.state = 'idle'
-                self.hurt_timer = 0
+            if self.hurt_timer >= PLAYER_HURT_DURATION: self.state = 'idle'
+        
         self.anim_timer += dt
+        if self.flash_timer > 0: self.flash_timer -= dt
 
-        # Visual Flash Timer
-        if self.flash_timer > 0:
-            self.flash_timer -= dt
-        
-        # Chọn bộ hướng (Trái/Phải)
+        # Animation Selection
         current_anims = self.anims_right if self.facing_right else self.anims_left
-        current_frames = []
-
-        # --- [MỚI] LOGIC ƯU TIÊN ANIMATION ---
-        # 0. Ưu tiên TUYỆT ĐỐI: Chết
-        if self.state == 'dead':
-             current_frames = current_anims.get('dead', current_anims['idle'])
-        # 0.5. Ưu tiên: Bị thương
-        elif self.state == 'hurt':
-             current_frames = current_anims.get('hurt', current_anims['idle'])
-        # 1. Ưu tiên cao nhất: Đang dùng Skill hoặc Đánh thường
-        elif self.state == 'casting_q':
-            current_frames = current_anims['q']
-        elif self.state == 'casting_w':
-            current_frames = current_anims['w']
-        elif self.state == 'dashing_e':
-            current_frames = current_anims['e']
-        elif self.state == 'attacking': 
-            current_frames = current_anims.get('attack_normal', current_anims['idle'])
+        frames = []
         
-        # 2. Ưu tiên nhì: Thủ (Block)
-        # Lưu ý: Phải giữ phím S mới kích hoạt
-        elif self.is_blocking:
-            current_frames = current_anims.get('block', current_anims['idle'])
+        if self.state == 'dead': frames = current_anims.get('dead', current_anims['idle'])
+        elif self.state == 'hurt': frames = current_anims.get('hurt', current_anims['idle'])
+        elif self.state == 'casting_q': frames = current_anims['q']
+        elif self.state == 'casting_w': frames = current_anims['w']
+        elif self.state == 'dashing_e': frames = current_anims['e']
+        elif self.state == 'attacking': frames = current_anims.get('attack_normal', current_anims['idle'])
+        elif self.is_blocking: frames = current_anims.get('block', current_anims['idle'])
+        elif self.is_jumping: frames = current_anims.get('jump', current_anims['idle'])
+        elif self.state == 'run': frames = current_anims.get('run', current_anims['idle'])
+        elif self.state == 'walk': frames = current_anims.get('walk', current_anims['idle'])
+        else: frames = current_anims['idle']
 
+        if not frames: return
 
-            
-        # 3. Ưu tiên ba: Nhảy
-        elif self.is_jumping:
-            current_frames = current_anims.get('jump', current_anims['idle'])
-        
-        # 3. Ưu tiên ba: Chạy / Đi bộ
-        elif self.state == 'run':
-             current_frames = current_anims.get('run', current_anims['idle'])
-        elif self.state == 'walk':
-             current_frames = current_anims.get('walk', current_anims['idle'])
-
-        # 4. Mặc định: Idle
-        else:
-            current_frames = current_anims['idle']
-        
-        if not current_frames: return
-
-        # [SỬA LỖI] Reset frame index khi đổi state để tránh giật frame
         if self.state != self.prev_state:
             self.frame_index = 0
             self.prev_state = self.state
 
-        # Tốc độ Animation: Nhanh hơn nếu đang đánh thường (để cast nhanh như Attack_3)
-        effective_anim_speed = self.anim_speed
-        if self.state == 'attacking': effective_anim_speed = 0.05
-        elif self.state == 'hurt': effective_anim_speed = PLAYER_HURT_DURATION / len(current_frames) if len(current_frames) > 0 else 0.1
-
-        # Chuyển frame
-        if self.anim_timer >= effective_anim_speed:
+        speed = 0.05 if self.state == 'attacking' else self.anim_speed
+        
+        if self.anim_timer >= speed:
             self.anim_timer = 0
             self.frame_index += 1
-            
-            if self.frame_index >= len(current_frames):
+            if self.frame_index >= len(frames):
                 if self.state == 'casting_q':
                     self.spawn_tornado(world, factory, renderer, active_list_q)
                     self.state = 'idle'
@@ -411,243 +290,122 @@ class Player:
                     self.spawn_wall(world, factory, renderer, active_list_w)
                     self.state = 'idle'
                 elif self.state == 'dashing_e':
-                     if not self.skill_e.is_dashing: self.state = 'idle'
-                elif self.state == 'attacking':
-                    self.state = 'idle' # Kết thúc đánh thường
-                elif self.state == 'dead':
-                    self.frame_index = len(current_frames) - 1 # Giữ frame cuối
-                    self.dead_animation_complete = True
-                    return # Không reset frame_index về 0
-                elif self.state == 'hurt':
-                    # Timer xử lý việc kết thúc state hurt
-                    pass
-                
+                    if not self.skill_e.is_dashing: self.state = 'idle'
+                elif self.state == 'attacking': self.state = 'idle'
+                elif self.state == 'dead': 
+                    self.frame_index = len(frames) - 1
+                    return
                 self.frame_index = 0
+
+        idx = self.frame_index % len(frames)
+        old_pos = self.entity.sprite.position
+        self.entity.sprite = frames[idx]
+        self.entity.sprite.position = old_pos
+
+    # --- ACTIONS ---
+    def jump(self):
+        if self.jump_count < PLAYER_MAX_JUMPS:
+            self.vel_y = self.jump_force
+            self.is_jumping = True
+            self.jump_count += 1
+
+    def handle_movement(self, keys):
+        if self.is_blocking or self.state in ['casting_q', 'casting_w', 'dashing_e', 'attacking', 'dead', 'hurt']: return
         
-        # Render Sprite
-        idx = self.frame_index % len(current_frames)
-        
-        # Lưu vị trí cũ trước khi thay sprite
-        old_x, old_y = self.entity.sprite.position
-        self.entity.sprite = current_frames[idx]
-        self.entity.sprite.position = old_x, old_y
+        has_input = False
+        if keys[sdl2.SDL_SCANCODE_RIGHT]:
+            self.facing_right = True; has_input = True
+        elif keys[sdl2.SDL_SCANCODE_LEFT]:
+            self.facing_right = False; has_input = True
+            
+        if has_input:
+            run_key = keys[sdl2.SDL_SCANCODE_LSHIFT] or keys[sdl2.SDL_SCANCODE_RSHIFT]
+            if run_key and self.try_run(): self.state = 'run'
+            else: self.state = 'walk'; self.is_running = False
+        else:
+            if not self.is_jumping: self.state = 'idle'
+            self.is_running = False
+
+    def try_run(self):
+        if self.exhausted: return False
+        if self.stamina >= PLAYER_RUN_COST:
+            self.stamina -= PLAYER_RUN_COST; self.is_running = True; return True
+        else:
+            self.is_running = False; self.exhausted = True; return False
+
+    def regenerate(self):
+        if self.hp < self.max_hp: self.hp = min(self.hp + PLAYER_HEALTH_REGEN, self.max_hp)
+        if self.state == 'walk' and self.stamina < self.max_stamina:
+            self.stamina = min(self.stamina + PLAYER_STAMINA_REGEN_WALK, self.max_stamina)
+        if self.exhausted and self.stamina > self.max_stamina * 0.3: self.exhausted = False
 
     def start_q(self, direction=0):
-        # Kích hoạt Q (Tốn Stamina + Cooldown)
-        if self.stamina < SKILL_Q_COST: return
-        if not self.cooldowns.is_ready("skill_q"): return
-        
-        # Cho phép dùng Q kể cả khi đang nhảy, miễn là không đang dùng skill khác
-        if self.state in ['idle', 'jumping', 'run', 'walk'] or (self.is_jumping and self.state == 'idle'):
+        if self.stamina < SKILL_Q_COST or not self.cooldowns.is_ready("skill_q"): return
+        if self.state in ['idle', 'jumping', 'run', 'walk']:
             self.stamina -= SKILL_Q_COST
             self.cooldowns.start_cooldown("skill_q", SKILL_Q_COOLDOWN)
-            
-            if direction > 0: self.facing_right = True
-            elif direction < 0: self.facing_right = False
-            
-            self.state = 'casting_q'
-            self.frame_index = 0
-            self.anim_timer = 0
-            
+            if direction: self.facing_right = (direction > 0)
+            self.state = 'casting_q'; self.frame_index = 0
+
     def start_w(self, direction=0):
-        if self.stamina < SKILL_W_COST: return
-        if not self.cooldowns.is_ready("skill_w"): return
-        
-        if self.state == 'idle' or (self.is_jumping and self.state == 'idle'):
+        if self.stamina < SKILL_W_COST or not self.cooldowns.is_ready("skill_w"): return
+        if self.state in ['idle', 'jumping']:
             self.stamina -= SKILL_W_COST
             self.cooldowns.start_cooldown("skill_w", SKILL_W_COOLDOWN)
-            
-            if direction > 0: self.facing_right = True
-            elif direction < 0: self.facing_right = False
-            
-            self.state = 'casting_w'
-            self.frame_index = 0
-            self.anim_timer = 0
-            
+            if direction: self.facing_right = (direction > 0)
+            self.state = 'casting_w'; self.frame_index = 0
+
     def start_e(self, world, factory, renderer, direction):
-        if self.stamina < SKILL_E_COST: return
-        if not self.cooldowns.is_ready("skill_e"): return
-        
-        if direction == 0: return
-        if self.state != 'dashing_e':
+        if self.stamina < SKILL_E_COST or not self.cooldowns.is_ready("skill_e"): return
+        if direction and self.state != 'dashing_e':
             self.stamina -= SKILL_E_COST
             self.cooldowns.start_cooldown("skill_e", SKILL_E_COOLDOWN)
-            
-            if direction > 0: self.facing_right = True
-            elif direction < 0: self.facing_right = False
-            self.state = 'dashing_e'
-            self.frame_index = 0
+            self.facing_right = (direction > 0)
+            self.state = 'dashing_e'; self.frame_index = 0
             self.skill_e.cast(world, factory, renderer)
 
     def spawn_tornado(self, world, factory, renderer, active_list):
-        if self.tornado_frames:
-            # Lốc bay ra từ vị trí hiện tại (kể cả trên trời)
+        if self.tornado_frames: 
             t = self.skill_q.cast(world, factory, renderer, skill_sprites=self.tornado_frames)
             if t: active_list.append(t)
 
     def spawn_wall(self, world, factory, renderer, active_list):
-        if self.wall_frames:
+        if self.wall_frames: 
             w = self.skill_w.cast(world, factory, renderer, skill_sprites=self.wall_frames)
             if w: active_list.append(w)
 
-    def regenerate(self):
-        """Hồi phục stats theo thời gian"""
-        # 1. Hồi Máu
-        if self.hp < self.max_hp:
-            self.hp = min(self.hp + PLAYER_HEALTH_REGEN, self.max_hp)
-            
-        # 2. Hồi Stamina - CHỈ KHI ĐI BỘ (WALK)
-        if self.state == 'walk':
-            if self.stamina < self.max_stamina:
-                self.stamina = min(self.stamina + PLAYER_STAMINA_REGEN_WALK, self.max_stamina)
-            
-        # UX: Thoát trạng thái kiệt sức
-        if self.exhausted and self.stamina > self.max_stamina * 0.3:
-            self.exhausted = False
-
-    def try_run(self):
-        """Chạy tốn Stamina"""
-        if self.exhausted: return False
-        
-        if self.stamina >= PLAYER_RUN_COST:
-            self.stamina -= PLAYER_RUN_COST
-            self.is_running = True
-            return True
-        else:
-            self.is_running = False
-            self.exhausted = True
-            return False
-
-    def on_hit_enemy(self, damage_dealt):
-        """Gọi khi đánh trúng quái"""
-        self.stamina = min(self.stamina + Reward_Hit_Stamina, self.max_stamina)
-        
-        # Hút máu toàn phần
-        heal = damage_dealt * (PLAYER_LIFESTEAL / 100.0)
-        self.hp = min(self.hp + heal, self.max_hp)
-        print(f"Hit! +Stamina & Lifesteal (+{heal} HP)")
-
-    def on_kill_enemy(self):
-        """Gọi khi giết quái"""
-        self.stamina = min(self.stamina + Reward_Kill_Stamina, self.max_stamina)
-        print("Kill! Large Stamina reward.")
-
-    # --- CÁC HÀM COMBAT MỚI ---
     def attack(self):
-        """Đánh thường (A) - Không tốn Energy"""
         if self.state in ['idle', 'run', 'walk'] and not self.is_blocking:
             if self.cooldowns.is_ready("attack"):
-                self.state = 'attacking'
-                self.frame_index = 0
-                self.anim_timer = 0
+                self.state = 'attacking'; self.frame_index = 0
                 self.cooldowns.start_cooldown("attack", ATTACK_COOLDOWN)
 
     def set_blocking(self, blocking):
-        if blocking:
-             if self.stamina > 0:
-                 self.is_blocking = True
-                 if self.is_running: 
-                     self.is_running = False
-                     self.state = 'idle'
-             else:
-                 self.is_blocking = False
-        else:
-            self.is_blocking = False
+        if blocking and self.stamina > 0: self.is_blocking = True; self.state = 'idle'
+        else: self.is_blocking = False
 
     def take_damage(self, amount):
-        if self.invincible:
-            print("Invincible! Damage ignored.")
-            return
-
-        final_damage = int(amount)
-        
-        # Block Logic
+        if self.invincible: return
+        final_dmg = int(amount)
         if self.is_blocking:
-            cost = BLOCK_STAMINA_COST_PER_HIT
-            if self.stamina >= cost: 
-                self.stamina -= cost
-                final_damage = int(amount * (1.0 - BLOCK_DAMAGE_REDUCTION))
-                print(f"Blocked! Damage {amount}->{final_damage}. Stamina left: {int(self.stamina)}")
-            else:
-                print("Guard Broken! Not enough stamina.")
-                self.is_blocking = False
+            if self.stamina >= BLOCK_STAMINA_COST_PER_HIT:
+                self.stamina -= BLOCK_STAMINA_COST_PER_HIT
+                final_dmg = int(amount * (1.0 - BLOCK_DAMAGE_REDUCTION))
+            else: self.is_blocking = False
         
-        self.hp -= final_damage
-        print(f"Player took {final_damage} damage! HP: {int(self.hp)}/{self.max_hp}")
-        
-        if self.hp <= 0:
-            self.die()
+        self.hp -= final_dmg
+        if self.hp <= 0: self.die()
         else:
-            # Trigger Red Flash (Always)
-            self.flash_timer = 0.1 # 100ms flash
+            self.flash_timer = 0.1
             self.hit_count += 1
-            
-            # Trigger Hurt Stun ONLY if threshold reached
-            if self.hit_count >= PLAYER_HITS_TO_STAGGER:
-                if self.state != 'dead':
-                    self.state = 'hurt'
-                    self.hurt_timer = 0
-                    self.frame_index = 0
-                    self.hit_count = 0 # Reset counter
-                    print("Player Staggered!")
-            
-    def activate_star_skill(self, duration=5.0):
-        """Kích hoạt bất tử (Star Item)"""
-        self.invincible = True
-        # Logic timer sẽ cần update trong loop, tạm thời set flag
-        print("STAR SKILL ACTIVE: Invincible!")
+            if self.hit_count >= PLAYER_HITS_TO_STAGGER and self.state != 'dead':
+                self.state = 'hurt'; self.hurt_timer = 0; self.hit_count = 0
 
-    def die(self):
-        """Xử lý khi chết"""
-        print("Player Died!")
-        self.state = 'dead'
-        self.frame_index = 0 # Reset animation to start
-        # Thực hiện logic reset game hoặc game over ở đây
+    def on_hit_enemy(self, damage):
+        self.stamina = min(self.stamina + Reward_Hit_Stamina, self.max_stamina)
+        self.hp = min(self.hp + damage * (PLAYER_LIFESTEAL/100), self.max_hp)
 
-    def get_hitbox(self):
-        # adding helper functin to get standard Hitbox (smaller then sprite)
-        # sprite 128x128, we want hitbox at the range 40x80 stay at the middle of the bottom
-        hitbox_w = 40
-        hitbox_h = 80
-        offset_x = (128 - hitbox_w) // 2    # align the center of the row direction
-        offset_y = (128 - hitbox_h)         # align the bototm - or we can handle it by hand
+    def on_kill_enemy(self):
+        self.stamina = min(self.stamina + Reward_Kill_Stamina, self.max_stamina)
 
-        return sdl2.SDL_Rect(int(self.entity.sprite.x + offset_x),
-                             int(self.entity.sprite.y + offset_y),
-                             hitbox_w, hitbox_h)
-
-    def check_map_collision(self, x, y, game_map, check_bottom=False):
-        """Kiểm tra va chạm với map tiles"""
-        if not game_map: return False
-        
-        # Hitbox offsets (tùy chỉnh cho khớp sprite)
-        # Sprite 128x128 (nhưng nhân vật thực tế căn giữa)
-        # Giả sử hitbox rộng 40, cao 80, offset x+44, y+48
-        hitbox_w = 40
-        hitbox_h = 80
-        off_x = 44
-        off_y = 48
-         
-        check_x = x + off_x + (hitbox_w / 2) # Center X
-        check_y = y + off_y
-        
-        if check_bottom:
-             check_y += hitbox_h # Check chân
-        
-        # Convert to Grid Coords
-        # TILE_SIZE = 96
-        col = int(check_x // TILE_SIZE)
-        row = int(check_y // TILE_SIZE)
-        
-        # Check bounds
-        if row < 0 or row >= len(game_map.map_data): return False
-        if col < 0 or col >= len(game_map.map_data[0]): return False
-        
-        tile_char = game_map.map_data[row][col]
-        
-        # Coi những tile này là solid
-        SOLID_TILES = ['(', '-', ')', '[', '=', ']', '0', '1', '2', '3', '8', '6', '7']
-        if tile_char in SOLID_TILES:
-            return True
-            
-        return False
+    def die(self): self.state = 'dead'; self.frame_index = 0

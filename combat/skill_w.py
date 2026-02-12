@@ -8,7 +8,6 @@ from combat.utils import load_image_sequence
 # --- LOGIC LOAD TÀI NGUYÊN ---
 def load_wall_assets(factory, skill_asset_dir):
     w_folder = os.path.join(skill_asset_dir, "w")
-    # Load toàn bộ 14 ảnh (fire_column_medium_1 -> 14)
     sprites = load_image_sequence(
         factory, 
         w_folder, 
@@ -30,18 +29,17 @@ class WallObject:
         self.duration = duration
         self.active = True
         
-        # --- CẤU HÌNH ANIMATION 3 GIAI ĐOẠN ---
-        # Python list index bắt đầu từ 0
-        # Frame 1-3  => Index 0-2
-        # Frame 4-9  => Index 3-8
-        # Frame 10-14 => Index 9-13
+        # Stats
+        self.damage = 30
+        self.damage_interval = 0.5
+        self.hit_timers = {}
         
-        self.anim_state = 'spawn' # Các trạng thái: 'spawn', 'loop', 'end'
+        # Animation State
+        self.anim_state = 'spawn' 
         self.indices_spawn = [0, 1, 2]
         self.indices_loop  = [3, 4, 5, 6, 7, 8]
         self.indices_end   = [9, 10, 11, 12, 13]
         
-        # Biến đếm frame cục bộ cho từng giai đoạn
         self.local_frame_index = 0
         self.anim_timer = 0
         self.anim_speed = 0.08 
@@ -49,6 +47,15 @@ class WallObject:
     @property
     def sprite(self):
         return self.entity.sprite
+    
+    def get_hitbox(self):
+        # Hitbox nhỏ hơn hình ảnh một chút
+        return sdl2.SDL_Rect(
+            int(self.entity.sprite.x + 20), 
+            int(self.entity.sprite.y + 20), 
+            int(self.entity.sprite.size[0] - 40), 
+            int(self.entity.sprite.size[1] - 20)
+        )
 
     def delete(self):
         self.entity.delete()
@@ -58,74 +65,100 @@ class SkillW(Skill):
         super().__init__(owner, cooldown_time=15.0)
 
     def execute(self, world, factory, renderer, skill_sprites=None):
-        print("Casting W: Fire Column (3 Stages)!")
+        print("Casting W: Fire Wall!")
         sprites_to_use = skill_sprites if skill_sprites else [factory.from_color(sdl2.ext.Color(200, 50, 0), size=(20, 100))]
         
         direction = 1 if self.owner.facing_right else -1
         spawn_x = self.owner.sprite.x + (70 * direction)
-        # Dịch xuống 30px so với nhân vật
         spawn_y = self.owner.sprite.y - 15
         
         wall = WallObject(world, sprites_to_use, spawn_x, spawn_y, duration=4.0)
         return wall
 
-def update_w_logic(wall_obj):
+# --- HÀM UPDATE LOGIC CHÍNH ---
+def update_w_logic(wall_obj, enemies=None, projectiles=None, dt=0.016):
+    """
+    Xử lý logic cho Cột Lửa:
+    1. Animation
+    2. Gây dame lên Enemy (enemies)
+    3. Chặn và hủy đạn (projectiles)
+    """
     if not wall_obj.active: return
     
-    # Cập nhật thời gian animation
-    wall_obj.anim_timer += 0.016 # Giả lập dt
-    
-    # Chỉ chuyển frame khi đủ thời gian
+    # 1. Cập nhật Animation
+    wall_obj.anim_timer += dt
     if wall_obj.anim_timer >= wall_obj.anim_speed:
         wall_obj.anim_timer = 0
         wall_obj.local_frame_index += 1
         
-        # --- LOGIC CHUYỂN ĐỔI TRẠNG THÁI (STATE MACHINE) ---
-        
-        # 1. Giai đoạn xuất hiện (1-3)
         if wall_obj.anim_state == 'spawn':
-            # Nếu chạy hết ảnh spawn -> Chuyển sang loop
             if wall_obj.local_frame_index >= len(wall_obj.indices_spawn):
                 wall_obj.anim_state = 'loop'
-                wall_obj.local_frame_index = 0 # Reset frame cho giai đoạn mới
-        
-        # 2. Giai đoạn duy trì (4-9)
+                wall_obj.local_frame_index = 0
         elif wall_obj.anim_state == 'loop':
-            # Lặp vòng tròn: Nếu hết ảnh loop thì quay về đầu list loop
             wall_obj.local_frame_index = wall_obj.local_frame_index % len(wall_obj.indices_loop)
-            
-            # Kiểm tra thời gian: Nếu hết giờ -> Chuyển sang end
             if time.time() - wall_obj.created_at > wall_obj.duration:
-                print("Hết thời gian -> Chuyển sang tắt lửa (10-14)")
                 wall_obj.anim_state = 'end'
                 wall_obj.local_frame_index = 0
-        
-        # 3. Giai đoạn kết thúc (10-14)
         elif wall_obj.anim_state == 'end':
-            # Nếu chạy hết ảnh end -> Xóa object
             if wall_obj.local_frame_index >= len(wall_obj.indices_end):
                 wall_obj.active = False
                 wall_obj.delete()
-                print("Cột lửa biến mất hoàn toàn.")
                 return
 
-        # --- CẬP NHẬT HÌNH ẢNH ---
-        # Xác định index thực tế trong list sprites tổng (14 ảnh)
         current_indices = []
-        if wall_obj.anim_state == 'spawn':
-            current_indices = wall_obj.indices_spawn
-        elif wall_obj.anim_state == 'loop':
-            current_indices = wall_obj.indices_loop
-        elif wall_obj.anim_state == 'end':
-            current_indices = wall_obj.indices_end
+        if wall_obj.anim_state == 'spawn': current_indices = wall_obj.indices_spawn
+        elif wall_obj.anim_state == 'loop': current_indices = wall_obj.indices_loop
+        elif wall_obj.anim_state == 'end': current_indices = wall_obj.indices_end
             
-        # Lấy frame thực tế
-        if current_indices: # Kiểm tra an toàn
-            # Đảm bảo index không vượt quá giới hạn (quan trọng cho 'spawn' và 'end')
+        if current_indices:
             safe_index = min(wall_obj.local_frame_index, len(current_indices) - 1)
             real_sprite_index = current_indices[safe_index]
-            
-            # Gán sprite mới
             old_x, old_y = wall_obj.entity.sprite.position
             wall_obj.entity.sprite = wall_obj.sprites[real_sprite_index]
             wall_obj.entity.sprite.position = old_x, old_y
+
+    # --- LOGIC VA CHẠM (Chỉ khi đang cháy - loop) ---
+    if wall_obj.anim_state == 'loop':
+        wall_rect = wall_obj.get_hitbox()
+        current_time = time.time()
+
+        # 2. Xử lý Đạn (Projectiles) -> Biến mất khi chạm tường
+        if projectiles:
+            for p in projectiles:
+                if not p.active: continue
+                
+                # Bỏ qua đạn của Player (nếu muốn bắn xuyên qua tường của mình)
+                # Giả sử thuộc tính owner của đạn Player được gán là string hoặc object Player
+                # Nếu không cần phân biệt thì bỏ qua dòng if này
+                if hasattr(p, 'owner') and p.owner == 'player': 
+                    continue
+
+                # Lấy hitbox đạn
+                px, py, pw, ph = p.get_bounds()
+                p_rect = sdl2.SDL_Rect(int(px), int(py), int(pw), int(ph))
+                
+                if sdl2.SDL_HasIntersection(wall_rect, p_rect):
+                    print("Fire Wall blocked a projectile!")
+                    p.active = False  # Làm đạn biến mất ngay lập tức
+
+        # 3. Xử lý Enemy (Gây dame nhưng KHÔNG chặn đường)
+        if enemies:
+            for enemy in enemies:
+                # Lấy hitbox enemy
+                if hasattr(enemy, 'get_bounds'):
+                    ex, ey, ew, eh = enemy.get_bounds()
+                    enemy_rect = sdl2.SDL_Rect(int(ex), int(ey), int(ew), int(eh))
+                else:
+                    enemy_rect = sdl2.SDL_Rect(int(enemy.sprite.x), int(enemy.sprite.y), 
+                                               int(enemy.sprite.size[0]), int(enemy.sprite.size[1]))
+
+                if sdl2.SDL_HasIntersection(wall_rect, enemy_rect):
+                    # Gây dame theo thời gian (DoT)
+                    enemy_id = id(enemy)
+                    last_hit = wall_obj.hit_timers.get(enemy_id, 0)
+                    
+                    if current_time - last_hit >= wall_obj.damage_interval:
+                        if hasattr(enemy, 'take_damage'):
+                            enemy.take_damage(wall_obj.damage)
+                            wall_obj.hit_timers[enemy_id] = current_time
