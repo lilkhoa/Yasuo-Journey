@@ -254,16 +254,24 @@ def run():
                 w.delete()
                 active_walls.remove(w)
                 
-        player.skill_e.update_dash(dt, alive_npcs)
+        player.skill_e.update_dash(dt, alive_npcs, boxes)
         if player.skill_e.is_dashing: player.state = 'dashing_e'
         elif player.state == 'dashing_e' and not player.skill_e.is_dashing: player.state = 'idle'
 
-        npc_manager.update_all(dt)
+        npc_manager.update_all(dt, my_map)
         projectile_manager.update_all(dt)
         
         # ============== COMBAT COLLISION SYSTEM ==============
         # Chỉ xử lý khi chưa game over
         if not game_over:
+            # --- 0. PROJECTILE -> BOX (destroy on hit) ---
+            for projectile in projectile_manager.projectiles[:]:
+                proj_rect = sdl2.SDL_Rect(int(projectile.x), int(projectile.y), projectile.width, projectile.height)
+                for box in boxes:
+                    if sdl2.SDL_HasIntersection(proj_rect, box.rect):
+                        projectile.on_hit()
+                        break
+
             # --- 1. NPC PROJECTILE -> PLAYER ---
             for projectile in projectile_manager.projectiles[:]:
                 if projectile.check_collision(player):

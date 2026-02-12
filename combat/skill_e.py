@@ -20,7 +20,7 @@ class SkillE(Skill):
         self.hit_list = [] # Reset danh sách trúng
         return self # Trả về chính nó để main loop xử lý update
 
-    def update_dash(self, dt, npcs):
+    def update_dash(self, dt, npcs, boxes=None):
         if not self.is_dashing:
             return
 
@@ -29,6 +29,24 @@ class SkillE(Skill):
         # 1. Di chuyển nhân vật
         direction = 1 if self.owner.facing_right else -1
         move_dist = self.dash_speed * dt * direction
+        
+        # --- Box collision: stop dash if hitting a box ---
+        if boxes:
+            import sdl2
+            hitbox = self.owner.get_hitbox()
+            future_rect = sdl2.SDL_Rect(hitbox.x + int(move_dist), hitbox.y, hitbox.w, hitbox.h)
+            
+            for box in boxes:
+                if sdl2.SDL_HasIntersection(future_rect, box.rect):
+                    # Snap to box edge
+                    if direction > 0:  # Dashing right
+                        self.owner.sprite.x = box.rect.x - 128 + 44 - 2
+                    else:  # Dashing left
+                        self.owner.sprite.x = box.rect.x + box.rect.w - 44 + 2
+                    self.is_dashing = False
+                    self.hit_list = []
+                    return
+        
         self.owner.sprite.x += int(move_dist)
 
         # 2. Gây dame trên đường lướt
