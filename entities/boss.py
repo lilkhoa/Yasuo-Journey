@@ -1123,3 +1123,101 @@ class Boss:
                 if texture:
                     sdl2.SDL_DestroyTexture(texture)
         self.sprites.clear()
+
+
+class BossManager:
+    """
+    Manager class for handling Boss entities.
+    
+    Manages boss spawning, updates, rendering, and cleanup.
+    Similar to NPCManager but for Boss entities.
+    """
+    
+    def __init__(self, sprite_factory, texture_factory, renderer, projectile_manager=None, sound_manager=None):
+        """
+        Initialize Boss Manager.
+        
+        Args:
+            sprite_factory: PySDL2 sprite factory
+            texture_factory: PySDL2 texture factory
+            renderer: PySDL2 renderer
+            projectile_manager: ProjectileManager instance for boss projectiles (optional)
+            sound_manager: SoundManager instance for audio (optional)
+        """
+        self.bosses = []
+        self.sprite_factory = sprite_factory
+        self.texture_factory = texture_factory
+        self.renderer = renderer
+        self.projectile_manager = projectile_manager
+        self.sound_manager = sound_manager
+    
+    def spawn_boss(self, x, y):
+        """
+        Spawn a new Boss.
+        
+        Args:
+            x: Spawn x position
+            y: Spawn y position (ground level)
+            
+        Returns:
+            Boss: The spawned Boss instance
+        """
+        boss = Boss(x, y, self.sprite_factory, self.texture_factory,
+                   self.renderer, self.projectile_manager, self.sound_manager)
+        self.bosses.append(boss)
+        return boss
+    
+    def update_all(self, delta_time=1, game_map=None):
+        """
+        Update all bosses and clean up those marked for removal.
+        
+        Args:
+            delta_time: Time delta for frame-independent movement
+            game_map: Game map instance for collision detection (optional, not currently used)
+        """
+        for boss in self.bosses:
+            boss.update(delta_time)
+        
+        # Remove bosses that are ready for removal (death animation complete)
+        bosses_to_remove = [boss for boss in self.bosses if boss.ready_for_removal]
+        for boss in bosses_to_remove:
+            boss.cleanup()  # Clean up textures and resources before removal
+        
+        # Keep only bosses not marked for removal
+        self.bosses = [boss for boss in self.bosses if not boss.ready_for_removal]
+    
+    def render_all(self, camera_x=0, camera_y=0):
+        """
+        Render all bosses.
+        
+        Args:
+            camera_x: Camera x offset (world to screen conversion)
+            camera_y: Camera y offset (world to screen conversion)
+        """
+        for boss in self.bosses:
+            boss.render(camera_x, camera_y)
+    
+    def set_player_for_all(self, player):
+        """
+        Set the player reference for all bosses.
+        
+        Args:
+            player: Player entity instance
+        """
+        for boss in self.bosses:
+            boss.set_player(player)
+    
+    def get_alive_bosses(self):
+        """
+        Get list of all alive bosses.
+        
+        Returns:
+            list: List of alive Boss instances
+        """
+        return [boss for boss in self.bosses if boss.is_alive()]
+    
+    def cleanup(self):
+        """Clean up all bosses and their resources."""
+        for boss in self.bosses:
+            boss.cleanup()
+        self.bosses.clear()
