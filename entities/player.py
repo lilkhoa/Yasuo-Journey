@@ -211,12 +211,17 @@ class Player:
         if game_map:
             hitbox = self.get_hitbox()
             tiles = game_map.get_tile_rects_around(hitbox.x, hitbox.y, hitbox.w, hitbox.h)
-            feet = sdl2.SDL_Rect(hitbox.x + 10, hitbox.y + hitbox.h, hitbox.w - 20, 4)
+            feet_rect = sdl2.SDL_Rect(hitbox.x + 10, hitbox.y + hitbox.h, hitbox.w - 20, 4)
             
             for tile in tiles:
                 if sdl2.SDL_HasIntersection(hitbox, tile):
-                    if self.vel_y >= 0:
-                        self.entity.sprite.y = tile.y - 128
+                    if self.vel_y > 0: # Đang rơi xuống -> Chạm đất
+                        # Đặt chân nhân vật lên đầu tile
+                        # Tính toán: Hitbox.bottom = Tile.top
+                        # Sprite.y = Tile.top - Hitbox.height - offset_y
+                        # Snap vị trí nhân vật nằm ngay ngắn trên mặt tile
+                        align_y = tile.y - 80 - 48  # 80 là h, 48 là off_y
+                        self.entity.sprite.y = align_y
                         self.vel_y = 0
                         self.ground_y = tile.y
                         on_ground = True
@@ -224,24 +229,27 @@ class Player:
                         self.entity.sprite.y = tile.y + tile.h - 48
                         self.vel_y = 0
                 elif not on_ground and self.vel_y >= 0:
-                     if sdl2.SDL_HasIntersection(feet, tile):
-                        if abs(self.entity.sprite.y - (tile.y - 128)) <= 8:
-                            self.entity.sprite.y = tile.y - 128
+                    if sdl2.SDL_HasIntersection(feet_rect, tile):
+                        # Phát hiện đất ngay dưới chân -> Hút dính xuống
+                        align_y = tile.y - 80 - 48
+                        # Chỉ hút nếu khoảng cách rất gần (tránh hút từ xa)
+                        if abs(self.entity.sprite.y - align_y) <= 3: 
+                            self.entity.sprite.y = align_y
                             self.vel_y = 0
                             self.ground_y = tile.y
                             on_ground = True
 
-        # Box collision Y
         if boxes and not on_ground:
-            hitbox = self.get_hitbox()
             for box in boxes:
-                if sdl2.SDL_HasIntersection(hitbox, box.rect):
-                    if self.vel_y >= 0:
-                        self.entity.sprite.y = box.rect.y - 128
+                if self.vel_y >= 0:
+                    if sdl2.SDL_HasIntersection(feet_rect, box.rect):
+                        align_y = box.rect.y - 80 - 48
+                        self.entity.sprite.y = align_y
                         self.vel_y = 0
+                        self.ground_y = box.rect.y
                         on_ground = True
                         break
-        
+
         self.is_jumping = not on_ground
         if on_ground: self.jump_count = 0
         if self.is_jumping and self.vel_y == 0: self.vel_y = self.gravity
