@@ -150,27 +150,39 @@ def run():
         chest_tileset_texture = chest_tileset_sprite.texture
 
         # --- LOAD ITEM ICONS ---
-        blue_potion_sprite = factory.from_image("assets/Map/items/Blue Potion 2.png")
-        blue_potion_texture = blue_potion_sprite.texture
-
-        green_potion_sprite = factory.from_image("assets/Map/items/Green Potion 3.png")
-        green_potion_texture = green_potion_sprite.texture
-
-        red_potion_sprite = factory.from_image("assets/Map/items/Red Potion.png")
-        red_potion_texture = red_potion_sprite.texture
-
         coin_sprite = factory.from_image("assets/Map/items/Golden Coin.png")
         coin_texture = coin_sprite.texture
 
-        heart_sprite = factory.from_image("assets/Map/items/Heart.png")
-        heart_texture = heart_sprite.texture
+        tear_sprite = factory.from_image("assets/Map/LOL_Equipment/64x64_Tear_of_the_Goddess.png")
+        tear_texture = tear_sprite.texture
 
+        health_sprite = factory.from_image("assets/Map/LOL_Equipment/64x64_Health_Potion.png")
+        health_texture = health_sprite.texture
+
+        greaves_sprite = factory.from_image("assets/Map/LOL_Equipment/64x64_Berserkers_Greaves.png")
+        greaves_texture = greaves_sprite.texture
+
+        bloodthirster_sprite = factory.from_image("assets/Map/LOL_Equipment/64x64_Bloodthirster.png")
+        bloodthirster_texture = bloodthirster_sprite.texture
+
+        infinity_edge_sprite = factory.from_image("assets/Map/LOL_Equipment/64x64_Infinity_Edge.png")
+        infinity_edge_texture = infinity_edge_sprite.texture
+
+        thornmail_sprite = factory.from_image("assets/Map/LOL_Equipment/64x64_Thornmail.png")
+        thornmail_texture = thornmail_sprite.texture
+
+        hourglass_sprite = factory.from_image("assets/Map/LOL_Equipment/64x64_Zhonyas_Hourglass.png")
+        hourglass_texture = hourglass_sprite.texture
+        
         common_drop_table = {
-            "blue_potion": ("Defense potion", 32, 32, blue_potion_texture),
-            "green_potion": ("Stamina potion", 32, 32, green_potion_texture),
-            "red_potion": ("Attack potion", 32, 32, red_potion_texture),
             "coin": ("Coin", 32, 32, coin_texture),
-            "heart": ("Heart", 32, 32, heart_texture)
+            "tear": ("Tear of the Goddess", 32, 32, tear_texture),
+            "heart": ("Health Potion", 32, 32, health_texture),
+            "greaves": ("Berserker's Greaves", 32, 32, greaves_texture),
+            "bloodthirster": ("Bloodthirster", 32, 32, bloodthirster_texture),
+            "infinity_edge": ("Infinity Edge", 32, 32, infinity_edge_texture),
+            "thornmail": ("Thornmail", 32, 32, thornmail_texture),
+            "hourglass": ("Zhonya's Hourglass", 32, 32, hourglass_texture),
         }
 
     except Exception as e:
@@ -215,7 +227,7 @@ def run():
                 real_x = (world_x + TILE_SIZE // 2) - barrel_w // 2
                 real_y = (grid_y_pos + TILE_SIZE) - barrel_h
 
-                new_barrel = Barrel(real_x, real_y, barrel_tileset_texture, common_drop_table)
+                new_barrel = Barrel(real_x, real_y, barrel_tileset_texture, common_drop_table, text_renderer)
                 barrels.append(new_barrel)
 
             elif char == 'C':
@@ -270,15 +282,16 @@ def run():
                 break
             
             if event.type == sdl2.SDL_KEYDOWN:
-             if event.key.keysym.sym == sdl2.SDLK_f:
-                 for chest in chests:
-                     chest.interact(dropped_items, renderer.sdlrenderer, notif_system)
+                if event.key.keysym.sym == sdl2.SDLK_f:
+                    for chest in chests:
+                        chest.interact()
+
+                    for item in dropped_items:
+                        item.interact(notif_system, player)
 
             # Xử lý input sự kiện (Skills, Jump, Attack)
             if not handle_input(event, player, world, software_factory, renderer, active_tornadoes, active_walls, npc_manager):
                 running = False
-            
-            
         
         # Update Logic
         keys = sdl2.SDL_GetKeyboardState(None)
@@ -303,7 +316,7 @@ def run():
         
         # Item updating
         for item in dropped_items:
-            item.update(dt, my_map)
+            item.update(dt, my_map, player)
         
         dropped_items = [item for item in dropped_items if not item.is_collected]
 
@@ -519,7 +532,7 @@ def run():
             chest.render(sdl_renderer, camera, player)
 
         for item in dropped_items:
-            item.render(sdl_renderer, camera)
+            item.render(sdl_renderer, camera, player)
 
         # Render NPCs
         npc_manager.render_all(camera.camera.x, camera.camera.y)
