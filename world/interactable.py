@@ -175,7 +175,7 @@ class Barrel:
         for _ in range(num_items):
             # random the type of item, key in dict textures:
             item_type = random.choice(list(self.item_data.keys()))
-            _, name, width, height, tex = self.item_data[item_type]
+            name, width, height, tex = self.item_data[item_type]
 
             # create item at the barrel
             item = DroppedItem(
@@ -264,7 +264,7 @@ class Chest:
                 num_items = 1   # may be random.randint(3,5)
                 for _ in range(num_items):
                     item_type = random.choice(list(self.item_data.keys()))
-                    _, name, width, height, tex = self.item_data[item_type]
+                    name, width, height, tex = self.item_data[item_type]
                     
                     item = DroppedItem(
                         self.x + self.scaled_width/2,
