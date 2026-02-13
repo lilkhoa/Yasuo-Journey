@@ -124,9 +124,6 @@ def run():
     sound_manager.initialize()
     sound_manager.load_npc_sounds()
     sound_manager.load_boss_sounds()
-    
-    # [MỚI] KHỞI TẠO ITEM MANAGER
-    item_manager = ItemManager(renderer)
 
     try:
         tileset_sprite = factory.from_image("assets/Map/oak_woods_tileset.png")
@@ -249,14 +246,6 @@ def run():
     boss = boss_manager.spawn_boss(4500, npc_ground_y - 400)
     boss.set_player(player)
     make_npc_compatible(boss)
-    
-    # [MỚI] SPAWN CÁC VẬT PHẨM (TEST)
-    # Tọa độ Y=480 để nằm trên mặt đất của map test
-    item_manager.spawn_item(300, 480, ItemType.HEALTH_POTION)
-    item_manager.spawn_item(400, 480, ItemType.STAMINA_POTION)
-    item_manager.spawn_item(500, 480, ItemType.STR_POTION)
-    item_manager.spawn_item(600, 480, ItemType.INFINITY_SWORD)
-    item_manager.spawn_item(700, 480, ItemType.STAR)
 
     active_tornadoes = []
     active_walls = []
@@ -310,13 +299,15 @@ def run():
 
         # Chest updating
         for chest in chests:
-            chest.update(dt, player)
+            chest.update(dt, player, dropped_items, renderer.sdlrenderer)
+        
+        # Item updating
+        for item in dropped_items:
+            item.update(dt, my_map)
+        
+        dropped_items = [item for item in dropped_items if not item.is_collected]
 
         notif_system.update()
-        
-        # [MỚI] UPDATE ITEMS
-        item_manager.update(dt)
-        item_manager.check_collision(player)
 
         player_rect = SDL_Rect(int(player.entity.sprite.x), int(player.entity.sprite.y), 128, 128)
         camera.update(player_rect, my_map.width_pixel)
@@ -507,9 +498,6 @@ def run():
 
         my_map.render(sdl_renderer, tileset_texture, deco_mgr, camera)
         
-        # [MỚI] VẼ ITEMS
-        item_manager.render(camera.camera.x, camera.camera.y)
-
         # Render Skills
         for t in active_tornadoes: 
              render_surface_to_texture(sdl_renderer, t.sprite.surface, 
@@ -529,6 +517,9 @@ def run():
         
         for chest in chests:
             chest.render(sdl_renderer, camera, player)
+
+        for item in dropped_items:
+            item.render(sdl_renderer, camera)
 
         # Render NPCs
         npc_manager.render_all(camera.camera.x, camera.camera.y)

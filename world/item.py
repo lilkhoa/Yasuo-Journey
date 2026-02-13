@@ -10,8 +10,8 @@ class DroppedItem:
     def __init__(self, x, y, texture, width, height, item_type="potion_red", item_name="Health Potion"):
         self.x = x
         self.y = y
-        self.width = width * 2     # scale item 2 times
-        self.height = height * 2
+        self.width = width     # scale item 2 times
+        self.height = height
 
         self.texture = texture
         self.item_type = item_type      # item's name to display or logic processing
