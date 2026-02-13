@@ -184,7 +184,7 @@ class Player:
                 player_rect = self.get_hitbox()
                 future = sdl2.SDL_Rect(player_rect.x + int(dx), player_rect.y, player_rect.w, player_rect.h)
                 for box in boxes:
-                    if sdl2.SDL_HasIntersection(future, box.rect):
+                    if sdl2.SDL_HasIntersection(future, box.rect) and not self.is_jumping:
                         moved, box_dx = box.push(dx, dt, game_map)
                         actual_dx = int(box_dx) if moved else 0
                         break
