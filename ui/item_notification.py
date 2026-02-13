@@ -10,7 +10,7 @@ class ItemNotification:
         self.y_offset = 0   # using for sliding animation
 
         # Tạo texture chữ 1 lần để tối ưu hiệu năng
-        self.name_texture, self.name_w, self.name_h = text_renderer.create_text_texture(item_name, (255, 255, 255))
+        self.name_texture, self.name_w, self.name_h = text_renderer.create_text_texture(item_name + " x1", (255, 255, 255))
 
     def cleanup(self):
         if self.name_texture:
