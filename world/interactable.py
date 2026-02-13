@@ -63,8 +63,10 @@ class Box:
                     self.is_falling = False
         
         # reset the pushing state (will be set to True in player.update if collide)
+        # [SỬA LỖI CÀ GIẬT 1]: Giảm từ từ push_timer thay vì reset về 0 ngay lập tức
+        # Nếu Player vô tình bị mất chạm 1-2 frame, lực đẩy vẫn được giữ lại một phần
         if not self.is_being_pushed:
-            self.push_timer = 0 # reset the timer if the player do not hold
+            self.push_timer = max(0, self.push_timer - dt * 2) # reset the timer if the player do not hold
 
         self.is_being_pushed = False
     
@@ -93,7 +95,11 @@ class Box:
             return False, 0 # do not have enough force to push
 
         # calculate new speed
-        push_dx = dx * BOX_PUSH_SPEED_RATIO
+        push_dx = int(dx * BOX_PUSH_SPEED_RATIO)
+        # [MẸO NHỎ]: Đảm bảo thùng luôn nhích ít nhất 1 pixel nếu có lực đẩy, 
+        # tránh trường hợp (tốc độ * 0.7) quá nhỏ bị làm tròn về 0 khiến thùng kẹt cứng
+        if push_dx == 0 and dx != 0:
+            push_dx = 1 if dx > 0 else -1
 
         # predict new position
         next_x = self.x + push_dx
