@@ -212,8 +212,8 @@ class Chest:
         ]
         
         # size to render
-        self.scaled_heights = [height*3 for height in self.frame_heights]
-        self.scaled_width = self.frame_width * 3
+        self.scaled_heights = [height*2 for height in self.frame_heights]
+        self.scaled_width = self.frame_width * 2
 
         # Animation state
         self.state = "CLOSED"   # CLOSED, OPENING, OPENED
@@ -228,13 +228,11 @@ class Chest:
 
     def update(self, dt, player: Player):
         # 1. Calculate the distance to Player
-        center_x = self.world_x + TILE_SIZE//2 - self.scaled_width/2
-        center_y = self.grid_y_pos + TILE_SIZE - self.frame_heights[self.current_frame]/2
+        center_x = self.world_x + TILE_SIZE//2
         player_cx = player.x + player.width/2
-        player_cy = player.y + player.height/2
 
-        dist = ((center_x - player_cx)**2 + (center_y - player_cy)**2)
-        self.can_interact = (dist <= self.interaction_range)
+        abs_dist = abs(center_x - player_cx)
+        self.can_interact = (abs_dist <= self.interaction_range)
 
         # 2. Opening chest animation
         if self.state == "OPENING":
@@ -324,11 +322,11 @@ class Chest:
                 text = "Press F to collect"
 
             # Draw small black background
-            text_bg_x = (player.x + player.width) // 2 - 25
-            text_bg_y = player.y - 40
+            text_bg_x = player.x - 10
+            text_bg_y = player.y + 10
 
             # sdl2.SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255)
             # sdl2. SDL_RenderFillRect(renderer, SDL_Rect(text_bg_x, text_bg_y, 50, 25))
 
-            self.text_renderer.render(text, text_bg_x, text_bg_y, color=(255,255,0), align="center")
+            self.text_renderer.renderer_text(text, text_bg_x, text_bg_y, color=(255,255,0))
 

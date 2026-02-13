@@ -196,7 +196,7 @@ def run():
     barrels = []
     chests = []
     dropped_items = []  # list manager dropped itemsc
-    text_renderer = TextRenderer(renderer.sdlrenderer, "assets/Fonts/arial.ttf", size=16)
+    text_renderer = TextRenderer(renderer.sdlrenderer, "assets/fonts/arial.ttf", size=10)
     notif_system = ItemNotificationSystem(renderer.sdlrenderer, text_renderer)    
 
     for y, row in enumerate(INTERACT_MAP):

@@ -17,7 +17,7 @@ class TextRenderer:
             print(f"Font loading error: {e}")
             self.font = None
 
-    def renderer_text(self, text, x, y, color=(255, 255, 255), align="center"):
+    def renderer_text(self, text, x, y, color=(255, 255, 255)):
         """
             Draw text into screen
             align: "left", "center", "right"
@@ -40,14 +40,9 @@ class TextRenderer:
         draw_x = int(x)
         draw_y = int(y)
 
-        if align == "center":
-            draw_x -= w // 2
-        elif align == "right":
-            draw_x -= w
-
         dst_rect = sdl2.SDL_Rect(draw_x, draw_y, w, h)
 
-        sdl2.SDL_RenderCopy(self.rednerer, texture, None, dst_rect)
+        sdl2.SDL_RenderCopy(self.renderer, texture, None, dst_rect)
 
         sdl2.SDL_DestroyTexture(texture)
         sdl2.SDL_FreeSurface(surface)
