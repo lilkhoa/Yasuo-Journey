@@ -6,7 +6,7 @@ from settings import *
 from world.map import GameMap
 from core.camera import Camera
 from entities.player import Player
-from ui.hud import ItemNotificationSystem
+from ui.item_notification import ItemNotificationSystem
 
 
 class DroppedItem:

@@ -22,7 +22,8 @@ from entities.projectile import ProjectileManager
 from core.event import handle_input
 from combat.skill_q import update_q_logic
 from combat.skill_w import update_w_logic
-from ui.hud import SkillBarHUD, ItemNotification, ItemNotificationSystem
+from ui.hud import SkillBarHUD
+from ui.item_notification import ItemNotification, ItemNotificationSystem
 
 # [MỚI] IMPORT ITEM
 from items.item import ItemManager, ItemType
@@ -206,7 +207,7 @@ def run():
     chests = []
     dropped_items = []  # list manager dropped itemsc
     text_renderer = TextRenderer(renderer.sdlrenderer, "assets/fonts/arial.ttf", size=10)
-    notif_system = ItemNotificationSystem(renderer.sdlrenderer, text_renderer)    
+    notif_system = ItemNotificationSystem(text_renderer)    
 
     for y, row in enumerate(INTERACT_MAP):
         for x, char in enumerate(row):
@@ -533,6 +534,8 @@ def run():
 
         for item in dropped_items:
             item.render(sdl_renderer, camera, player)
+
+        notif_system.render(sdl_renderer)
 
         # Render NPCs
         npc_manager.render_all(camera.camera.x, camera.camera.y)
