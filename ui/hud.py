@@ -364,7 +364,7 @@ class ItemNotificationSystem:
         current_time = sdl2.SDL_GetTicks()
         notif = ItemNotification(item_name, texture, current_time, self.text_renderer)
         # adding into list
-        self.notification.append(notif)
+        self.notifications.append(notif)
 
     def update(self):
         current_time = sdl2.SDL_GetTicks()

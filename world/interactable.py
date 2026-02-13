@@ -286,7 +286,9 @@ class Chest:
         self.can_interact = False
         self.interaction_range = 100
 
-    def update(self, dt, player: Player):
+        self.has_spawned_items = False
+
+    def update(self, dt, player: Player, dropped_items_list, renderer):
         # 1. Calculate the distance to Player
         center_x = self.world_x + TILE_SIZE//2
         center_y = self.grid_y_pos + TILE_SIZE - self.scaled_heights[0]//2
@@ -302,6 +304,26 @@ class Chest:
             if self.anim_timer >= self.anim_speed:
                 self.anim_timer = 0
                 self.current_frame += 1
+                
+                # spawn item logic, check every frame
+                if self.current_frame >= 3 and not self.has_spawned_items:
+                    num_items = 1
+                    for _ in range(num_items):
+                        item_type = random.choice(list(self.item_data.keys()))
+                        name, width, height, tex = self.item_data[item_type]
+
+                        item = DroppedItem(
+                            self.world_x + TILE_SIZE // 2,
+                            self.grid_y_pos + TILE_SIZE - self.scaled_heights[0]//2 - 5, # 5 pixels higher
+                            tex, 
+                            width, height, 
+                            item_type, name
+                        )
+
+                        dropped_items_list.append(item)
+                    
+                    self.has_spawned_items = True
+                    print("Chest items spawned!")
 
                 # if all frames have been rendered, stop at the latest frame
                 if self.current_frame >= self.frame_count:
@@ -319,35 +341,18 @@ class Chest:
             # start opening chest
             self.state = "OPENING"
             self.current_frame = 0
-
-            # --- SPAWN ITEM ---
-            # Item will spawn immediately when Player open the chest, may be check at frame number 4
-            if self.current_frame >= 3: 
-                num_items = 1   # may be random.randint(3,5)
-                for _ in range(num_items):
-                    item_type = random.choice(list(self.item_data.keys()))
-                    name, width, height, tex = self.item_data[item_type]
-                    
-                    item = DroppedItem(
-                        self.x + self.scaled_width/2,
-                        self.y + self.scaled_heights[self.current_frame]/2,
-                        tex,
-                        width, height,
-                        item_type, name
-                    )
-                    dropped_items_list.append(item)
-                
-                print("Chest opening!")
+            self.has_spawned_items = False                
+            print("Chest opening!")
 
         elif self.state == "OPENED" or (self.state == "OPENING" and self.current_frame >= 3):
             # collecting item
             collected_count = 0
             for item in dropped_items_list:
                 if not item.is_collected and item.on_ground:
-                    dist = abs(item.x - (self.x + self.scaled_width/2))
+                    dist = abs(item.x - (self.world_x + self.scaled_width/2))
                     if dist < self.interaction_range:
                         item.is_collected = True
-                        notification_system.add_notification(item.item_type, item.texture)
+                        notification_system.add_notification(item.item_name, item.texture)
                         collected_count += 1
             
             if collected_count > 0:
