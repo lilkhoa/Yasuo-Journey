@@ -10,6 +10,7 @@ from world.interactable import Box
 from world.decoration import Decoration
 from world.item import DroppedItem
 from world.interactable import Barrel, Chest, BARREL_RENDER_WIDTH, BARREL_RENDER_HEIGHT
+from world.matrix_map import TERRAIN_MAP, DECO_MAP, INTERACT_MAP
 from sdl2 import SDL_Rect, SDL_RenderCopy
 from core.camera import Camera
 from core.text_renderer import TextRenderer
@@ -31,8 +32,9 @@ from items.item import ItemManager, ItemType
 # Sound manager
 from core.sound import get_sound_manager
 
+
 # Long test map to test camera scroll: TERRAIN
-TEST_LEVEL = [
+TERRAIN_MAP = [
     "                                                  ",  
     "                                                  ", 
     "                                                  ", 
@@ -191,7 +193,7 @@ def run():
         return
 
     # 1. init Map and decoration handler
-    my_map = GameMap(TEST_LEVEL, DECO_MAP)
+    my_map = GameMap(TERRAIN_MAP, DECO_MAP)
     deco_mgr = Decoration(renderer)
 
     # 2. init Camera
