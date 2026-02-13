@@ -412,6 +412,13 @@ def run():
                 else:
                     attack_hitbox = (px - player_attack_range + 20, py + 20, player_attack_range, ph - 40)
                 
+                # Hit Barrels
+                atk_rect = sdl2.SDL_Rect(*attack_hitbox)    
+                for barrel in barrels:
+                    if not barrel.is_broken:
+                        if sdl2.SDL_HasIntersection(atk_rect, barrel.get_bounds()):
+                            barrel.take_damage(1, dropped_items, renderer.sdlrenderer)
+                    
                 # Hit NPCs
                 for npc in alive_npcs:
                     if not getattr(player, '_attack_hit_npc_' + str(id(npc)), False):
@@ -426,12 +433,6 @@ def run():
                                 kill_count += 1
                                 player.on_kill_enemy()
                                 print(f"[COMBAT] NPC killed! Total kills: {kill_count}")
-                atk_rect = sdl2.SDL_Rect(*attack_hitbox)    
-                for barrel in barrels:
-                    if not barrel.is_broken:
-                        if sdl2.SDL_HasIntersection(atk_rect, barrel.get_bounds()):
-                            barrel.take_damge(1, dropped_items, renderer.sdlrenderer)
-                    
                 
                 # Hit Bosses
                 for boss in alive_bosses:
