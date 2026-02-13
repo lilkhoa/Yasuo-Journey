@@ -1,3 +1,4 @@
+import math
 import sys
 import os
 import sdl2.ext
@@ -138,10 +139,50 @@ class Barrel:
 
         self.texture = texture      # barrel texture
         self.item_data = item_data  # dict of item's texture can be dropped
-        self.is_broken = False
-        self.health = 1             # broke after 1 hit
 
         self.src_rect = sdl2.SDL_Rect(195, 29, 27, 35)
+
+        self.is_broken = False  
+        self.health = 3             # broke after 1 hit
+        self.is_fading = False      # mark as fading out
+        self.alpha = 255.0          # from 255 (clearest) -> 0 (faded)
+        self.fade_speed = 500.0     # fading speed: 500 alpha / second
+
+        self.shake_timer = 0
+        self.shake_duration = 0.2   # shaking time of each hit
+        self.shake_amplitude = 4    # max 4 pixel deviation to x-axis
+        self.shake_speed = 60       # shaking frequency, 60 frames per second
+        
+        # prevent getting multi-hit from multi-attack frame of Player
+        self.invulnerable_timer = 0
+        self.invulnerable_duration = 0.4
+
+        sdl2.SDL_SetTextureBlendMode(self.texture, sdl2.SDL_BLENDMODE_BLEND)
+
+    def update(self, dt):
+        """
+            Update shaking animation and fading at each frame
+        """
+        if self.is_broken:
+            return
+        
+        # Decrease invulnerable time
+        if self.invulnerable_timer > 0:
+            self.invulnerable_timer -= dt
+
+        # 1. Update shaking animation
+        if self.shake_timer > 0:
+            self.shake_timer -= dt
+            if self.shake_timer <= 0:
+                self.shake_timer = 0
+
+        # 2. Update fading out animation
+        if self.is_fading: 
+            self.alpha -= self.fade_speed * dt
+            if self.alpha <= 0:
+                self.alpha = 0
+                self.is_broken = True
+                self.is_fading = False
 
     def get_bounds(self):
         return SDL_Rect(int(self.x), int(self.y), BARREL_RENDER_WIDTH, BARREL_RENDER_HEIGHT)
@@ -150,22 +191,41 @@ class Barrel:
         if self.is_broken:
             return
         
+        # --- Calculate shaking position ---
+        render_x = self.x
+        if self.shake_timer > 0:
+            offset_x = math.sin(self.shake_timer * self.shake_speed) * self.shake_amplitude
+            render_x += offset_x
+
+
         dst_rect = SDL_Rect(
-            int(self.x - camera.camera.x),
+            int(render_x - camera.camera.x),
             int(self.y - camera.camera.y),
             BARREL_RENDER_WIDTH,
             BARREL_RENDER_HEIGHT
         )
 
+        if self.is_fading:
+            sdl2.SDL_SetTextureAlphaMod(self.texture, int(self.alpha))
+
         sdl2.SDL_RenderCopy(renderer, self.texture, self.src_rect, dst_rect)
 
+        # Need to do, if not all the barrel in the map will be faded
+        if self.is_fading:
+           sdl2.SDL_SetTextureAlphaMod(self.texture, 255)
+
     def take_damage(self, amount, dropped_items_list, renderer):
-        if self.is_broken:
+        if self.is_broken or self.is_fading or self.invulnerable_timer > 0:
             return
 
         self.health -= amount
-        if self.health <= 0:
+        self.invulnerable_timer = self.invulnerable_duration    # start invulerable time
+        if self.health > 0:
+            self.shake_timer = self.shake_duration
+        else:
             self.break_barrel(dropped_items_list, renderer)
+        
+        print(f"[BARREL] PLayer hits Barrel: Barrel health = {self.health}")
 
     def break_barrel(self, drop_items_list, renderer):
         self.is_broken = True
@@ -229,10 +289,12 @@ class Chest:
     def update(self, dt, player: Player):
         # 1. Calculate the distance to Player
         center_x = self.world_x + TILE_SIZE//2
+        center_y = self.grid_y_pos + TILE_SIZE - self.scaled_heights[0]//2
         player_cx = player.x + player.width/2
+        player_cy = player.y + player.height/2
 
-        abs_dist = abs(center_x - player_cx)
-        self.can_interact = (abs_dist <= self.interaction_range)
+        dist = (center_x - player_cx)**2 + (center_y - player_cy)**2
+        self.can_interact = (dist <= self.interaction_range**2)
 
         # 2. Opening chest animation
         if self.state == "OPENING":

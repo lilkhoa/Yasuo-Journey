@@ -300,8 +300,13 @@ def run():
         if player.entity.sprite.x < 0: player.entity.sprite.x = 0
         if player.entity.sprite.x > my_map.width_pixel - 128: player.entity.sprite.x = my_map.width_pixel - 128
 
+        # Box updating
         for box in boxes:
             box.update(dt, my_map)
+
+        # Barrel updating
+        for barrel in barrels:
+            barrel.update(dt)
 
         # Chest updating
         for chest in chests:
