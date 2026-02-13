@@ -129,7 +129,7 @@ BARREL_RENDER_WIDTH = 27 * 2
 BARREL_RENDER_HEIGHT = 35 * 2
 
 class Barrel:
-    def __init__(self, x, y, texture, item_data):
+    def __init__(self, x, y, texture, item_data, text_renderer):
         """
             item_data: Dictionary of tuple 
                 "red_potion"[type]: (name, width, height, texture)
@@ -139,6 +139,7 @@ class Barrel:
 
         self.texture = texture      # barrel texture
         self.item_data = item_data  # dict of item's texture can be dropped
+        self.text_renderer = text_renderer
 
         self.src_rect = sdl2.SDL_Rect(195, 29, 27, 35)
 
@@ -243,6 +244,7 @@ class Barrel:
                 self.y + BARREL_RENDER_HEIGHT/2,
                 tex,
                 width, height,
+                self.text_renderer,
                 item_type, name
             )
             drop_items_list.append(item)
@@ -317,6 +319,7 @@ class Chest:
                             self.grid_y_pos + TILE_SIZE - self.scaled_heights[0]//2 - 5, # 5 pixels higher
                             tex, 
                             width, height, 
+                            self.text_renderer,
                             item_type, name
                         )
 
@@ -330,7 +333,7 @@ class Chest:
                     self.current_frame = self.frame_count - 1
                     self.state = "OPENED"   # Transform to the opened state
 
-    def interact(self, dropped_items_list, renderer, notification_system):
+    def interact(self):
         """
             Called when Player press F
         """
@@ -343,20 +346,7 @@ class Chest:
             self.current_frame = 0
             self.has_spawned_items = False                
             print("Chest opening!")
-
-        elif self.state == "OPENED" or (self.state == "OPENING" and self.current_frame >= 3):
-            # collecting item
-            collected_count = 0
-            for item in dropped_items_list:
-                if not item.is_collected and item.on_ground:
-                    dist = abs(item.x - (self.world_x + self.scaled_width/2))
-                    if dist < self.interaction_range:
-                        item.is_collected = True
-                        notification_system.add_notification(item.item_name, item.texture)
-                        collected_count += 1
-            
-            if collected_count > 0:
-                print(f"Collected {collected_count} items!")
+        
     
     def render(self, renderer, camera: Camera, player: Player):
         # 1. Calculate Source Rect (Cut frame from sprite sheet)
@@ -384,9 +374,6 @@ class Chest:
             text = ""
             if self.state == "CLOSED":
                 text = "Press F to open"
-            else:
-                # Chỉ hiện collect nếu còn đồ chưa nhặt xung quanh (logic đơn giản: luôn hiện nếu đã mở)
-                text = "Press F to collect"
 
             # Draw small black background
             text_bg_x = player.x - 10
@@ -395,5 +382,13 @@ class Chest:
             # sdl2.SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255)
             # sdl2. SDL_RenderFillRect(renderer, SDL_Rect(text_bg_x, text_bg_y, 50, 25))
 
-            self.text_renderer.renderer_text(text, text_bg_x, text_bg_y, color=(255,255,0))
+            self.text_renderer.renderer_text(
+                text, 
+                text_bg_x, 
+                text_bg_y, 
+                color=(255, 255, 0),
+                draw_bg=True,
+                bg_color=(0, 0, 0, 200),
+                radius=8
+            )
 

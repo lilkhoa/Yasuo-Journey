@@ -1,6 +1,7 @@
 import sdl2
 import sdl2.ext
 import sdl2.sdlttf
+import sdl2.sdlgfx as gfx
 
 class TextRenderer:
     def __init__(self, renderer, font_path, size=16):
@@ -17,7 +18,7 @@ class TextRenderer:
             print(f"Font loading error: {e}")
             self.font = None
 
-    def renderer_text(self, text, x, y, color=(255, 255, 255)):
+    def renderer_text(self, text, x, y, color=(255, 255, 255), draw_bg=False, bg_color=(0, 0, 0, 200), radius=8):
         """
             Draw text into screen
             align: "left", "center", "right"
@@ -39,6 +40,24 @@ class TextRenderer:
 
         draw_x = int(x)
         draw_y = int(y)
+
+        if draw_bg:
+            padding_x = 10  # left/right padding
+            padding_y = 6   # top/bottom padding
+
+            left = draw_x - padding_x
+            top = draw_y - padding_y
+            right = draw_x + w + padding_x
+            bottom = draw_y + h + padding_y
+
+            r, g, b, a = bg_color
+
+            gfx.roundedBoxRGBA(
+                self.renderer,
+                left, top, right, bottom,
+                radius,
+                r, g, b, a
+            )
 
         dst_rect = sdl2.SDL_Rect(draw_x, draw_y, w, h)
 
