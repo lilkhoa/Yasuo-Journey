@@ -121,6 +121,7 @@ class NPC:
         self.damage = damage
         self.attack_range = attack_range
         self.detection_range = detection_range
+        self.vertical_detection_range = self.height
         
         # Movement
         self.speed = speed
@@ -195,12 +196,13 @@ class NPC:
         """Get the folder name for this NPC type. Must be implemented by child classes."""
         raise NotImplementedError("Subclasses must implement _get_npc_folder_name()")
     
-    def update(self, delta_time=1):
+    def update(self, delta_time=1, game_map=None):
         """
         Update NPC state, animation, and movement.
         
         Args:
             delta_time: Time elapsed since last update
+            game_map: GameMap instance for tile collision
         """
         if self.state == NPCState.DEAD:
             self._update_animation()
@@ -260,9 +262,37 @@ class NPC:
                 
             self.y += self.velocity_y
             
-            # Ground check
-            if self.y >= self.ground_y:
-                self.y = self.ground_y
+            # Tile-based ground collision
+            on_ground = False
+            if game_map:
+                npc_rect = sdl2.SDL_Rect(int(self.x), int(self.y), self.width, self.height)
+                nearby_tiles = game_map.get_tile_rects_around(int(self.x), int(self.y), self.width, self.height)
+                
+                for tile in nearby_tiles:
+                    if sdl2.SDL_HasIntersection(npc_rect, tile):
+                        if self.velocity_y >= 0:  # Falling or standing
+                            self.y = tile.y - self.height
+                            self.velocity_y = 0
+                            self.ground_y = tile.y - self.height
+                            on_ground = True
+                            break
+                
+                # Feet sensor for stability
+                if not on_ground and self.velocity_y >= 0:
+                    feet_rect = sdl2.SDL_Rect(int(self.x) + 10, int(self.y) + self.height, self.width - 20, 4)
+                    for tile in nearby_tiles:
+                        if sdl2.SDL_HasIntersection(feet_rect, tile):
+                            snap_y = tile.y - self.height
+                            if abs(self.y - snap_y) <= 8:
+                                self.y = snap_y
+                                self.velocity_y = 0
+                                self.ground_y = snap_y
+                                on_ground = True
+                                break
+            
+            # Fallback: GROUND_Y safety net
+            if not on_ground and self.y >= GROUND_Y:
+                self.y = GROUND_Y
                 self.velocity_y = 0
                 
     def apply_knockup(self, force=-10):
@@ -368,12 +398,14 @@ class NPC:
         detection_left = self.spawn_x - self.detection_range
         detection_right = self.spawn_x + self.detection_range
         
-        player_x = self.player.x + self.player.width / 2  # Use player center
+        player_x = self.player.x + self.player.width / 2
         
         # Check if player is within detection area
         player_in_detection = detection_left <= player_x <= detection_right
+        distance_y = abs((self.player.y + self.player.height / 2) - (self.y + self.height / 2))
+        is_on_same_vertical_level = distance_y <= self.vertical_detection_range
         
-        if not self.is_chasing and player_in_detection:
+        if not self.is_chasing and player_in_detection and is_on_same_vertical_level:
             # Player entered detection area - start chasing
             print(f"[NPC] Player detected at {player_x:.0f}! Starting chase. NPC at {self.x:.0f}")
             self._start_chase()
@@ -381,15 +413,18 @@ class NPC:
             # Add hysteresis buffer to prevent jittery behavior at boundary
             buffer_left = detection_left - self.chase_hysteresis_buffer
             buffer_right = detection_right + self.chase_hysteresis_buffer
+
+            player_out_of_x = not (buffer_left <= player_x <= buffer_right)
+            player_out_of_y = not is_on_same_vertical_level
             
-            if not (buffer_left <= player_x <= buffer_right):
-                # Player left detection area (with buffer) - stop chasing
+            if player_out_of_x or player_out_of_y:
                 self._stop_chase()
             else:
                 # Player still in detection range - check distance
                 distance_to_player = abs(self.x + self.width / 2 - player_x)
+                distance_y = abs((self.player.y + self.player.height / 2) - (self.y + self.height / 2))
                 
-                if distance_to_player <= self.attack_range:
+                if distance_to_player <= self.attack_range and distance_y <= self.vertical_detection_range:
                     # Player in attack range - update direction to face player before attacking
                     if not self.is_attacking and self.attack_cooldown == 0:
                         # Update direction to face player
@@ -740,15 +775,16 @@ class Ghost(NPC):
         self.sound_manager.load_sound("ghost_attack", sound_path)
         self.attack_sound = self.sound_manager.get_sound("ghost_attack")
     
-    def update(self, delta_time=1):
+    def update(self, delta_time=1, game_map=None):
         """
         Update Ghost NPC with projectile firing logic.
         
         Args:
             delta_time: Time elapsed since last update
+            game_map: GameMap instance for tile collision
         """
         # Call parent update
-        super().update(delta_time)
+        super().update(delta_time, game_map)
         
         if self.is_attacking and not self.projectile_fired_this_attack:
             if self.current_frame >= 3:
@@ -928,15 +964,16 @@ class Shooter(NPC):
         """Get list of states that cannot be interrupted for Shooter."""
         return [NPCState.ATTACK_1, NPCState.ATTACK_2, NPCState.HURT, NPCState.DEAD]
     
-    def update(self, delta_time=1):
+    def update(self, delta_time=1, game_map=None):
         """
         Update Shooter NPC with projectile firing logic.
         
         Args:
             delta_time: Time elapsed since last update
+            game_map: GameMap instance for tile collision
         """
         # Call parent update
-        super().update(delta_time)
+        super().update(delta_time, game_map)
         
         # Fire projectile at appropriate frame during attack animation
         if self.is_attacking and not self.projectile_fired_this_attack:
@@ -1140,10 +1177,10 @@ class Onre(NPC):
             self.sound_manager.load_sound(f"onre_attack{i+1}", sound_path)
             self.attack_sounds[i] = self.sound_manager.get_sound(f"onre_attack{i+1}")
     
-    def update(self, delta_time=1):
+    def update(self, delta_time=1, game_map=None):
         """Update Onre NPC with melee hitbox collision detection."""
         # Call parent update
-        super().update(delta_time)
+        super().update(delta_time, game_map)
         
         # Check melee hitbox during attack animation
         if self.is_attacking and self.player:
@@ -1310,10 +1347,10 @@ class NPCManager:
         self.npcs.append(onre)
         return onre
     
-    def update_all(self, delta_time=1):
+    def update_all(self, delta_time=1, game_map=None):
         """Update all NPCs and clean up those marked for removal."""
         for npc in self.npcs:
-            npc.update(delta_time)
+            npc.update(delta_time, game_map)
         
         # Remove NPCs that are marked for removal (dead + delay passed)
         npcs_to_remove = [npc for npc in self.npcs if npc.ready_for_removal]

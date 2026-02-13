@@ -107,10 +107,6 @@ class Projectile:
         self.age += 1
         if self.age >= self.lifetime:
             self.active = False
-        
-        # Check if off-screen (simple bounds check)
-        if self.x < -100 or self.x > 1400 or self.y < -100 or self.y > 900:
-            self.active = False
     
     def _update_animation(self):
         """Update animation frame."""

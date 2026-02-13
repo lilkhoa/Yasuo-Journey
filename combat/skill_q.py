@@ -5,7 +5,7 @@ from combat.skill import Skill
 from combat.utils import load_grid_sprite_sheet
 
 def load_tornado_assets(factory, asset_dir):
-    filename = "mytornado.png" # Đảm bảo tên file đúng (mytornado.png)
+    filename = "mytornado.png"
     path = os.path.join(asset_dir, filename)
     sprites = load_grid_sprite_sheet(factory, path, cols=5, rows=12, target_size=(100, 120))
     return sprites
@@ -19,7 +19,7 @@ class TornadoObject:
         
         self.start_x = x
         self.direction = direction 
-        self.speed = 300
+        self.speed = 350
         self.max_dist = max_dist
         self.max_hits = max_hits
         self.hit_count = 0
@@ -29,6 +29,11 @@ class TornadoObject:
         self.anim_frame = 0
         self.anim_timer = 0
         self.anim_speed = 0.02
+        
+        # Danh sách ID các quái đã bị hit bởi lốc này (để tránh hit liên tục mỗi frame)
+        # {enemy_id: cooldown_timer}
+        self.hit_records = {} 
+        self.hit_cooldown = 0.5 # Mỗi 0.5s mới hit lại 1 lần nếu lốc đi qua
 
     @property
     def sprite(self):
@@ -47,19 +52,19 @@ class SkillQ(Skill):
         
         direction = 1 if self.owner.facing_right else -1
         start_x = self.owner.sprite.x + (40 * direction)
-        
-        # --- CHỈNH SỬA Ở ĐÂY ---
-        # Cộng thêm 30 pixel để dịch lốc xuống dưới
         start_y = self.owner.sprite.y + 15
         
         tornado = TornadoObject(world, sprites_to_use, start_x, start_y, 
-                                direction, max_dist=600, max_hits=5)
+                                direction, max_dist=700, max_hits=99) # Tăng max_hits để lốc xuyên táo
         return tornado
 
-def update_q_logic(tornado_obj, npcs, dt):
+def update_q_logic(tornado_obj, enemies, dt):
+    """
+    enemies: List NPC/Boss/Minions
+    """
     if not tornado_obj.active: return
     
-    # Animation
+    # 1. Animation
     if len(tornado_obj.sprites) > 1:
         tornado_obj.anim_timer += dt
         if tornado_obj.anim_timer >= tornado_obj.anim_speed:
@@ -69,7 +74,7 @@ def update_q_logic(tornado_obj, npcs, dt):
             tornado_obj.entity.sprite = tornado_obj.sprites[tornado_obj.anim_frame]
             tornado_obj.entity.sprite.position = old_x, old_y
 
-    # Di chuyển
+    # 2. Di chuyển
     move_amt = int(tornado_obj.speed * dt * tornado_obj.direction)
     tornado_obj.sprite.x += move_amt
     
@@ -79,28 +84,56 @@ def update_q_logic(tornado_obj, npcs, dt):
         tornado_obj.delete()
         return
 
-    # Hitbox
-    width = tornado_obj.sprite.size[0]
-    height = tornado_obj.sprite.size[1]
-    t_rect = (tornado_obj.sprite.x, tornado_obj.sprite.y, width, height)
+    # 3. Hitbox Collision & Damage
+    # Tạo Rect cho lốc xoáy (nhỏ hơn sprite chút cho chuẩn)
+    t_width = tornado_obj.sprite.size[0]
+    t_height = tornado_obj.sprite.size[1]
+    tornado_rect = sdl2.SDL_Rect(int(tornado_obj.sprite.x + 20), 
+                                 int(tornado_obj.sprite.y + 20), 
+                                 int(t_width - 40), int(t_height - 20))
     
-    for npc in npcs:
-        n_rect = (npc.sprite.x, npc.sprite.y, npc.sprite.size[0], npc.sprite.size[1])
-        if (t_rect[0] < n_rect[0] + n_rect[2] and t_rect[0] + t_rect[2] > n_rect[0] and
-            t_rect[1] < n_rect[1] + n_rect[3] and t_rect[1] + t_rect[3] > n_rect[1]):
+    # Update cooldown hit
+    to_remove = []
+    for eid in tornado_obj.hit_records:
+        tornado_obj.hit_records[eid] -= dt
+        if tornado_obj.hit_records[eid] <= 0:
+            to_remove.append(eid)
+    for eid in to_remove:
+        del tornado_obj.hit_records[eid]
+
+    for target in enemies:
+        if not hasattr(target, 'is_alive') or not target.is_alive(): continue
+
+        # Lấy hitbox target
+        if hasattr(target, 'get_bounds'):
+            tx, ty, tw, th = target.get_bounds()
+            target_rect = sdl2.SDL_Rect(int(tx), int(ty), int(tw), int(th))
+        else:
+            target_rect = sdl2.SDL_Rect(int(target.sprite.x), int(target.sprite.y), 
+                                        int(target.sprite.size[0]), int(target.sprite.size[1]))
+
+        # Check va chạm
+        if sdl2.SDL_HasIntersection(tornado_rect, target_rect):
+            target_id = id(target)
             
-            hit_attr = "was_hit_by_q_id_" + str(id(tornado_obj))
-            if not getattr(npc, hit_attr, False):
-                setattr(npc, hit_attr, True)
-                current_dmg = tornado_obj.damage_base * (tornado_obj.decay_rate ** tornado_obj.hit_count)
-                print(f"Q Hit! Dmg: {current_dmg:.2f}")
-                # Use knockup method which sets velocity_y
-                if hasattr(npc, 'apply_knockup'):
-                    npc.apply_knockup(-12) # Knockup force
-                else:
-                    npc.sprite.y -= 20 # Fallback 
+            # Nếu mục tiêu chưa bị hit hoặc đã hết cooldown hit
+            if target_id not in tornado_obj.hit_records:
+                
+                # Tính damage (giảm dần theo số lần hit của lốc)
+                current_dmg = tornado_obj.damage_base # Bạn có thể thêm decay_rate nếu muốn damage giảm dần
+                
+                print(f"Q Tornado Hit! Dmg: {current_dmg}")
+                
+                # --- QUAN TRỌNG: GÂY DAMAGE ---
+                if hasattr(target, 'take_damage'):
+                    target.take_damage(current_dmg)
+                
+                # Hiệu ứng hất tung (Knockup)
+                if hasattr(target, 'apply_knockup'):
+                    target.apply_knockup(-12)
+                elif hasattr(target, 'velocity_y'): # Fallback
+                    target.velocity_y = -10
+                    
+                # Ghi lại hit
+                tornado_obj.hit_records[target_id] = tornado_obj.hit_cooldown
                 tornado_obj.hit_count += 1
-                if tornado_obj.hit_count >= tornado_obj.max_hits:
-                    tornado_obj.active = False
-                    tornado_obj.delete()
-                    break
