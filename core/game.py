@@ -3,12 +3,16 @@ import os
 sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
 import sdl2
 import sdl2.ext
+import sdl2.sdlttf
 from settings import *
 from world.map import GameMap
 from world.interactable import Box
 from world.decoration import Decoration
+from world.item import DroppedItem
+from world.interactable import Barrel, Chest, BARREL_RENDER_WIDTH, BARREL_RENDER_HEIGHT
 from sdl2 import SDL_Rect, SDL_RenderCopy
 from core.camera import Camera
+from core.text_renderer import TextRenderer
 
 # --- THÊM IMPORTS CHO PLAYER VÀ NPC ---
 from entities.player import Player
@@ -17,7 +21,7 @@ from entities.projectile import ProjectileManager
 from core.event import handle_input
 from combat.skill_q import update_q_logic
 from combat.skill_w import update_w_logic
-from ui.hud import SkillBarHUD
+from ui.hud import SkillBarHUD, ItemNotification, ItemNotificationSystem
 
 # Long test map to test camera scroll: TERRAIN
 TEST_LEVEL = [
@@ -44,18 +48,22 @@ DECO_MAP = [
     "                                                  ", 
 ]
 
-# BOX MAP (Mask Map cho vật thể tương tác)
-# 'B' đại diện cho Box
-BOX_MAP = [
+# INTERACT MAP (Layer dành riêng cho vật thể tương tác)
+# 'B' = Box (Thùng đẩy)
+# 'b' = Barrel (Thùng phuy đập vỡ)
+# 'C' = Chest (Rương)
+INTERACT_MAP = [
     "                                                  ", 
     "                                                  ", 
-    "                                                  ", 
-    "                                                  ", 
-    "                                                  ", # Đặt thử 1 cái thùng
+    "   C                                               ", 
+    "                                                  ", # Thùng đẩy trên cao
+    "        b                         b               ", # Rương và Thùng phuy
     " B                                                ", 
     "                                                  ", 
     "                                                  ", 
 ]
+
+
 
 # --- HELPER: Wrapper cho NPC tương thích với Skill collision ---
 class SpriteWrapper:
@@ -129,9 +137,42 @@ def run():
 
         bg3_sprite = factory.from_image("assets/Map/background/background_layer_3.png") # near forest
         bg3_tex = bg3_sprite.texture
-
+        
+        # Loading pushable box
         box_tileset_sprite = factory.from_image("assets/Map/interactable_objects/TX Village Props.png")
         box_tileset_texture = box_tileset_sprite.texture
+
+        # Loading sprite sheet of barrel
+        barrel_tileset_sprite = factory.from_image("assets/Map/interactable_objects/TX Village Props.png")
+        barrel_tileset_texture = barrel_tileset_sprite.texture
+
+        # Loading sprite sheet of chest
+        chest_tileset_sprite = factory.from_image("assets/Map/interactable_objects/TX Chest Animation.png")
+        chest_tileset_texture = chest_tileset_sprite.texture
+
+        # --- LOAD ITEM ICONS ---
+        blue_potion_sprite = factory.from_image("assets/Map/items/Blue Potion 2.png")
+        blue_potion_texture = blue_potion_sprite.texture
+
+        green_potion_sprite = factory.from_image("assets/Map/items/Green Potion 3.png")
+        green_potion_texture = green_potion_sprite.texture
+
+        red_potion_sprite = factory.from_image("assets/Map/items/Red Potion.png")
+        red_potion_texture = red_potion_sprite.texture
+
+        coin_sprite = factory.from_image("assets/Map/items/Golden Coin.png")
+        coin_texture = coin_sprite.texture
+
+        heart_sprite = factory.from_image("assets/Map/items/Heart.png")
+        heart_texture = heart_sprite.texture
+
+        common_drop_table = {
+            "blue_potion": ("Defense potion", 32, 32, blue_potion_texture),
+            "green_potion": ("Stamina potion", 32, 32, green_potion_texture),
+            "red_potion": ("Attack potion", 32, 32, red_potion_texture),
+            "coin": ("Coin", 32, 32, coin_texture),
+            "heart": ("Heart", 32, 32, heart_texture)
+        }
 
     except Exception as e:
         print(f"Load sprite error: {e}")
@@ -150,18 +191,37 @@ def run():
     
     # 4. Boxes initialization
     boxes = []
-    for y, row in enumerate(BOX_MAP):
-        for x, char in enumerate(row):
-            if char == "B":
-                # calculate the real position
-                real_x = x * TILE_SIZE
-                # align Y for box to lie on the top of the ground of this row
-                # because height is (44 -> 24) * SCALE FACTOR
-                real_y = (y * TILE_SIZE) # because we scale the block has the same size to the ground block
+    barrels = []
+    chests = []
+    dropped_items = []  # list manager dropped itemsc
+    text_renderer = TextRenderer(renderer.sdlrenderer, "assets/Fonts/arial.ttf", size=16)
+    notif_system = ItemNotificationSystem(renderer.sdlrenderer, text_renderer)    
 
-                new_box = Box(real_x, real_y, box_tileset_texture)
+    for y, row in enumerate(INTERACT_MAP):
+        for x, char in enumerate(row):
+            # calculate the real position
+            world_x = x * TILE_SIZE
+            # align Y for box to lie on the top of the ground of this row
+            # because height is (44 -> 24) * SCALE FACTOR
+            grid_y_pos = (y * TILE_SIZE) # because we scale the block has the same size to the ground block
+
+            if char == "B":
+                new_box = Box(world_x, grid_y_pos, box_tileset_texture)
                 boxes.append(new_box)
             
+            elif char == "b":   # barrel
+                barrel_h = BARREL_RENDER_HEIGHT  # value got from the Barrel class
+                barrel_w = BARREL_RENDER_WIDTH
+
+                real_x = (world_x + TILE_SIZE // 2) - barrel_w // 2
+                real_y = (grid_y_pos + TILE_SIZE) - barrel_h
+
+                new_barrel = Barrel(real_x, real_y, barrel_tileset_texture, common_drop_table)
+                barrels.append(new_barrel)
+
+            elif char == 'C':
+                new_chest = Chest(world_x, grid_y_pos, chest_tileset_texture, common_drop_table, text_renderer)
+                chests.append(new_chest)
 
     player = Player(world, software_factory, 100, 350) # Spawn gần mặt đất
     
@@ -210,9 +270,17 @@ def run():
             if event.type == sdl2.SDL_QUIT:
                 running = False
                 break
+            
+            if event.type == sdl2.SDL_KEYDOWN:
+             if event.key.keysym.sym == sdl2.SDLK_f:
+                 for chest in chests:
+                     chest.interact(dropped_items, renderer.sdlrenderer, notif_system)
+
             # Xử lý input sự kiện (Skills, Jump, Attack)
             if not handle_input(event, player, world, software_factory, renderer, active_tornadoes, active_walls, npc_manager):
                 running = False
+            
+            
         
         # Update Logic
         keys = sdl2.SDL_GetKeyboardState(None)
@@ -235,6 +303,12 @@ def run():
         # Box updating
         for box in boxes:
             box.update(dt, my_map)
+
+        # Chest updating
+        for chest in chests:
+            chest.update(dt, player)
+
+        notif_system.update()
         
         # update Camera theo Player (dùng SDL_Rect để tương thích)
         player_rect = SDL_Rect(int(player.entity.sprite.x), int(player.entity.sprite.y), 128, 128)
@@ -328,6 +402,12 @@ def run():
                                 kill_count += 1
                                 player.on_kill_enemy()
                                 print(f"[COMBAT] NPC killed! Total kills: {kill_count}")
+                atk_rect = sdl2.SDL_Rect(*attack_hitbox)    
+                for barrel in barrels:
+                    if not barrel.is_broken:
+                        if sdl2.SDL_HasIntersection(atk_rect, barrel.get_bounds()):
+                            barrel.take_damge(1, dropped_items, renderer.sdlrenderer)
+                    
             else:
                 # Reset attack hit flags khi hết attacking
                 for npc in npc_manager.npcs:
@@ -379,6 +459,13 @@ def run():
         # Box rendering
         for box in boxes:
             box.render(sdl_renderer, camera)
+
+        # Barrel and chest renderering
+        for barrel in barrels:
+            barrel.render(sdl_renderer, camera)
+        
+        for chest in chests:
+            chest.render(sdl_renderer, camera, player)
 
         # Render NPCs
         npc_manager.render_all(camera.camera.x, camera.camera.y)

@@ -267,9 +267,9 @@ class Player:
 
         # --- STEP 4: CHECK THE COLLISION Y ---
         on_ground = False
-        
+        hitbox = self.get_hitbox()
+
         if game_map:
-            hitbox = self.get_hitbox()
             nearby_tiles = game_map.get_tile_rects_around(hitbox.x, hitbox.y, hitbox.w, hitbox.h)
             
             # [QUAN TRỌNG] Tạo cảm biến dưới chân (mỏng 4px)
@@ -282,10 +282,8 @@ class Player:
                         # Đặt chân nhân vật lên đầu tile
                         # Tính toán: Hitbox.bottom = Tile.top
                         # Sprite.y = Tile.top - Hitbox.height - offset_y
-                        align_y = tile.y - 80 - 48 # 80 là h, 48 là off_y
-                        
                         # Snap vị trí nhân vật nằm ngay ngắn trên mặt tile
-                        align_y = tile.y - 80 - 48
+                        align_y = tile.y - 80 - 48  # 80 là h, 48 là off_y
                         self.entity.sprite.y = align_y
                         self.vel_y = 0
                         self.ground_y = tile.y
@@ -303,11 +301,22 @@ class Player:
                         # Phát hiện đất ngay dưới chân -> Hút dính xuống
                         align_y = tile.y - 80 - 48
                         # Chỉ hút nếu khoảng cách rất gần (tránh hút từ xa)
-                        if abs(self.entity.sprite.y - align_y) <= 5: 
+                        if abs(self.entity.sprite.y - align_y) <= 3: 
                             self.entity.sprite.y = align_y
                             self.vel_y = 0
                             self.ground_y = tile.y
                             on_ground = True
+
+        if boxes and not on_ground:
+            for box in boxes:
+                if self.vel_y >= 0:
+                    if sdl2.SDL_HasIntersection(feet_rect, box.rect):
+                        align_y = box.rect.y - 80 - 48
+                        self.entity.sprite.y = align_y
+                        self.vel_y = 0
+                        self.ground_y = box.rect.y
+                        on_ground = True
+                        break
 
         self.is_jumping = not on_ground
 

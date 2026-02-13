@@ -1,10 +1,15 @@
 import sys
 import os
 import sdl2.ext
+import random
 from sdl2 import SDL_Rect
 from settings import *
-from .map import GameMap
+
 from core.camera import Camera
+from entities.player import Player
+
+from .map import GameMap
+from .item import DroppedItem
 
 BOX_PUSH_THRESHOLD = 0.2  # Time (second) which the player need to hold before pushing
 BOX_PUSH_SPEED_RATIO = 0.7 # Speed of Player while pushing the box (reduce 30% to normal)
@@ -119,4 +124,211 @@ class Box:
         else:
             return False, 0
 
+BARREL_RENDER_WIDTH = 27 * 2
+BARREL_RENDER_HEIGHT = 35 * 2
+
+class Barrel:
+    def __init__(self, x, y, texture, item_data):
+        """
+            item_data: Dictionary of tuple 
+                "red_potion"[type]: (name, width, height, texture)
+        """
+        self.x = x
+        self.y = y
+
+        self.texture = texture      # barrel texture
+        self.item_data = item_data  # dict of item's texture can be dropped
+        self.is_broken = False
+        self.health = 1             # broke after 1 hit
+
+        self.src_rect = sdl2.SDL_Rect(195, 29, 27, 35)
+
+    def get_bounds(self):
+        return SDL_Rect(int(self.x), int(self.y), BARREL_RENDER_WIDTH, BARREL_RENDER_HEIGHT)
     
+    def render(self, renderer, camera: Camera):
+        if self.is_broken:
+            return
+        
+        dst_rect = SDL_Rect(
+            int(self.x - camera.camera.x),
+            int(self.y - camera.camera.y),
+            BARREL_RENDER_WIDTH,
+            BARREL_RENDER_HEIGHT
+        )
+
+        sdl2.SDL_RenderCopy(renderer, self.texture, self.src_rect, dst_rect)
+
+    def take_damage(self, amount, dropped_items_list, renderer):
+        if self.is_broken:
+            return
+
+        self.health -= amount
+        if self.health <= 0:
+            self.break_barrel(dropped_items_list, renderer)
+
+    def break_barrel(self, drop_items_list, renderer):
+        self.is_broken = True
+
+        # drop item logic (random 1-3 item) => drop only one item for each barrel
+        num_items = 1   # random.randint(1,3)
+        for _ in range(num_items):
+            # random the type of item, key in dict textures:
+            item_type = random.choice(list(self.item_data.keys()))
+            _, name, width, height, tex = self.item_data[item_type]
+
+            # create item at the barrel
+            item = DroppedItem(
+                self.x + BARREL_RENDER_WIDTH/2,
+                self.y + BARREL_RENDER_HEIGHT/2,
+                tex,
+                width, height,
+                item_type, name
+            )
+            drop_items_list.append(item)
+
+        print("Barrel broken!")
+
+class Chest:
+    def __init__(self, world_x, grid_y_pos, sprite_sheet, item_data, text_renderer):
+        '''
+            real_x, real_y
+        '''
+        self.world_x = world_x
+        self.grid_y_pos = grid_y_pos
+
+        self.texture = sprite_sheet
+        self.frame_count = 7
+        self.frame_heights = [29, 33, 35, 37, 38, 36, 33]
+        self.frame_width = 34
+        self.top_left_corner = [
+            (31,227), 
+            (95,223), 
+            (159,221), 
+            (223,219), 
+            (287, 218), 
+            (351, 220), 
+            (415, 223)
+        ]
+        
+        # size to render
+        self.scaled_heights = [height*3 for height in self.frame_heights]
+        self.scaled_width = self.frame_width * 3
+
+        # Animation state
+        self.state = "CLOSED"   # CLOSED, OPENING, OPENED
+        self.current_frame = 0
+        self.anim_timer = 0
+        self.anim_speed = 0.1   # frame per second
+
+        self.item_data = item_data
+        self.text_renderer = text_renderer
+        self.can_interact = False
+        self.interaction_range = 100
+
+    def update(self, dt, player: Player):
+        # 1. Calculate the distance to Player
+        center_x = self.world_x + TILE_SIZE//2 - self.scaled_width/2
+        center_y = self.grid_y_pos + TILE_SIZE - self.frame_heights[self.current_frame]/2
+        player_cx = player.x + player.width/2
+        player_cy = player.y + player.height/2
+
+        dist = ((center_x - player_cx)**2 + (center_y - player_cy)**2)
+        self.can_interact = (dist <= self.interaction_range)
+
+        # 2. Opening chest animation
+        if self.state == "OPENING":
+            self.anim_timer += dt
+            if self.anim_timer >= self.anim_speed:
+                self.anim_timer = 0
+                self.current_frame += 1
+
+                # if all frames have been rendered, stop at the latest frame
+                if self.current_frame >= self.frame_count:
+                    self.current_frame = self.frame_count - 1
+                    self.state = "OPENED"   # Transform to the opened state
+
+    def interact(self, dropped_items_list, renderer, notification_system):
+        """
+            Called when Player press F
+        """
+        if not self.can_interact:
+            return
+        
+        if self.state == "CLOSED":
+            # start opening chest
+            self.state = "OPENING"
+            self.current_frame = 0
+
+            # --- SPAWN ITEM ---
+            # Item will spawn immediately when Player open the chest, may be check at frame number 4
+            if self.current_frame >= 3: 
+                num_items = 1   # may be random.randint(3,5)
+                for _ in range(num_items):
+                    item_type = random.choice(list(self.item_data.keys()))
+                    _, name, width, height, tex = self.item_data[item_type]
+                    
+                    item = DroppedItem(
+                        self.x + self.scaled_width/2,
+                        self.y + self.scaled_heights[self.current_frame]/2,
+                        tex,
+                        width, height,
+                        item_type, name
+                    )
+                    dropped_items_list.append(item)
+                
+                print("Chest opening!")
+
+        elif self.state == "OPENED" or (self.state == "OPENING" and self.current_frame >= 3):
+            # collecting item
+            collected_count = 0
+            for item in dropped_items_list:
+                if not item.is_collected and item.on_ground:
+                    dist = abs(item.x - (self.x + self.scaled_width/2))
+                    if dist < self.interaction_range:
+                        item.is_collected = True
+                        notification_system.add_notification(item.item_type, item.texture)
+                        collected_count += 1
+            
+            if collected_count > 0:
+                print(f"Collected {collected_count} items!")
+    
+    def render(self, renderer, camera: Camera, player: Player):
+        # 1. Calculate Source Rect (Cut frame from sprite sheet)
+        src_rect = SDL_Rect(
+            self.top_left_corner[self.current_frame][0], 
+            self.top_left_corner[self.current_frame][1],
+            self.frame_width,
+            self.frame_heights[self.current_frame]
+        )
+
+        # 2 Calculate Destination Rect (Render on windows)
+        dst_rect = SDL_Rect(
+            int((self.world_x + TILE_SIZE//2 - self.scaled_width//2) - camera.camera.x),
+            int(self.grid_y_pos + TILE_SIZE - self.scaled_heights[self.current_frame] - camera.camera.y),
+            self.scaled_width,
+            self.scaled_heights[self.current_frame]
+        )
+
+        # 3. Draw
+        sdl2.SDL_RenderCopy(renderer, self.texture, src_rect, dst_rect)
+
+        # 4. Draw UI Text (F character)
+        if self.can_interact:
+            
+            text = ""
+            if self.state == "CLOSED":
+                text = "Press F to open"
+            else:
+                # Chỉ hiện collect nếu còn đồ chưa nhặt xung quanh (logic đơn giản: luôn hiện nếu đã mở)
+                text = "Press F to collect"
+
+            # Draw small black background
+            text_bg_x = (player.x + player.width) // 2 - 25
+            text_bg_y = player.y - 40
+
+            # sdl2.SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255)
+            # sdl2. SDL_RenderFillRect(renderer, SDL_Rect(text_bg_x, text_bg_y, 50, 25))
+
+            self.text_renderer.render(text, text_bg_x, text_bg_y, color=(255,255,0), align="center")
+
