@@ -221,7 +221,7 @@ class SoundManager:
     
     def load_player_sounds(self):
         """
-        Load all player attack sounds.
+        Load all player sounds (attacks, skills, movement, damage).
         
         Returns:
             bool: True if all sounds loaded successfully
@@ -232,6 +232,26 @@ class SoundManager:
         success &= self.load_sound("player_auto_barrel", os.path.join("assets", "Sounds", "auto-barrel.ogg"))
         success &= self.load_sound("player_auto_npc", os.path.join("assets", "Sounds", "auto-npc.ogg"))
         success &= self.load_sound("player_auto_miss", os.path.join("assets", "Sounds", "auto.ogg"))
+        
+        # Skill sounds
+        success &= self.load_sound("player_q1", os.path.join("assets", "Sounds", "Q-1.ogg"))
+        success &= self.load_sound("player_q2", os.path.join("assets", "Sounds", "Q-2.ogg"))
+        success &= self.load_sound("player_w1", os.path.join("assets", "Sounds", "W-1.ogg"))
+        success &= self.load_sound("player_w2", os.path.join("assets", "Sounds", "W-2.ogg"))
+        success &= self.load_sound("player_e1", os.path.join("assets", "Sounds", "E-1.ogg"))
+        success &= self.load_sound("player_e2", os.path.join("assets", "Sounds", "E-2.ogg"))
+        
+        # Movement sounds
+        success &= self.load_sound("player_walk", os.path.join("assets", "Sounds", "player-walk.mp3"))
+        success &= self.load_sound("player_run", os.path.join("assets", "Sounds", "run.mp3"))
+        
+        # Jump sounds
+        success &= self.load_sound("player_jump", os.path.join("assets", "Sounds", "jump-1.ogg"))
+        success &= self.load_sound("player_land", os.path.join("assets", "Sounds", "jump-2.mp3"))
+        
+        # Damage sounds
+        success &= self.load_sound("player_hit", os.path.join("assets", "Sounds", "hit-1.mp3"))
+        success &= self.load_sound("player_hurt", os.path.join("assets", "Sounds", "hit-2.ogg"))
         
         return success
     

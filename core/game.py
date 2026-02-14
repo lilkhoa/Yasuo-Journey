@@ -219,7 +219,7 @@ def run():
                 new_chest = Chest(world_x, grid_y_pos, chest_tileset_texture, common_drop_table, text_renderer)
                 chests.append(new_chest)
 
-    player = Player(world, software_factory, 100, 350) # Spawn gần mặt đất
+    player = Player(world, software_factory, 100, 350, sound_manager) # Spawn gần mặt đất
     
     projectile_manager = ProjectileManager(renderer.sdlrenderer)
     npc_manager = NPCManager(software_factory, None, renderer.sdlrenderer, projectile_manager, sound_manager)
