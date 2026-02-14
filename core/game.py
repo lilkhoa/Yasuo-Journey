@@ -15,7 +15,7 @@ from sdl2 import SDL_Rect, SDL_RenderCopy
 from core.camera import Camera
 from core.text_renderer import TextRenderer
 
-# --- THÊM IMPORTS CHO PLAYER VÀ NPC ---
+# --- IMPORTS ENTITIES ---
 from entities.player import Player
 from entities.npc import NPCManager
 from entities.boss import BossManager
@@ -26,13 +26,14 @@ from combat.skill_w import update_w_logic
 from ui.hud import SkillBarHUD
 from ui.item_notification import ItemNotification, ItemNotificationSystem
 
-# [MỚI] IMPORT ITEM
+# --- IMPORT ITEM & MENU ---
 from items.item import ItemManager, ItemType
+from ui.menu import GameMenu, MenuState
 
 # Sound manager
 from core.sound import get_sound_manager
 
-# --- HELPER: Wrapper cho NPC tương thích với Skill collision ---
+# --- HELPER CLASSES ---
 class SpriteWrapper:
     def __init__(self, npc_instance):
         self.npc = npc_instance
@@ -56,7 +57,6 @@ def make_npc_compatible(npc):
     return npc
 
 def render_surface_to_texture(sdl_renderer, surface, x, y):
-    """Chuyển Surface sang Texture để render với camera offset"""
     if surface is None: return
     texture = sdl2.SDL_CreateTextureFromSurface(sdl_renderer, surface)
     if not texture: return 
@@ -81,16 +81,25 @@ def run():
     window.show()
     renderer = sdl2.ext.Renderer(window, flags=sdl2.SDL_RENDERER_PRESENTVSYNC)
     factory = sdl2.ext.SpriteFactory(sdl2.ext.TEXTURE, renderer=renderer)
+    
+    # Init Sound
     sound_manager = get_sound_manager()
     sound_manager.initialize()
+    sound_manager.load_player_sounds()
     sound_manager.load_npc_sounds()
     sound_manager.load_boss_sounds()
+    sound_manager.load_game_sounds()
+    
+    if sound_manager.load_background_music():
+        sound_manager.play_music(loops=-1)
+    else:
+        print("[AUDIO] Warning: Could not load background music")
 
     try:
+        # --- LOADING ASSETS ---
         tileset_sprite = factory.from_image("assets/Map/oak_woods_tileset.png")
         tileset_texture = tileset_sprite.texture
 
-        # Load 3 Background layers
         bg1_sprite = factory.from_image("assets/Map/background/background_layer_1.png")
         bg1_tex = bg1_sprite.texture
         bg2_sprite = factory.from_image("assets/Map/background/background_layer_2.png")
@@ -98,40 +107,30 @@ def run():
         bg3_sprite = factory.from_image("assets/Map/background/background_layer_3.png")
         bg3_tex = bg3_sprite.texture
         
-        # Loading pushable box
         box_tileset_sprite = factory.from_image("assets/Map/interactable_objects/TX Village Props.png")
         box_tileset_texture = box_tileset_sprite.texture
 
-        # Loading sprite sheet of barrel
         barrel_tileset_sprite = factory.from_image("assets/Map/interactable_objects/TX Village Props.png")
         barrel_tileset_texture = barrel_tileset_sprite.texture
 
-        # Loading sprite sheet of chest
         chest_tileset_sprite = factory.from_image("assets/Map/interactable_objects/TX Chest Animation.png")
         chest_tileset_texture = chest_tileset_sprite.texture
 
-        # --- LOAD ITEM ICONS (Dùng cho Drop cũ) ---
+        # Load Item Icons
         coin_sprite = factory.from_image("assets/Map/items/Golden Coin.png")
         coin_texture = coin_sprite.texture
-
         tear_sprite = factory.from_image("assets/Map/LOL_Equipment/64x64_Tear_of_the_Goddess.png")
         tear_texture = tear_sprite.texture
-
         health_sprite = factory.from_image("assets/Map/LOL_Equipment/64x64_Health_Potion.png")
         health_texture = health_sprite.texture
-
         greaves_sprite = factory.from_image("assets/Map/LOL_Equipment/64x64_Berserkers_Greaves.png")
         greaves_texture = greaves_sprite.texture
-
         bloodthirster_sprite = factory.from_image("assets/Map/LOL_Equipment/64x64_Bloodthirster.png")
         bloodthirster_texture = bloodthirster_sprite.texture
-
         infinity_edge_sprite = factory.from_image("assets/Map/LOL_Equipment/64x64_Infinity_Edge.png")
         infinity_edge_texture = infinity_edge_sprite.texture
-
         thornmail_sprite = factory.from_image("assets/Map/LOL_Equipment/64x64_Thornmail.png")
         thornmail_texture = thornmail_sprite.texture
-
         hourglass_sprite = factory.from_image("assets/Map/LOL_Equipment/64x64_Zhonyas_Hourglass.png")
         hourglass_texture = hourglass_sprite.texture
         
@@ -150,22 +149,17 @@ def run():
         print(f"Load sprite error: {e}")
         return
 
-    # 1. init Map and decoration handler
+    # --- INIT GAME WORLD ---
     my_map = GameMap(TERRAIN_MAP, DECO_MAP)
     deco_mgr = Decoration(renderer)
-
-    # 2. init Camera
     camera = Camera(WINDOW_WIDTH, WINDOW_HEIGHT)
-
-    # 3. KHỞI TẠO PLAYER VÀ NPC
     world = sdl2.ext.World()
     software_factory = sdl2.ext.SpriteFactory(sdl2.ext.SOFTWARE) 
     
-    # 4. Boxes initialization
     boxes = []
     barrels = []
     chests = []
-    dropped_items = []  # list manager dropped itemsc
+    dropped_items = []
     text_renderer = TextRenderer(renderer.sdlrenderer, "assets/fonts/arial.ttf", size=10)
     notif_system = ItemNotificationSystem(text_renderer)    
 
@@ -174,128 +168,83 @@ def run():
     # [NEW] KHỞI TẠO ITEM MANAGER
     item_manager = ItemManager(renderer, text_renderer)
 
-    # [NEW] SPAWN TEST ITEMS (Tạo 8 món đồ để test)
-    test_items_list = [
-        ItemType.COIN, ItemType.TEAR, ItemType.HEALTH_POTION,
-        ItemType.GREAVES, ItemType.BLOODTHIRSTER, 
-        ItemType.INFINITY_EDGE, ItemType.THORNMAIL, ItemType.HOURGLASS
-    ]
-    
-    print("--- SPAWNING TEST ITEMS ---")
-    start_x = 250
-    start_y = 480
-    for i, item_type in enumerate(test_items_list):
-        # Spawn các item cách nhau 60px
-        item_manager.spawn_item(start_x + i * 60, start_y, item_type)
+    # [REMOVED] Code spawn item test đã được xóa tại đây
 
     for y, row in enumerate(INTERACT_MAP):
         for x, char in enumerate(row):
-            # calculate the real position
             world_x = x * TILE_SIZE
-            # align Y for box to lie on the top of the ground of this row
-            # because height is (44 -> 24) * SCALE FACTOR
-            grid_y_pos = (y * TILE_SIZE) # because we scale the block has the same size to the ground block
-
+            grid_y_pos = (y * TILE_SIZE)
             if char == "B":
-                new_box = Box(world_x, grid_y_pos, box_tileset_texture)
-                boxes.append(new_box)
-            
-            elif char == "b":   # barrel
-                barrel_h = BARREL_RENDER_HEIGHT  # value got from the Barrel class
-                barrel_w = BARREL_RENDER_WIDTH
-
+                boxes.append(Box(world_x, grid_y_pos, box_tileset_texture))
+            elif char == "b":
+                barrel_h, barrel_w = BARREL_RENDER_HEIGHT, BARREL_RENDER_WIDTH
                 real_x = (world_x + TILE_SIZE // 2) - barrel_w // 2
                 real_y = (grid_y_pos + TILE_SIZE) - barrel_h
-
-                new_barrel = Barrel(real_x, real_y, barrel_tileset_texture, common_drop_table, text_renderer)
-                barrels.append(new_barrel)
-
+                barrels.append(Barrel(real_x, real_y, barrel_tileset_texture, common_drop_table, text_renderer))
             elif char == 'C':
-                new_chest = Chest(world_x, grid_y_pos, chest_tileset_texture, common_drop_table, text_renderer)
-                chests.append(new_chest)
+                chests.append(Chest(world_x, grid_y_pos, chest_tileset_texture, common_drop_table, text_renderer))
 
-    player = Player(world, software_factory, 100, 350) # Spawn gần mặt đất
+    # --- INIT PLAYER ---
+    player = Player(world, software_factory, 100, 350, sound_manager, renderer_ptr=renderer.sdlrenderer)
     
     projectile_manager = ProjectileManager(renderer.sdlrenderer)
     npc_manager = NPCManager(software_factory, None, renderer.sdlrenderer, projectile_manager, sound_manager)
     boss_manager = BossManager(software_factory, None, renderer.sdlrenderer, projectile_manager, sound_manager, camera)
-    
     hud = SkillBarHUD(renderer.sdlrenderer, player)
     
-    # ===== COIN DROP SYSTEM =====
-    # Helper function to drop coins when enemies die (works for all damage sources)
     def drop_coin_on_death(entity, num_coins=1):
-        """Drop coins when an entity dies. Called automatically via death callback."""
         coin_name, coin_w, coin_h, coin_tex = common_drop_table["coin"]
         ex, ey, ew, eh = entity.get_bounds()
-        
         for i in range(num_coins):
             offset_x = (i - num_coins//2) * 20 if num_coins > 1 else 0
             coin_item = DroppedItem(
-                ex + ew/2 + offset_x,
-                ey + eh/2,
-                coin_tex,
-                coin_w, coin_h,
-                text_renderer,
-                "coin", coin_name
+                ex + ew/2 + offset_x, ey + eh/2, coin_tex, coin_w, coin_h,
+                text_renderer, "coin", coin_name
             )
             dropped_items.append(coin_item)
-        
-        print(f"[COIN DROP] {num_coins} coin(s) dropped from {entity.__class__.__name__}")
-    # ============================
-    
-    # NPC spawning from NPC_MAP
+        sound_manager.play_sound("item_pop")
+
     for y, row in enumerate(NPC_MAP):
         for x, char in enumerate(row):
-            if char == ' ':
-                continue
-            
-            world_x = x * TILE_SIZE
-            grid_y_pos = y * TILE_SIZE
-            
+            if char == ' ': continue
+            world_x, grid_y_pos = x * TILE_SIZE, y * TILE_SIZE
             if char == 'G':
-                # Spawn Ghost
                 npc = npc_manager.spawn_ghost(world_x, grid_y_pos)
-                npc.set_player(player)
-                npc.on_death_callback = lambda n: drop_coin_on_death(n, 1)
+                npc.set_player(player); npc.on_death_callback = lambda n: drop_coin_on_death(n, 1)
                 make_npc_compatible(npc)
-                
             elif char == 'S':
-                # Spawn Shooter
                 npc = npc_manager.spawn_shooter(world_x, grid_y_pos)
-                npc.set_player(player)
-                npc.on_death_callback = lambda n: drop_coin_on_death(n, 1)
+                npc.set_player(player); npc.on_death_callback = lambda n: drop_coin_on_death(n, 1)
                 make_npc_compatible(npc)
-                
             elif char == 'O':
-                # Spawn Onre
                 npc = npc_manager.spawn_onre(world_x, grid_y_pos)
-                npc.set_player(player)
-                npc.on_death_callback = lambda n: drop_coin_on_death(n, 1)
+                npc.set_player(player); npc.on_death_callback = lambda n: drop_coin_on_death(n, 1)
                 make_npc_compatible(npc)
-                
             elif char == 'B':
-                # Spawn Boss (offset Y upward for flying entrance)
                 boss = boss_manager.spawn_boss(world_x, grid_y_pos - 400)
-                boss.set_player(player)
-                # Boss drops 5 coins (set callback for minions when they're spawned)
-                boss.minion_death_callback = lambda m: drop_coin_on_death(m, 1)
+                boss.set_player(player); boss.minion_death_callback = lambda m: drop_coin_on_death(m, 1)
                 make_npc_compatible(boss)
-
 
     active_tornadoes = []
     active_walls = []
-
     kill_count = 0
     game_over = False
     game_over_timer = 0
+    game_over_sound_played = False
     
-    # Boss encounter system
     boss_encountered = False
+    boss_music_playing = False
     boss_fight_text_timer = 0.0
-    boss_fight_text_duration = 2.0  # Display for 3 seconds
+    boss_fight_text_duration = 2.0
+    
+    victory = False
+    victory_timer = 0
+    victory_text_duration = 3.0
+    victory_sound_played = False
 
-    # 4. game loop
+    game_menu = GameMenu(renderer.sdlrenderer, WINDOW_WIDTH, WINDOW_HEIGHT)
+
+    # --- MAIN LOOP ---
     running = True
     last_time = sdl2.SDL_GetTicks()
     
@@ -305,350 +254,261 @@ def run():
         last_time = current_time
         
         events = sdl2.ext.get_events()
+        
+        # 1. MENU INPUT
+        menu_action = game_menu.handle_input(events)
+        if menu_action == "QUIT_GAME": running = False
+        elif menu_action == "START_GAME": pass
+        elif menu_action == "UPDATE_VOLUME": pass
+
+        # 2. GAME INPUT
         for event in events:
             if event.type == sdl2.SDL_QUIT:
                 running = False
                 break
             
-            if event.type == sdl2.SDL_KEYDOWN:
-                if event.key.keysym.sym == sdl2.SDLK_f:
-                    if collect_timer <= 0:
-                        for chest in chests:
-                            if chest.interact():
-                                collect_timer = COLLECT_INTERVAL
-                                break
-                    if collect_timer <= 0:
-                        for item in dropped_items:
-                            if item.interact(notif_system, player):
-                                collect_timer = COLLECT_INTERVAL
-                                break
-
-                    # [NEW] Interact with Item Manager items
-                    item_manager.handle_interact_key(player)
+            if game_menu.state == MenuState.GAME_PLAYING:
+                if event.type == sdl2.SDL_KEYDOWN:
+                    key = event.key.keysym.sym
+                    mod = event.key.keysym.mod
                     
-            collect_timer -= dt
+                    if key == sdl2.SDLK_f:
+                        for chest in chests: chest.interact()
+                        for item in dropped_items: item.interact(notif_system, player)
+                        item_manager.handle_interact_key(player)
+                    
+                    # [MASTERY TRIGGER] Ctrl + 6
+                    if key == sdl2.SDLK_6 and (mod & sdl2.KMOD_CTRL):
+                        player.trigger_mastery()
 
-            # Xử lý input sự kiện (Skills, Jump, Attack)
-            if not handle_input(event, player, world, software_factory, renderer, active_tornadoes, active_walls, npc_manager):
-                running = False
+                if not handle_input(event, player, world, software_factory, renderer, active_tornadoes, active_walls, npc_manager):
+                    running = False
         
-        # Update Logic
-        keys = sdl2.SDL_GetKeyboardState(None)
-        # Combine boxes and unbroken barrels for physics
-        all_obstacles = boxes + [b for b in barrels if not b.is_broken]
+        # 3. UPDATE
+        if game_menu.state == MenuState.GAME_PLAYING:
+            keys = sdl2.SDL_GetKeyboardState(None)
+            all_obstacles = boxes + [b for b in barrels if not b.is_broken]
 
-        player.set_blocking(keys[sdl2.SDLK_s])
-        player.handle_movement(keys)
-        player.update(dt, world, software_factory, None, active_tornadoes, active_walls, game_map=my_map, boxes=all_obstacles)
-        
-        if player.entity.sprite.x < 0: player.entity.sprite.x = 0
-        if player.entity.sprite.x > my_map.width_pixel - 128: player.entity.sprite.x = my_map.width_pixel - 128
-
-        # Box updating
-        for box in boxes:
-            box.update(dt, my_map)
-
-        # Barrel updating
-        for barrel in barrels:
-            barrel.update(dt, my_map)
-
-        # Chest updating
-        for chest in chests:
-            chest.update(dt, player, dropped_items, renderer.sdlrenderer)
-        
-        # Item updating (Old items)
-        for item in dropped_items:
-            item.update(dt, my_map, player)
-        dropped_items = [item for item in dropped_items if not item.is_collected]
-
-        # [NEW] UPDATE ITEM MANAGER
-        item_manager.update(dt, player)
-
-        notif_system.update()
-
-        player_rect = SDL_Rect(int(player.entity.sprite.x), int(player.entity.sprite.y), 128, 128)
-        camera.update(player_rect, my_map.width_pixel)
-        
-        # Skill Updates
-        alive_npcs = [n for n in npc_manager.npcs if n.is_alive()]
-        alive_bosses = boss_manager.get_alive_bosses()
-        all_minions = []
-        for boss in alive_bosses:
-            all_minions.extend([m for m in boss.minions if m.health > 0])
-        
-        # Check for boss encounter (first time boss appears on screen)
-        if not boss_encountered and alive_bosses:
-            for boss in alive_bosses:
-                if boss.is_on_screen():
-                    boss_encountered = True
-                    boss_fight_text_timer = boss_fight_text_duration
-                    break
-        
-        # Update boss fight text timer
-        if boss_fight_text_timer > 0:
-            boss_fight_text_timer -= dt
-        
-        all_combat_targets = alive_npcs + alive_bosses + all_minions
-        
-        for t in active_tornadoes[:]:
-            update_q_logic(t, all_combat_targets, dt)
-            if not t.active: 
-                t.delete()
-                active_tornadoes.remove(t)
-        
-        for w in active_walls[:]:
-            update_w_logic(w, all_combat_targets, projectile_manager.projectiles, dt)
-            if not w.active:
-                w.delete()
-                active_walls.remove(w)
-                
-                
-        player.skill_e.update_dash(dt, all_combat_targets, all_obstacles, my_map)
-        if player.skill_e.is_dashing: player.state = 'dashing_e'
-        elif player.state == 'dashing_e' and not player.skill_e.is_dashing: player.state = 'idle'
-
-        npc_manager.update_all(dt, my_map)
-        boss_manager.update_all(dt, my_map)
-        projectile_manager.update_all(dt)
-        
-        # ============== COMBAT COLLISION SYSTEM ==============
-        if not game_over:
-            # 0. PROJECTILE -> BOX / BARREL
-            for projectile in projectile_manager.projectiles[:]:
-                proj_rect = sdl2.SDL_Rect(int(projectile.x), int(projectile.y), projectile.width, projectile.height)
-                # Check Boxes
-                for box in boxes:
-                    if sdl2.SDL_HasIntersection(proj_rect, box.rect):
-                        projectile.on_hit()
-                        break
-                # Check Barrels (Unbroken)
-                if projectile.active: # Only check if not already hit box
-                    for barrel in barrels:
-                        if not barrel.is_broken and sdl2.SDL_HasIntersection(proj_rect, barrel.rect):
-                            projectile.on_hit()
-                            break
-
-            # 1. NPC PROJECTILE -> PLAYER
-            for projectile in projectile_manager.projectiles[:]:
-                if projectile.check_collision(player):
-                    player.take_damage(projectile.damage)
-                    projectile.on_hit()
-                    print(f"[COMBAT] Player hit by projectile! HP: {int(player.hp)}/{player.max_hp}")
+            player.set_blocking(keys[sdl2.SDLK_s])
+            player.handle_movement(keys)
+            player.update(dt, world, software_factory, None, active_tornadoes, active_walls, game_map=my_map, boxes=all_obstacles)
             
-            # 2. NPC/BOSS/MINION MELEE ATTACK -> PLAYER
-            for npc in alive_npcs:
-                if hasattr(npc, 'is_attacking') and npc.is_attacking:
-                    npc_x, npc_y, npc_w, npc_h = npc.get_bounds()
-                    attack_range = getattr(npc, 'attack_range', 50)
-                    
-                    if npc.direction == 1:
-                        attack_hitbox = (npc_x + npc_w, npc_y, attack_range, npc_h)
-                    else:
-                        attack_hitbox = (npc_x - attack_range, npc_y, attack_range, npc_h)
-                    
-                    px, py, pw, ph = player.x, player.y, player.width, player.height
-                    ax, ay, aw, ah = attack_hitbox
-                    if (ax < px + pw and ax + aw > px and ay < py + ph and ay + ah > py):
-                        if not getattr(npc, '_attack_hit_player', False):
-                            npc._attack_hit_player = True
-                            player.take_damage(npc.damage)
-                            print(f"[COMBAT] Player melee'd by NPC! HP: {int(player.hp)}/{player.max_hp}")
-                else:
-                    npc._attack_hit_player = False
-            
-            for boss in alive_bosses:
-                if boss.is_attacking and boss.attack_type == 'melee':
-                    boss_x, boss_y, boss_w, boss_h = boss.get_bounds()
-                    if boss.direction.value == 1:
-                        attack_hitbox = (boss_x + boss_w, boss_y, boss.melee_range, boss_h)
-                    else:
-                        attack_hitbox = (boss_x - boss.melee_range, boss_y, boss.melee_range, boss_h)
-                    
-                    px, py, pw, ph = player.x, player.y, player.width, player.height
-                    ax, ay, aw, ah = attack_hitbox
-                    
-                    if (ax < px + pw and ax + aw > px and ay < py + ph and ay + ah > py):
-                        if not getattr(boss, '_attack_hit_player', False):
-                            boss._attack_hit_player = True
-                            player.take_damage(boss.melee_damage)
-                            print(f"[COMBAT] Player hit by BOSS melee! HP: {int(player.hp)}/{player.max_hp}")
-                else:
-                    boss._attack_hit_player = False
-            
-            # 3. PLAYER ATTACK -> NPC/BOSS/MINION
-            if player.state == 'attacking':
-                # Use actual body hitbox for accurate checking
-                bx, by, bw, bh = player.get_hitbox().x, player.get_hitbox().y, player.get_hitbox().w, player.get_hitbox().h
-                player_attack_range = 50 # Tầm đánh 50px từ người
-                
-                if player.facing_right:
-                    # Đánh từ mép phải người ra ngoài
-                    attack_hitbox = (bx + bw, by, player_attack_range, bh)
-                else:
-                    # Đánh từ mép trái người ra ngoài
-                    attack_hitbox = (bx - player_attack_range, by, player_attack_range, bh)
-                
-                atk_rect = sdl2.SDL_Rect(*attack_hitbox) 
+            if player.entity.sprite.x < 0: player.entity.sprite.x = 0
+            if player.entity.sprite.x > my_map.width_pixel - 128: player.entity.sprite.x = my_map.width_pixel - 128
 
-                # Hit Barrels
-                for barrel in barrels:
-                    if not barrel.is_broken:
-                        if sdl2.SDL_HasIntersection(atk_rect, barrel.get_bounds()):
-                            barrel.take_damage(1, dropped_items, renderer.sdlrenderer)
-                    
-                # Hit NPCs
-                for npc in alive_npcs:
-                    if not getattr(player, '_attack_hit_npc_' + str(id(npc)), False):
-                        nx, ny, nw, nh = npc.get_bounds()
-                        ax, ay, aw, ah = attack_hitbox
-                        if (ax < nx + nw and ax + aw > nx and ay < ny + nh and ay + ah > ny):
-                            setattr(player, '_attack_hit_npc_' + str(id(npc)), True)
-                            npc.take_damage(player.attack_damage)
-                            player.on_hit_enemy(player.attack_damage)
-                            print(f"[COMBAT] Player hit NPC! NPC HP: {npc.health}")
-                            if not npc.is_alive():
-                                kill_count += 1
-                                player.on_kill_enemy()
-                                print(f"[COMBAT] NPC killed! Total kills: {kill_count}")
-                
-                # Hit Bosses
+            for box in boxes: box.update(dt, my_map)
+            for barrel in barrels: barrel.update(dt, my_map)
+            for chest in chests: chest.update(dt, player, dropped_items, renderer.sdlrenderer)
+            for item in dropped_items: item.update(dt, my_map, player)
+            dropped_items = [item for item in dropped_items if not item.is_collected]
+
+            item_manager.update(dt, player)
+            notif_system.update()
+
+            player_rect = SDL_Rect(int(player.entity.sprite.x), int(player.entity.sprite.y), 128, 128)
+            camera.update(player_rect, my_map.width_pixel)
+            
+            # Combat Logic
+            alive_npcs = [n for n in npc_manager.npcs if n.is_alive()]
+            alive_bosses = boss_manager.get_alive_bosses()
+            all_minions = []
+            for boss in alive_bosses: all_minions.extend([m for m in boss.minions if m.health > 0])
+            
+            # Boss Music & Text
+            if not boss_encountered and alive_bosses:
                 for boss in alive_bosses:
-                    if not getattr(player, '_attack_hit_boss_' + str(id(boss)), False):
-                        bx, by, bw, bh = boss.get_bounds()
-                        ax, ay, aw, ah = attack_hitbox
-                        if (ax < bx + bw and ax + aw > bx and ay < by + bh and ay + ah > by):
-                            setattr(player, '_attack_hit_boss_' + str(id(boss)), True)
-                            boss.take_damage(player.attack_damage)
-                            player.on_hit_enemy(player.attack_damage)
-                
-                # Hit Minions
-                for minion in all_minions:
-                    if not getattr(player, '_attack_hit_minion_' + str(id(minion)), False):
-                        mx, my, mw, mh = minion.get_bounds()
-                        ax, ay, aw, ah = attack_hitbox
-                        if (ax < mx + mw and ax + aw > mx and ay < my + mh and ay + ah > my):
-                            setattr(player, '_attack_hit_minion_' + str(id(minion)), True)
-                            minion.take_damage(player.attack_damage)
-                            player.on_hit_enemy(player.attack_damage)
-                            print(f"[COMBAT] Player hit Boss Minion! Minion HP: {minion.health}")
-                            if minion.health <= 0:
-                                kill_count += 1
-                                player.on_kill_enemy()
-                                print(f"[COMBAT] Minion killed! Total kills: {kill_count}")
-            else:
-                for npc in npc_manager.npcs:
-                    if hasattr(player, '_attack_hit_npc_' + str(id(npc))):
-                        delattr(player, '_attack_hit_npc_' + str(id(npc)))
-                for boss in boss_manager.bosses:
-                    if hasattr(player, '_attack_hit_boss_' + str(id(boss))):
-                        delattr(player, '_attack_hit_boss_' + str(id(boss)))
-                    for minion in boss.minions:
-                        if hasattr(player, '_attack_hit_minion_' + str(id(minion))):
-                            delattr(player, '_attack_hit_minion_' + str(id(minion)))
+                    if boss.is_on_screen():
+                        boss_encountered = True
+                        boss_fight_text_timer = boss_fight_text_duration
+                        sound_manager.switch_to_boss_music(fade_out_ms=1000, fade_in_ms=1000)
+                        boss_music_playing = True
+                        break
             
-            # 4. CHECK PLAYER DEATH
-            if player.state == 'dead':
-                game_over = True
-                game_over_timer = 3.0
-                print("[GAME] Player died! Game Over in 3 seconds...")
-        
-        else:
-            game_over_timer -= dt
-            if game_over_timer <= 0:
-                player.hp = player.max_hp
-                player.stamina = player.max_stamina
-                player.state = 'idle'
-                player.entity.sprite.position = (100, 350)
-                player.is_blocking = False
-                player.invincible = False
-                game_over = False
-                print(f"[GAME] Player respawned! Kills: {kill_count}")
+            if boss_music_playing:
+                boss_on_screen = any(boss.is_on_screen() for boss in alive_bosses)
+                if not boss_on_screen:
+                    sound_manager.switch_to_normal_music(fade_out_ms=1000, fade_in_ms=1000)
+                    boss_music_playing = False
+            
+            if boss_fight_text_timer > 0: boss_fight_text_timer -= dt
+            
+            # Victory Check
+            if boss_encountered and not victory and len(alive_bosses) == 0:
+                victory = True
+                victory_timer = victory_text_duration
+                if not victory_sound_played:
+                    sound_manager.play_sound("victory")
+                    victory_sound_played = True
+            if victory_timer > 0: victory_timer -= dt
+            
+            all_combat_targets = alive_npcs + alive_bosses + all_minions
+            
+            for t in active_tornadoes[:]:
+                update_q_logic(t, all_combat_targets, dt)
+                if not t.active: t.delete(); active_tornadoes.remove(t)
+            
+            for w in active_walls[:]:
+                update_w_logic(w, all_combat_targets, projectile_manager.projectiles, dt)
+                if not w.active: w.delete(); active_walls.remove(w)
+                    
+            player.skill_e.update_dash(dt, all_combat_targets, all_obstacles, my_map)
+            if player.skill_e.is_dashing: player.state = 'dashing_e'
+            elif player.state == 'dashing_e' and not player.skill_e.is_dashing: player.state = 'idle'
 
-        # Render
+            npc_manager.update_all(dt, my_map)
+            boss_manager.update_all(dt, my_map)
+            projectile_manager.update_all(dt)
+            
+            # Collision Logic
+            if not game_over:
+                # Projectile Hit
+                for projectile in projectile_manager.projectiles[:]:
+                    proj_rect = sdl2.SDL_Rect(int(projectile.x), int(projectile.y), projectile.width, projectile.height)
+                    for box in boxes:
+                        if sdl2.SDL_HasIntersection(proj_rect, box.rect): projectile.on_hit(); break
+                    if projectile.active:
+                        for barrel in barrels:
+                            if not barrel.is_broken and sdl2.SDL_HasIntersection(proj_rect, barrel.rect): projectile.on_hit(); break
+
+                for projectile in projectile_manager.projectiles[:]:
+                    if projectile.check_collision(player):
+                        player.take_damage(projectile.damage); projectile.on_hit()
+                
+                # NPC Melee Hit
+                for npc in alive_npcs:
+                    if hasattr(npc, 'is_attacking') and npc.is_attacking:
+                        nx, ny, nw, nh = npc.get_bounds()
+                        ar = getattr(npc, 'attack_range', 50)
+                        hitbox = (nx+nw, ny, ar, nh) if npc.direction == 1 else (nx-ar, ny, ar, nh)
+                        px, py, pw, ph = player.x, player.y, player.width, player.height
+                        ax, ay, aw, ah = hitbox
+                        if (ax < px+pw and ax+aw > px and ay < py+ph and ay+ah > py):
+                            if not getattr(npc, '_attack_hit_player', False):
+                                npc._attack_hit_player = True; player.take_damage(npc.damage)
+                    else: npc._attack_hit_player = False
+                
+                # Boss Melee Hit
+                for boss in alive_bosses:
+                    if boss.is_attacking and boss.attack_type == 'melee':
+                        bx, by, bw, bh = boss.get_bounds()
+                        hitbox = (bx+bw, by, boss.melee_range, bh) if boss.direction.value == 1 else (bx-boss.melee_range, by, boss.melee_range, bh)
+                        px, py, pw, ph = player.x, player.y, player.width, player.height
+                        ax, ay, aw, ah = hitbox
+                        if (ax < px+pw and ax+aw > px and ay < py+ph and ay+ah > py):
+                            if not getattr(boss, '_attack_hit_player', False):
+                                boss._attack_hit_player = True; player.take_damage(boss.melee_damage)
+                    else: boss._attack_hit_player = False
+                
+                # Player Hit Enemies
+                if player.state == 'attacking':
+                    if not hasattr(player, '_attack_hit_anything'): player._attack_hit_anything = False
+                    bx, by, bw, bh = player.get_hitbox().x, player.get_hitbox().y, player.get_hitbox().w, player.get_hitbox().h
+                    ar = 50
+                    atk_rect = sdl2.SDL_Rect(int(bx+bw if player.facing_right else bx-ar), int(by), ar, bh)
+                    
+                    for barrel in barrels:
+                        if not barrel.is_broken and sdl2.SDL_HasIntersection(atk_rect, barrel.get_bounds()):
+                            barrel.take_damage(1, dropped_items, renderer.sdlrenderer)
+                            if not player._attack_hit_anything:
+                                sound_manager.play_sound("player_auto_barrel"); player._attack_hit_anything = True
+                    
+                    for enemy in all_combat_targets:
+                        ex, ey, ew, eh = enemy.get_bounds()
+                        enemy_rect = sdl2.SDL_Rect(int(ex), int(ey), int(ew), int(eh))
+                        if sdl2.SDL_HasIntersection(atk_rect, enemy_rect):
+                            attr_name = f'_attack_hit_{id(enemy)}'
+                            if not getattr(player, attr_name, False):
+                                setattr(player, attr_name, True)
+                                enemy.take_damage(player.attack_damage); player.on_hit_enemy(player.attack_damage)
+                                if not player._attack_hit_anything:
+                                    sound_manager.play_sound("player_auto_npc"); player._attack_hit_anything = True
+                                if (hasattr(enemy, 'is_alive') and not enemy.is_alive()) or (hasattr(enemy, 'health') and enemy.health <= 0):
+                                    kill_count += 1; player.on_kill_enemy()
+                else:
+                    if hasattr(player, '_attack_hit_anything'):
+                        if not player._attack_hit_anything: sound_manager.play_sound("player_auto_miss")
+                        delattr(player, '_attack_hit_anything')
+                    for enemy in all_combat_targets:
+                        attr_name = f'_attack_hit_{id(enemy)}'
+                        if hasattr(player, attr_name): delattr(player, attr_name)
+
+                if player.state == 'dead':
+                    game_over = True; game_over_timer = 3.0
+                    if not game_over_sound_played:
+                        sound_manager.play_sound("game_over"); game_over_sound_played = True
+            else:
+                game_over_timer -= dt
+                if game_over_timer <= 0:
+                    player.hp = player.max_hp; player.stamina = player.max_stamina
+                    player.state = 'idle'; player.entity.sprite.position = (100, 350)
+                    player.is_blocking = False; player.invincible = False
+                    game_over = False; game_over_sound_played = False
+
+        # --- RENDER ---
         renderer.clear()
         sdl_renderer = renderer.sdlrenderer
 
-        draw_bg(sdl_renderer, bg1_tex, camera.camera.x, 0.1) 
-        draw_bg(sdl_renderer, bg2_tex, camera.camera.x, 0.4) 
-        draw_bg(sdl_renderer, bg3_tex, camera.camera.x, 0.7)
+        if game_menu.state == MenuState.GAME_PLAYING or game_menu.state == MenuState.PAUSE:
+            draw_bg(sdl_renderer, bg1_tex, camera.camera.x, 0.1) 
+            draw_bg(sdl_renderer, bg2_tex, camera.camera.x, 0.4) 
+            draw_bg(sdl_renderer, bg3_tex, camera.camera.x, 0.7)
 
-        my_map.render(sdl_renderer, tileset_texture, deco_mgr, camera)
-        
-        # Render Skills
-        for t in active_tornadoes: 
-             render_surface_to_texture(sdl_renderer, t.sprite.surface, 
-                                       t.sprite.x - camera.camera.x, 
-                                       t.sprite.y - camera.camera.y)
-        for w in active_walls: 
-             render_surface_to_texture(sdl_renderer, w.sprite.surface, 
-                                       w.sprite.x - camera.camera.x, 
-                                       w.sprite.y - camera.camera.y)
-        
-        for box in boxes:
-            box.render(sdl_renderer, camera)
-
-        # Barrel and chest renderering
-        for barrel in barrels:
-            barrel.render(sdl_renderer, camera)
-        
-        for chest in chests:
-            chest.render(sdl_renderer, camera, player)
-
-        for item in dropped_items:
-            item.render(sdl_renderer, camera, player)
-
-        # [NEW] RENDER ITEM MANAGER
-        item_manager.render(camera.camera.x, camera.camera.y, player)
-
-        notif_system.render(sdl_renderer)
-
-        # Render NPCs
-        npc_manager.render_all(camera.camera.x, camera.camera.y)
-        boss_manager.render_all(camera.camera.x, camera.camera.y)
-        projectile_manager.render_all(camera.camera.x, camera.camera.y)
-        
-        # Render Player (với camera offset)
-        p_dst = SDL_Rect(int(player.entity.sprite.x - camera.camera.x), 
-                         int(player.entity.sprite.y - camera.camera.y), 
-                         128, 128)
-        p_tex = sdl2.SDL_CreateTextureFromSurface(sdl_renderer, player.entity.sprite.surface)
-        
-        # [CẬP NHẬT] PLAYER COLOR MOD (Hỗ trợ Buff Items + Red Flash)
-        # Nếu có Flash (bị đánh) -> Ưu tiên màu đỏ
-        # Nếu không -> Dùng màu buff (tím, vàng, hoặc trắng mặc định)
-        r, g, b = player.color_mod 
-        if player.flash_timer > 0:
-            r, g, b = (255, 100, 100) # Tint Red
-        
-        sdl2.SDL_SetTextureColorMod(p_tex, int(r), int(g), int(b))
-        
-        sdl2.SDL_RenderCopy(sdl_renderer, p_tex, None, p_dst)
-        sdl2.SDL_DestroyTexture(p_tex)
-        
-        hud.render()
-        
-        if boss_fight_text_timer > 0:
-            if not hasattr(run, 'boss_text_renderer'):
-                run.boss_text_renderer = TextRenderer(sdl_renderer, "assets/fonts/arial.ttf", size=72)
+            my_map.render(sdl_renderer, tileset_texture, deco_mgr, camera)
             
-            center_x = WINDOW_WIDTH // 2
-            center_y = WINDOW_HEIGHT // 3
+            for t in active_tornadoes: 
+                 render_surface_to_texture(sdl_renderer, t.sprite.surface, t.sprite.x - camera.camera.x, t.sprite.y - camera.camera.y)
+            for w in active_walls: 
+                 render_surface_to_texture(sdl_renderer, w.sprite.surface, w.sprite.x - camera.camera.x, w.sprite.y - camera.camera.y)
             
-            run.boss_text_renderer.renderer_text(
-                "BOSS FIGHT",
-                center_x, center_y,
-                color=(255, 50, 50),
-                draw_bg=True,
-                bg_color=(0, 0, 0, 200),
-                radius=15
-            )
+            for box in boxes: box.render(sdl_renderer, camera)
+            for barrel in barrels: barrel.render(sdl_renderer, camera)
+            for chest in chests: chest.render(sdl_renderer, camera, player)
+            for item in dropped_items: item.render(sdl_renderer, camera, player)
+            
+            item_manager.render(camera.camera.x, camera.camera.y, player)
+            notif_system.render(sdl_renderer)
 
+            npc_manager.render_all(camera.camera.x, camera.camera.y)
+            boss_manager.render_all(camera.camera.x, camera.camera.y)
+            projectile_manager.render_all(camera.camera.x, camera.camera.y)
+            
+            # Render Player
+            p_dst = SDL_Rect(int(player.entity.sprite.x - camera.camera.x), int(player.entity.sprite.y - camera.camera.y), 128, 128)
+            p_tex = sdl2.SDL_CreateTextureFromSurface(sdl_renderer, player.entity.sprite.surface)
+            r, g, b = player.color_mod 
+            if player.flash_timer > 0: r, g, b = (255, 100, 100)
+            sdl2.SDL_SetTextureColorMod(p_tex, int(r), int(g), int(b))
+            sdl2.SDL_RenderCopy(sdl_renderer, p_tex, None, p_dst)
+            sdl2.SDL_DestroyTexture(p_tex)
+            
+            # [MASTERY RENDER]
+            player.render(sdl_renderer, camera.camera.x, camera.camera.y)
+            
+            hud.render()
+
+            if boss_fight_text_timer > 0:
+                if not hasattr(run, 'boss_text_renderer'):
+                    run.boss_text_renderer = TextRenderer(sdl_renderer, "assets/fonts/arial.ttf", size=72)
+                run.boss_text_renderer.renderer_text("BOSS FIGHT", WINDOW_WIDTH//2, WINDOW_HEIGHT//3, color=(255, 50, 50), draw_bg=True, bg_color=(0, 0, 0, 200), radius=15)
+            
+            if game_over and game_over_timer > 0:
+                if not hasattr(run, 'game_over_text_renderer'):
+                    run.game_over_text_renderer = TextRenderer(sdl_renderer, "assets/fonts/arial.ttf", size=72)
+                run.game_over_text_renderer.renderer_text("GAME OVER", WINDOW_WIDTH//2, WINDOW_HEIGHT//3, color=(255, 255, 255), draw_bg=True, bg_color=(0, 0, 0, 200), radius=15)
+            
+            if victory_timer > 0:
+                if not hasattr(run, 'victory_text_renderer'):
+                    run.victory_text_renderer = TextRenderer(sdl_renderer, "assets/fonts/arial.ttf", size=72)
+                run.victory_text_renderer.renderer_text("VICTORY", WINDOW_WIDTH//2, WINDOW_HEIGHT//3, color=(255, 255, 50), draw_bg=True, bg_color=(0, 0, 0, 200), radius=15)
+
+        game_menu.render()
         renderer.present()
         sdl2.SDL_Delay(1000 // FPS)
 
     hud.cleanup()
     npc_manager.cleanup()
     projectile_manager.cleanup()
+    sound_manager.cleanup()
     sdl2.ext.quit()
 
 if __name__ == "__main__":

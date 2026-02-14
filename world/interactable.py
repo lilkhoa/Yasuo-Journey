@@ -350,6 +350,12 @@ class Barrel:
                 item_type, name
             )
             drop_items_list.append(item)
+            
+            # Play item pop sound
+            from core.sound import get_sound_manager
+            sound_manager = get_sound_manager()
+            if sound_manager:
+                sound_manager.play_sound("item_pop")
 
         print("Barrel broken!")
 
@@ -391,8 +397,20 @@ class Chest:
         self.interaction_range = 100
 
         self.has_spawned_items = False
+        
+        # Chest sound tracking
+        self.chest_sound_channel = -1
+        self.chest_sound_timer = 0.0
 
     def update(self, dt, player: Player, dropped_items_list, renderer):
+        # Update chest sound timer and stop after 3 seconds
+        if self.chest_sound_timer > 0:
+            self.chest_sound_timer -= dt
+            if self.chest_sound_timer <= 0 and self.chest_sound_channel != -1:
+                import sdl2.sdlmixer
+                sdl2.sdlmixer.Mix_HaltChannel(self.chest_sound_channel)
+                self.chest_sound_channel = -1
+        
         # 1. Calculate the distance to Player
         center_x = self.world_x + TILE_SIZE//2
         center_y = self.grid_y_pos + TILE_SIZE - self.scaled_heights[0]//2
@@ -428,6 +446,11 @@ class Chest:
                         dropped_items_list.append(item)
                     
                     self.has_spawned_items = True
+                    # Play item pop sound
+                    from core.sound import get_sound_manager
+                    sound_manager = get_sound_manager()
+                    if sound_manager:
+                        sound_manager.play_sound("item_pop")
                     print("Chest items spawned!")
 
                 # if all frames have been rendered, stop at the latest frame
@@ -446,7 +469,13 @@ class Chest:
             # start opening chest
             self.state = "OPENING"
             self.current_frame = 0
-            self.has_spawned_items = False                
+            self.has_spawned_items = False
+            # Play chest open sound (import sound manager)
+            from core.sound import get_sound_manager
+            sound_manager = get_sound_manager()
+            if sound_manager:
+                self.chest_sound_channel = sound_manager.play_sound("chest_open")
+                self.chest_sound_timer = 3.0  # Stop after 3 seconds
             print("Chest opening!")
 
             return True

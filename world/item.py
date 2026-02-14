@@ -127,4 +127,9 @@ class DroppedItem:
                 return True
         
         return False
+                # Play item pickup sound
+                from core.sound import get_sound_manager
+                sound_manager = get_sound_manager()
+                if sound_manager:
+                    sound_manager.play_sound("item_pickup")
         

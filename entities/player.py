@@ -1,11 +1,22 @@
 import sdl2
 import sdl2.ext
+import sdl2.sdlmixer
 import os
 import sys
+import ctypes
 
-# Cấu hình đường dẫn
+# [CHECK] Import OpenCV
+try:
+    import cv2
+    import numpy as np
+except ImportError:
+    print("Warning: 'opencv-python' or 'numpy' not found. Mastery Emote video will not play.")
+    cv2 = None
+
+# --- CẤU HÌNH ĐƯỜNG DẪN CHUẨN ---
 current_dir = os.path.dirname(os.path.abspath(__file__))
-root_dir = os.path.dirname(current_dir)
+root_dir = os.path.dirname(current_dir) # .../A3_Yasuo
+
 if root_dir not in sys.path:
     sys.path.append(root_dir)
 
@@ -19,8 +30,125 @@ from combat.utils import load_grid_sprite_sheet, flip_sprites_horizontal
 from settings import *
 from combat.cooldown import CooldownManager
 
+# --- CLASS XỬ LÝ MASTERY EMOTE ---
+class MasteryEmote:
+    def __init__(self, renderer):
+        self.renderer = renderer
+        self.active = False
+        self.cap = None
+        self.sound_chunk = None
+        self.frame_texture = None
+        
+        self.video_path = os.path.join(PLAYER_ASSET_DIR, "videoplayback.mp4")
+        self.audio_path = os.path.join(PLAYER_ASSET_DIR, "videoplayback.mp3")
+        
+        # [AUDIO] Load âm thanh Mastery
+        if os.path.exists(self.audio_path):
+            try:
+                # Load file âm thanh
+                self.sound_chunk = sdl2.sdlmixer.Mix_LoadWAV(self.audio_path.encode('utf-8'))
+                if not self.sound_chunk:
+                    print(f"[Mastery] Failed to load audio: {self.audio_path}")
+                else:
+                    print(f"[Mastery] Audio loaded successfully.")
+            except Exception as e:
+                print(f"[Mastery] Audio load error: {e}")
+        else:
+            print(f"[Mastery] Audio file missing: {self.audio_path}")
+        
+        # Kích thước resize
+        self.target_width = 125
+        self.target_height = 125
+
+    def play(self):
+        if not cv2: return
+        if self.cap: self.cap.release()
+        
+        if os.path.exists(self.video_path):
+            self.cap = cv2.VideoCapture(self.video_path)
+            self.active = True
+            
+            # [AUDIO] Phát âm thanh
+            if self.sound_chunk:
+                sdl2.sdlmixer.Mix_PlayChannel(-1, self.sound_chunk, 0)
+        else:
+            print(f"[Mastery] Missing video: {self.video_path}")
+
+    def update(self):
+        if not self.active or not self.cap: return
+
+        # 1. Đọc frame
+        ret, frame = self.cap.read()
+        if not ret:
+            self.stop()
+            return
+
+        # 2. Resize về 133x100
+        frame = cv2.resize(frame, (self.target_width, self.target_height), interpolation=cv2.INTER_NEAREST)
+
+        # 3. [NEW] TẠO MASK CHO DẢI MÀU (Range Removal)
+        rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+        
+        lower_green = np.array([0, 150, 0])
+        upper_green = np.array([40, 255, 40]) 
+        
+        mask = cv2.inRange(rgb_frame, lower_green, upper_green)
+
+        # 4. [NEW] Chuyển sang hệ màu RGBA (Thêm kênh Alpha)
+        frame_rgba = cv2.cvtColor(frame, cv2.COLOR_BGR2RGBA)
+        
+        # Gán Alpha = 0 (Trong suốt) tại những vị trí Mask nhận diện là màu xanh
+        frame_rgba[mask > 0] = [0, 0, 0, 0]
+
+        # 5. Xoay/Lật cho khớp SDL Surface
+        frame_rgba = np.rot90(frame_rgba, k=-1) 
+        frame_rgba = np.flip(frame_rgba, axis=1)
+
+        h, w, c = frame_rgba.shape 
+        
+        # 6. Tạo Surface 32-bit (Hỗ trợ Alpha)
+        surface = sdl2.SDL_CreateRGBSurfaceFrom(
+            frame_rgba.ctypes.data_as(ctypes.c_void_p),
+            w, h, 32, 4 * w,
+            0x000000FF, 0x0000FF00, 0x00FF0000, 0xFF000000 # Mask cho R, G, B, A
+        )
+        
+        # 7. Tạo Texture
+        if self.frame_texture:
+            sdl2.SDL_DestroyTexture(self.frame_texture)
+        self.frame_texture = sdl2.SDL_CreateTextureFromSurface(self.renderer, surface)
+        sdl2.SDL_FreeSurface(surface)
+
+    def render(self, x, y, camera_x, camera_y):
+        if not self.active or not self.frame_texture: return
+
+        # Căn giữa trên đầu
+        offset_x = 64 - (self.target_width // 2)
+        dst_rect = sdl2.SDL_Rect(
+            int(x - camera_x + offset_x), 
+            int(y - camera_y - self.target_height + 20),
+            self.target_width,
+            self.target_height
+        )
+        # Cần bật Blend Mode để kênh Alpha hoạt động (hiển thị trong suốt)
+        sdl2.SDL_SetTextureBlendMode(self.frame_texture, sdl2.SDL_BLENDMODE_BLEND)
+        sdl2.SDL_RenderCopy(self.renderer, self.frame_texture, None, dst_rect)
+
+    def stop(self):
+        self.active = False
+        if self.cap: self.cap.release(); self.cap = None
+        if self.frame_texture: sdl2.SDL_DestroyTexture(self.frame_texture); self.frame_texture = None
+
+    def cleanup(self):
+        self.stop()
+        if self.sound_chunk: sdl2.sdlmixer.Mix_FreeChunk(self.sound_chunk)
+
+# --- PLAYER CLASS ---
 class Player:
-    def __init__(self, world, factory, x, y):
+    def __init__(self, world, factory, x, y, sound_manager=None, renderer_ptr=None):
+        # --- 0. SOUND MANAGER ---
+        self.sound_manager = sound_manager
+        
         # --- 1. LOAD ANIMATION ---
         self.anims_right = {}
         self.anims_right['idle'] = load_grid_sprite_sheet(factory, os.path.join(PLAYER_ASSET_DIR, "Idle.png"), cols=6, rows=1)
@@ -58,8 +186,8 @@ class Player:
         
         # --- PHYSICS & MOVEMENT ---
         self.facing_right = True
-        self.base_move_speed = PLAYER_SPEED_WALK # Tốc độ gốc
-        self.move_speed_bonus = 0  # [ITEM] Tốc độ cộng thêm
+        self.base_move_speed = PLAYER_SPEED_WALK
+        self.move_speed_bonus = 0
         
         self.ground_y = y
         self.vel_y = 0
@@ -78,13 +206,13 @@ class Player:
         self.base_attack_damage = PLAYER_ATTACK_DAMAGE
         self.attack_damage = self.base_attack_damage 
         
-        # [ITEM & HUD STATS] Các chỉ số mở rộng
-        self.lifesteal_ratio = 0.05   # 5% hút máu mặc định
-        self.damage_reduction = 0.0   # % Giảm sát thương (Thornmail)
-        self.armor = 30               # Giáp cơ bản
-        self.crit_chance = 0          # % Chí mạng
-        self.attack_range = 150       # Tầm đánh cơ bản
-        self.attack_speed = 1.0       # Tốc độ đánh
+        # [ITEM & HUD STATS]
+        self.lifesteal_ratio = 0.05
+        self.damage_reduction = 0.0
+        self.armor = 30
+        self.crit_chance = 0
+        self.attack_range = 150
+        self.attack_speed = 1.0
         self.hp_regen = PLAYER_HEALTH_REGEN
         
         self.is_blocking = False
@@ -107,6 +235,25 @@ class Player:
         self.skill_q = SkillQ(self)
         self.skill_w = SkillW(self)
         self.skill_e = SkillE(self)
+        
+        # Sound tracking
+        self.was_on_ground = True
+        self.walk_sound_channel = -1
+        self.run_sound_channel = -1
+
+        # [NEW] Khởi tạo Mastery Emote
+        self.mastery_emote = None
+        if renderer_ptr:
+            self.mastery_emote = MasteryEmote(renderer_ptr)
+
+    def trigger_mastery(self):
+        if self.mastery_emote:
+            print("[Player] Mastery Emote Triggered!")
+            self.mastery_emote.play()
+
+    def render(self, renderer, camera_x, camera_y):
+        if self.mastery_emote:
+            self.mastery_emote.render(self.x, self.y, camera_x, camera_y)
 
     @property
     def sprite(self): return self.entity.sprite
@@ -119,7 +266,6 @@ class Player:
     @property
     def height(self): return self.entity.sprite.size[1]
     
-    # [NEW PROPERTY] Tổng tốc độ di chuyển
     @property
     def move_speed(self):
         return self.base_move_speed + self.move_speed_bonus
@@ -174,16 +320,17 @@ class Player:
         multiplier = 1.0
         if "damage_boost" in self.buffs:
             multiplier = self.buffs["damage_boost"]['value']
-        
-        # [ITEM] Cập nhật Attack Damage dựa trên Base (đã cộng item) * Buff
         self.attack_damage = int(self.base_attack_damage * multiplier)
 
     def update(self, dt, world, factory, renderer, active_list_q, active_list_w, game_map=None, boxes=None):
+        # [NEW] Update Mastery
+        if self.mastery_emote:
+            self.mastery_emote.update()
+
         self.regenerate()
         self.cooldowns.update(1)
         self.handle_buffs(dt)
         
-        # 1. Di chuyển X (Dùng property move_speed đã tính bonus)
         dx = 0
         current_speed = self.move_speed
         
@@ -259,7 +406,11 @@ class Player:
                         break
 
         self.is_jumping = not on_ground
-        if on_ground: self.jump_count = 0
+        if on_ground: 
+            self.jump_count = 0
+            if not self.was_on_ground and self.sound_manager:
+                self.sound_manager.play_sound("player_land")
+        self.was_on_ground = on_ground
         if self.is_jumping and self.vel_y == 0: self.vel_y = self.gravity
         if self.entity.sprite.y > 1000: self.die()
 
@@ -301,12 +452,19 @@ class Player:
             if self.frame_index >= len(frames):
                 if self.state == 'casting_q':
                     self.spawn_tornado(world, factory, renderer, active_list_q)
+                    if self.sound_manager:
+                        self.sound_manager.play_sound("player_q2")
                     self.state = 'idle'
                 elif self.state == 'casting_w':
                     self.spawn_wall(world, factory, renderer, active_list_w)
+                    if self.sound_manager:
+                        self.sound_manager.play_sound("player_w2")
                     self.state = 'idle'
                 elif self.state == 'dashing_e':
-                    if not self.skill_e.is_dashing: self.state = 'idle'
+                    if not self.skill_e.is_dashing: 
+                        if self.sound_manager:
+                            self.sound_manager.play_sound("player_e2")
+                        self.state = 'idle'
                 elif self.state == 'attacking': self.state = 'idle'
                 elif self.state == 'dead': 
                     self.frame_index = len(frames) - 1
@@ -324,6 +482,8 @@ class Player:
             self.vel_y = self.jump_force
             self.is_jumping = True
             self.jump_count += 1
+            if self.sound_manager:
+                self.sound_manager.play_sound("player_jump")
 
     def handle_movement(self, keys):
         if self.is_blocking or self.state in ['casting_q', 'casting_w', 'dashing_e', 'attacking', 'dead', 'hurt']: return
@@ -336,11 +496,27 @@ class Player:
             
         if has_input:
             run_key = keys[sdl2.SDL_SCANCODE_LSHIFT] or keys[sdl2.SDL_SCANCODE_RSHIFT]
-            if run_key and self.try_run(): self.state = 'run'
-            else: self.state = 'walk'; self.is_running = False
+            if run_key and self.try_run(): 
+                self.state = 'run'
+                if self.sound_manager and self.run_sound_channel == -1:
+                    self.run_sound_channel = self.sound_manager.play_sound("player_run", loops=-1)
+            else: 
+                self.state = 'walk'
+                self.is_running = False
+                if self.run_sound_channel != -1:
+                    sdl2.sdlmixer.Mix_HaltChannel(self.run_sound_channel)
+                    self.run_sound_channel = -1
+                if self.sound_manager and self.walk_sound_channel == -1:
+                    self.walk_sound_channel = self.sound_manager.play_sound("player_walk", loops=-1)
         else:
             if not self.is_jumping: self.state = 'idle'
             self.is_running = False
+            if self.walk_sound_channel != -1:
+                sdl2.sdlmixer.Mix_HaltChannel(self.walk_sound_channel)
+                self.walk_sound_channel = -1
+            if self.run_sound_channel != -1:
+                sdl2.sdlmixer.Mix_HaltChannel(self.run_sound_channel)
+                self.run_sound_channel = -1
 
     def try_run(self):
         if self.exhausted: return False
@@ -350,7 +526,6 @@ class Player:
             self.is_running = False; self.exhausted = True; return False
 
     def regenerate(self):
-        # Sử dụng self.hp_regen để hỗ trợ buff hồi máu
         if self.hp < self.max_hp: self.hp = min(self.hp + self.hp_regen, self.max_hp)
         if self.state == 'walk' and self.stamina < self.max_stamina:
             self.stamina = min(self.stamina + PLAYER_STAMINA_REGEN_WALK, self.max_stamina)
@@ -363,6 +538,8 @@ class Player:
             self.cooldowns.start_cooldown("skill_q", SKILL_Q_COOLDOWN)
             if direction: self.facing_right = (direction > 0)
             self.state = 'casting_q'; self.frame_index = 0
+            if self.sound_manager:
+                self.sound_manager.play_sound("player_q1")
 
     def start_w(self, direction=0):
         if self.stamina < SKILL_W_COST or not self.cooldowns.is_ready("skill_w"): return
@@ -371,6 +548,8 @@ class Player:
             self.cooldowns.start_cooldown("skill_w", SKILL_W_COOLDOWN)
             if direction: self.facing_right = (direction > 0)
             self.state = 'casting_w'; self.frame_index = 0
+            if self.sound_manager:
+                self.sound_manager.play_sound("player_w1")
 
     def start_e(self, world, factory, renderer, direction):
         if self.stamina < SKILL_E_COST or not self.cooldowns.is_ready("skill_e"): return
@@ -380,6 +559,8 @@ class Player:
             self.facing_right = (direction > 0)
             self.state = 'dashing_e'; self.frame_index = 0
             self.skill_e.cast(world, factory, renderer)
+            if self.sound_manager:
+                self.sound_manager.play_sound("player_e1")
 
     def spawn_tornado(self, world, factory, renderer, active_list):
         if self.tornado_frames: 
@@ -404,12 +585,8 @@ class Player:
     def take_damage(self, amount):
         if self.invincible: return
         final_dmg = int(amount)
-        
-        # [ITEM] THORNMAIL: Giảm sát thương nhận vào
         if self.damage_reduction > 0:
             final_dmg = int(final_dmg * (1.0 - self.damage_reduction))
-        
-        # [ITEM] Trừ giáp (cơ chế đơn giản)
         damage_after_armor = max(1, final_dmg - int(self.armor * 0.1))
 
         if self.is_blocking:
@@ -423,15 +600,17 @@ class Player:
         else:
             self.flash_timer = 0.1
             self.hit_count += 1
+            if self.sound_manager:
+                self.sound_manager.play_sound("player_hit")
             if self.hit_count >= PLAYER_HITS_TO_STAGGER and self.state != 'dead':
+                if self.sound_manager:
+                    self.sound_manager.play_sound("player_hurt")
                 self.state = 'hurt'; self.hurt_timer = 0; self.hit_count = 0
 
     def on_hit_enemy(self, damage):
         self.stamina = min(self.stamina + Reward_Hit_Stamina, self.max_stamina)
-        # [ITEM] BLOODTHIRSTER: Hút máu theo tỷ lệ
         heal = int(damage * self.lifesteal_ratio)
-        if heal > 0:
-            self.hp = min(self.hp + heal, self.max_hp)
+        if heal > 0: self.hp = min(self.hp + heal, self.max_hp)
 
     def on_kill_enemy(self):
         self.stamina = min(self.stamina + Reward_Kill_Stamina, self.max_stamina)
