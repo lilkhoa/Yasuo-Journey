@@ -444,7 +444,7 @@ class Boss:
         
         # Boss only uses skills when visible on screen
         if self.skill_cooldown >= self.skill_cooldown_max and not self.is_attacking and self.is_on_screen():
-            if random.random() < 0.2:  # 2% chance per frame (~1 skill every 3-4 seconds on average)
+            if random.random() < 0.2: 
                 self._choose_random_skill()
                 return
         
@@ -971,6 +971,11 @@ class Boss:
         """Spawn a minion at the specified position."""
         minion = BossMinion(x, y, self.sprite_factory, self.renderer, self.projectile_manager, self.minion_textures_preloaded)
         minion.set_player(self.player)
+        
+        # Set death callback for minion (if boss has one configured)
+        if hasattr(self, 'minion_death_callback'):
+            minion.on_death_callback = self.minion_death_callback
+        
         self.minions.append(minion)
         return minion
     

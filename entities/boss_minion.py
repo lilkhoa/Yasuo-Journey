@@ -83,6 +83,9 @@ class BossMinion:
         self.death_animation_complete = False
         self.ready_for_removal = False
         
+        # Death callback (called when minion dies, regardless of damage source)
+        self.on_death_callback = None
+        
         self._load_sprites()
     
     def _load_sprites(self):
@@ -140,6 +143,11 @@ class BossMinion:
             self.state = MinionState.DYING
             self.current_frame = 0
             self.death_animation_complete = False
+            
+            # Trigger death callback (for coin drops, etc.)
+            if self.on_death_callback:
+                self.on_death_callback(self)
+            
             return
         
         if self.state == MinionState.HURT:
@@ -305,6 +313,10 @@ class BossMinion:
             self.current_frame = 0
             self.frame_counter = 0
             self.hurt_animation_complete = False
+        else:
+            # Minion died - trigger death callback (for coin drops, etc.)
+            if self.on_death_callback:
+                self.on_death_callback(self)
     
     def render(self, camera_x=0, camera_y=0):
         if self.state not in self.textures:
