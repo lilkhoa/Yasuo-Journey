@@ -93,10 +93,10 @@ class DroppedItem:
 
             text = ""
             if not self.is_collected:
-                text = "Press F to collect"
+                text = f"F: {self.item_name}"
 
             # Draw small black background
-            text_bg_x = player.x - 10
+            player_cx = player.x + player.width//2
             text_bg_y = player.y + 10
 
             # sdl2.SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255)
@@ -104,7 +104,7 @@ class DroppedItem:
 
             self.text_renderer.renderer_text(
                 text, 
-                text_bg_x, 
+                player_cx, 
                 text_bg_y, 
                 color=(255, 255, 0),
                 draw_bg=True,

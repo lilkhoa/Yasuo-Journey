@@ -32,8 +32,6 @@ from items.item import ItemManager, ItemType
 # Sound manager
 from core.sound import get_sound_manager
 
-
-
 # --- HELPER: Wrapper cho NPC tương thích với Skill collision ---
 class SpriteWrapper:
     def __init__(self, npc_instance):
