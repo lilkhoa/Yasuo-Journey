@@ -47,7 +47,7 @@ class ItemNotificationSystem:
 
     def render(self, renderer):
         for i, notif in enumerate(self.notifications):
-            y_pos = self.start_y + (i * 10) # Stack mỗi dòng cách nhau 10px
+            y_pos = self.start_y + (i * 40) # Stack mỗi dòng cách nhau 10px
             
             # Set Alpha cho cả icon và text
             sdl2.SDL_SetTextureAlphaMod(notif.texture, notif.alpha)

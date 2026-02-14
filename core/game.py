@@ -163,6 +163,9 @@ def run():
     text_renderer = TextRenderer(renderer.sdlrenderer, "assets/fonts/arial.ttf", size=10)
     notif_system = ItemNotificationSystem(text_renderer)    
 
+    collect_timer = COLLECT_INTERVAL
+
+    # [NEW] KHỞI TẠO ITEM MANAGER
     item_manager = ItemManager(renderer, text_renderer)
 
     # [REMOVED] Code spawn item test đã được xóa tại đây

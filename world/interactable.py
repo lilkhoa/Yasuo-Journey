@@ -463,7 +463,7 @@ class Chest:
             Called when Player press F
         """
         if not self.can_interact:
-            return
+            return False
         
         if self.state == "CLOSED":
             # start opening chest
@@ -477,6 +477,8 @@ class Chest:
                 self.chest_sound_channel = sound_manager.play_sound("chest_open")
                 self.chest_sound_timer = 3.0  # Stop after 3 seconds
             print("Chest opening!")
+
+            return True
         
     
     def render(self, renderer, camera: Camera, player: Player):
