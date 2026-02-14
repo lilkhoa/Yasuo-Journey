@@ -86,6 +86,7 @@ def run():
     sound_manager.load_player_sounds()
     sound_manager.load_npc_sounds()
     sound_manager.load_boss_sounds()
+    sound_manager.load_game_sounds()
     
     # Load and play background music
     if sound_manager.load_background_music():
@@ -246,6 +247,8 @@ def run():
             )
             dropped_items.append(coin_item)
         
+        # Play item pop sound for coin drops
+        sound_manager.play_sound("item_pop")
         print(f"[COIN DROP] {num_coins} coin(s) dropped from {entity.__class__.__name__}")
     # ============================
     
@@ -294,12 +297,19 @@ def run():
     kill_count = 0
     game_over = False
     game_over_timer = 0
+    game_over_sound_played = False
     
     # Boss encounter system
     boss_encountered = False
     boss_music_playing = False
     boss_fight_text_timer = 0.0
     boss_fight_text_duration = 2.0  # Display for 3 seconds
+    
+    # Victory system
+    victory = False
+    victory_timer = 0
+    victory_text_duration = 3.0
+    victory_sound_played = False
 
     # 4. game loop
     running = True
@@ -397,6 +407,18 @@ def run():
         # Update boss fight text timer
         if boss_fight_text_timer > 0:
             boss_fight_text_timer -= dt
+        
+        # Check for victory (boss encountered but all bosses are dead)
+        if boss_encountered and not victory and len(alive_bosses) == 0:
+            victory = True
+            victory_timer = victory_text_duration
+            if not victory_sound_played:
+                sound_manager.play_sound("victory")
+                victory_sound_played = True
+        
+        # Update victory timer
+        if victory_timer > 0:
+            victory_timer -= dt
         
         all_combat_targets = alive_npcs + alive_bosses + all_minions
         
@@ -587,6 +609,9 @@ def run():
             if player.state == 'dead':
                 game_over = True
                 game_over_timer = 3.0
+                if not game_over_sound_played:
+                    sound_manager.play_sound("game_over")
+                    game_over_sound_played = True
                 print("[GAME] Player died! Game Over in 3 seconds...")
         
         else:
@@ -599,6 +624,7 @@ def run():
                 player.is_blocking = False
                 player.invincible = False
                 game_over = False
+                game_over_sound_played = False
                 print(f"[GAME] Player respawned! Kills: {kill_count}")
 
         # Render
@@ -664,6 +690,7 @@ def run():
         
         hud.render()
         
+        # Display boss fight text
         if boss_fight_text_timer > 0:
             if not hasattr(run, 'boss_text_renderer'):
                 run.boss_text_renderer = TextRenderer(sdl_renderer, "assets/fonts/arial.ttf", size=72)
@@ -675,6 +702,40 @@ def run():
                 "BOSS FIGHT",
                 center_x, center_y,
                 color=(255, 50, 50),
+                draw_bg=True,
+                bg_color=(0, 0, 0, 200),
+                radius=15
+            )
+        
+        # Display game over text
+        if game_over and game_over_timer > 0:
+            if not hasattr(run, 'game_over_text_renderer'):
+                run.game_over_text_renderer = TextRenderer(sdl_renderer, "assets/fonts/arial.ttf", size=72)
+            
+            center_x = WINDOW_WIDTH // 2
+            center_y = WINDOW_HEIGHT // 3
+            
+            run.game_over_text_renderer.renderer_text(
+                "GAME OVER",
+                center_x, center_y,
+                color=(255, 255, 255),
+                draw_bg=True,
+                bg_color=(0, 0, 0, 200),
+                radius=15
+            )
+        
+        # Display victory text
+        if victory_timer > 0:
+            if not hasattr(run, 'victory_text_renderer'):
+                run.victory_text_renderer = TextRenderer(sdl_renderer, "assets/fonts/arial.ttf", size=72)
+            
+            center_x = WINDOW_WIDTH // 2
+            center_y = WINDOW_HEIGHT // 3
+            
+            run.victory_text_renderer.renderer_text(
+                "VICTORY",
+                center_x, center_y,
+                color=(255, 255, 50),
                 draw_bg=True,
                 bg_color=(0, 0, 0, 200),
                 radius=15

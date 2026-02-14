@@ -255,6 +255,28 @@ class SoundManager:
         
         return success
     
+    def load_game_sounds(self):
+        """
+        Load general game sounds (chest, items, game states).
+        
+        Returns:
+            bool: True if all sounds loaded successfully
+        """
+        success = True
+        
+        # Game state sounds
+        success &= self.load_sound("game_over", os.path.join("assets", "Sounds", "game-over.mp3"))
+        success &= self.load_sound("victory", os.path.join("assets", "Sounds", "victory.mp3"))
+        
+        # Item sounds
+        success &= self.load_sound("item_pickup", os.path.join("assets", "Sounds", "item-pickup.mp3"))
+        success &= self.load_sound("item_pop", os.path.join("assets", "Sounds", "item-pop.mp3"))
+        
+        # Chest sound
+        success &= self.load_sound("chest_open", os.path.join("assets", "Sounds", "chest-open.mp3"))
+        
+        return success
+    
     def load_npc_sounds(self):
         """
         Load all NPC attack sounds.
