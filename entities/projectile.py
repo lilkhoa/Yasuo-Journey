@@ -1462,7 +1462,7 @@ class BossKamehamehaProjectile(Projectile):
         self.boss_x = x
         self.boss_y = y
         self._update_position()
-        self.lifetime = 1.2
+        self.lifetime = 1.5
         
         # Sprite sheet with 9 frames (left to right order)
         self.sprite_texture = None

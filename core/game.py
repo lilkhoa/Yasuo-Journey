@@ -248,7 +248,7 @@ def run():
                 
             elif char == 'B':
                 # Spawn Boss (offset Y upward for flying entrance)
-                boss = boss_manager.spawn_boss(world_x, grid_y_pos - 200)
+                boss = boss_manager.spawn_boss(world_x, grid_y_pos - 400)
                 boss.set_player(player)
                 make_npc_compatible(boss)
 
