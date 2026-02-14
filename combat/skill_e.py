@@ -21,9 +21,11 @@ class SkillE(Skill):
         self.hit_list = [] # Reset danh sách trúng
         return self 
 
-    def update_dash(self, dt, enemies, boxes=None):
+    def update_dash(self, dt, enemies, boxes=None, game_map=None):
         """
         enemies: List NPC/Boss/Minions
+        boxes: List Box objects
+        game_map: GameMap object
         """
         if not self.is_dashing:
             return
@@ -34,11 +36,24 @@ class SkillE(Skill):
         direction = 1 if self.owner.facing_right else -1
         move_dist = self.dash_speed * dt * direction
         
+        hitbox = self.owner.get_hitbox()
+        future_rect = sdl2.SDL_Rect(hitbox.x + int(move_dist), hitbox.y, hitbox.w, hitbox.h)
+
+        # --- Map collision (Dừng lướt nếu đụng tường) ---
+        if game_map:
+            tiles = game_map.get_tile_rects_around(future_rect.x, future_rect.y, future_rect.w, future_rect.h)
+            for tile in tiles:
+                if sdl2.SDL_HasIntersection(future_rect, tile):
+                     # Snap vào cạnh tường
+                    if direction > 0:  
+                        self.owner.entity.sprite.x = tile.x - 128 + 44 - 2
+                    else:  
+                        self.owner.entity.sprite.x = tile.x + tile.w - 44 + 2
+                    self.is_dashing = False # Dừng lướt
+                    return
+
         # --- Box collision (Dừng lướt nếu đụng vật cản) ---
         if boxes:
-            hitbox = self.owner.get_hitbox()
-            future_rect = sdl2.SDL_Rect(hitbox.x + int(move_dist), hitbox.y, hitbox.w, hitbox.h)
-            
             for box in boxes:
                 if sdl2.SDL_HasIntersection(future_rect, box.rect):
                     # Snap vào cạnh hộp

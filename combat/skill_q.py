@@ -45,7 +45,7 @@ class TornadoObject:
 
 class SkillQ(Skill):
     def __init__(self, owner):
-        super().__init__(owner, cooldown_time=4.0)
+        super().__init__(owner, cooldown_time=0.1)
         
     def execute(self, world, factory, renderer, skill_sprites=None, skill_surface=None):
         print("Casting Q!")

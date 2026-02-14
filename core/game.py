@@ -298,9 +298,12 @@ def run():
         
         # Update Logic
         keys = sdl2.SDL_GetKeyboardState(None)
+        # Combine boxes and unbroken barrels for physics
+        all_obstacles = boxes + [b for b in barrels if not b.is_broken]
+
         player.set_blocking(keys[sdl2.SDLK_s])
         player.handle_movement(keys)
-        player.update(dt, world, software_factory, None, active_tornadoes, active_walls, game_map=my_map, boxes=boxes)
+        player.update(dt, world, software_factory, None, active_tornadoes, active_walls, game_map=my_map, boxes=all_obstacles)
         
         if player.entity.sprite.x < 0: player.entity.sprite.x = 0
         if player.entity.sprite.x > my_map.width_pixel - 128: player.entity.sprite.x = my_map.width_pixel - 128
@@ -311,7 +314,7 @@ def run():
 
         # Barrel updating
         for barrel in barrels:
-            barrel.update(dt)
+            barrel.update(dt, my_map)
 
         # Chest updating
         for chest in chests:
@@ -349,7 +352,8 @@ def run():
                 w.delete()
                 active_walls.remove(w)
                 
-        player.skill_e.update_dash(dt, all_combat_targets, boxes)
+                
+        player.skill_e.update_dash(dt, all_combat_targets, all_obstacles, my_map)
         if player.skill_e.is_dashing: player.state = 'dashing_e'
         elif player.state == 'dashing_e' and not player.skill_e.is_dashing: player.state = 'idle'
 
@@ -359,13 +363,20 @@ def run():
         
         # ============== COMBAT COLLISION SYSTEM ==============
         if not game_over:
-            # 0. PROJECTILE -> BOX
+            # 0. PROJECTILE -> BOX / BARREL
             for projectile in projectile_manager.projectiles[:]:
                 proj_rect = sdl2.SDL_Rect(int(projectile.x), int(projectile.y), projectile.width, projectile.height)
+                # Check Boxes
                 for box in boxes:
                     if sdl2.SDL_HasIntersection(proj_rect, box.rect):
                         projectile.on_hit()
                         break
+                # Check Barrels (Unbroken)
+                if projectile.active: # Only check if not already hit box
+                    for barrel in barrels:
+                        if not barrel.is_broken and sdl2.SDL_HasIntersection(proj_rect, barrel.rect):
+                            projectile.on_hit()
+                            break
 
             # 1. NPC PROJECTILE -> PLAYER
             for projectile in projectile_manager.projectiles[:]:
@@ -416,13 +427,16 @@ def run():
             
             # 3. PLAYER ATTACK -> NPC/BOSS/MINION
             if player.state == 'attacking':
-                px, py, pw, ph = player.x, player.y, player.width, player.height
-                player_attack_range = 60
+                # Use actual body hitbox for accurate checking
+                bx, by, bw, bh = player.get_hitbox().x, player.get_hitbox().y, player.get_hitbox().w, player.get_hitbox().h
+                player_attack_range = 50 # Tầm đánh 50px từ người
                 
                 if player.facing_right:
-                    attack_hitbox = (px + pw - 20, py + 20, player_attack_range, ph - 40)
+                    # Đánh từ mép phải người ra ngoài
+                    attack_hitbox = (bx + bw, by, player_attack_range, bh)
                 else:
-                    attack_hitbox = (px - player_attack_range + 20, py + 20, player_attack_range, ph - 40)
+                    # Đánh từ mép trái người ra ngoài
+                    attack_hitbox = (bx - player_attack_range, by, player_attack_range, bh)
                 
                 # Hit Barrels
                 atk_rect = sdl2.SDL_Rect(*attack_hitbox)    
