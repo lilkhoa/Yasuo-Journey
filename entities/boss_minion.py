@@ -352,3 +352,6 @@ class BossMinion:
                         sdl2.SDL_DestroyTexture(texture)
         self.textures.clear()
         self.sprites.clear()
+
+    def is_alive(self):
+        return self.health > 0 and self.state != MinionState.DYING
