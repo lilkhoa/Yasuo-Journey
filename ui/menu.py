@@ -1,6 +1,7 @@
 import sdl2
 import sdl2.ext
 import os
+import ctypes
 
 # Màu sắc
 WHITE = (255, 255, 255)
@@ -28,9 +29,9 @@ class GameMenu:
         font_path = os.path.join(base_dir, "..", "assets", "fonts", "arial.ttf")
         
         try:
-            self.title_font = sdl2.ext.FontManager(font_path, size=48, color=WHITE)
-            self.menu_font = sdl2.ext.FontManager(font_path, size=24, color=WHITE)
-            self.info_font = sdl2.ext.FontManager(font_path, size=18, color=WHITE) # Font nhỏ hơn cho About
+            self.title_font = sdl2.ext.FontManager(font_path, size=40, color=WHITE)
+            self.menu_font = sdl2.ext.FontManager(font_path, size=20, color=WHITE)
+            self.info_font = sdl2.ext.FontManager(font_path, size=16, color=WHITE)
         except:
             print("[MENU] Warning: Font not found, using default.")
             self.title_font = None
@@ -41,7 +42,7 @@ class GameMenu:
         self.selected_index = 0
         
         # --- DATA MENU ---
-        self.main_options = ["New Game", "Option", "About", "Exit"]
+        self.main_options = ["NEW GAME", "OPTION", "ABOUT", "EXIT"]
         self.pause_options = ["Resume", "Exit to Main Menu"]
         
         # Option Data
@@ -60,6 +61,59 @@ class GameMenu:
             ("F", "Interact (Pick up / Chest)"),
             ("Esc", "Pause / Back")
         ]
+        
+        # Load background layers
+        self.bg_textures = []
+        self.bg_scroll_speeds = [0.05, 0.15, 0.25]  # Different speeds for parallax effect
+        self.bg_offsets = [0.0, 0.0, 0.0]  # Current scroll positions
+        
+        assets_dir = os.path.join(base_dir, "..", "assets")
+        for i in range(1, 4):
+            bg_path = os.path.join(assets_dir, "Map", "background", f"background_layer_{i}.png")
+            try:
+                bg_surface = sdl2.ext.load_image(bg_path)
+                bg_texture = sdl2.SDL_CreateTextureFromSurface(self.renderer, bg_surface)
+                self.bg_textures.append(bg_texture)
+                sdl2.SDL_FreeSurface(bg_surface)
+            except Exception as e:
+                print(f"[MENU] Warning: Could not load background layer {i}: {e}")
+                self.bg_textures.append(None)
+        
+        # Load placeholder cloth image
+        self.placeholder_texture = None
+        placeholder_path = os.path.join(assets_dir, "Menu", "placeholder.png")
+        try:
+            placeholder_surface = sdl2.ext.load_image(placeholder_path)
+            self.placeholder_texture = sdl2.SDL_CreateTextureFromSurface(self.renderer, placeholder_surface)
+            sdl2.SDL_FreeSurface(placeholder_surface)
+            
+            # Get placeholder dimensions
+            w, h = ctypes.c_int(), ctypes.c_int()
+            sdl2.SDL_QueryTexture(self.placeholder_texture, None, None, ctypes.byref(w), ctypes.byref(h))
+            self.placeholder_w = w.value
+            self.placeholder_h = h.value
+        except Exception as e:
+            print(f"[MENU] Warning: Could not load placeholder: {e}")
+            self.placeholder_w = 400
+            self.placeholder_h = 400
+
+        # Load prefix
+        prefix_path = os.path.join(assets_dir, "Menu", "sword.png")
+        try:
+            prefix_surface = sdl2.ext.load_image(prefix_path)
+            self.prefix_texture = sdl2.SDL_CreateTextureFromSurface(self.renderer, prefix_surface)
+            sdl2.SDL_FreeSurface(prefix_surface)
+            
+            # Get prefix dimensions
+            w, h = ctypes.c_int(), ctypes.c_int()
+            sdl2.SDL_QueryTexture(self.prefix_texture, None, None, ctypes.byref(w), ctypes.byref(h))
+            self.prefix_w = w.value
+            self.prefix_h = h.value
+        except Exception as e:
+            print(f"[MENU] Warning: Could not load prefix image: {e}")
+            self.prefix_texture = None
+            self.prefix_w = 32
+            self.prefix_h = 32
 
     def handle_input(self, events):
         action = None
@@ -76,15 +130,15 @@ class GameMenu:
                         self.selected_index = (self.selected_index + 1) % len(self.main_options)
                     elif key == sdl2.SDLK_RETURN or key == sdl2.SDLK_KP_ENTER:
                         choice = self.main_options[self.selected_index]
-                        if choice == "New Game":
+                        if choice == "NEW GAME":
                             self.state = MenuState.GAME_PLAYING
                             return "START_GAME"
-                        elif choice == "Option":
+                        elif choice == "OPTION":
                             self.state = MenuState.OPTION
                             self.selected_index = 0
-                        elif choice == "About":
+                        elif choice == "ABOUT":
                             self.state = MenuState.ABOUT
-                        elif choice == "Exit":
+                        elif choice == "EXIT":
                             return "QUIT_GAME"
 
                 # --- PAUSE MENU ---
@@ -150,27 +204,53 @@ class GameMenu:
                         return "PAUSE_GAME"
         
         return action
+    
+    def update(self, dt=0.016):
+        """Update background animation"""
+        for i in range(len(self.bg_offsets)):
+            self.bg_offsets[i] += self.bg_scroll_speeds[i]
+            # Reset offset when it goes beyond window width
+            if self.bg_offsets[i] >= self.width:
+                self.bg_offsets[i] = 0
 
     def render(self):
         if self.state == MenuState.GAME_PLAYING:
             return 
 
+        # Draw animated background for all menu states except pause
         if self.state != MenuState.PAUSE:
-            # Vẽ nền tối cho các menu chính
-            sdl2.SDL_SetRenderDrawColor(self.renderer, 20, 20, 30, 255)
-            sdl2.SDL_RenderClear(self.renderer)
+            self._draw_background()
         else:
             self._draw_overlay()
 
         # Render nội dung
         if self.state == MenuState.MAIN_MENU:
-            self._render_list("MAIN MENU", self.main_options)
+            self._render_main_menu()
         elif self.state == MenuState.PAUSE:
             self._render_list("PAUSE", self.pause_options)
         elif self.state == MenuState.OPTION:
             self._render_options()
         elif self.state == MenuState.ABOUT:
             self._render_controls()
+    
+    def _draw_background(self):
+        """Draw scrolling parallax background"""
+        for i, texture in enumerate(self.bg_textures):
+            if texture is None:
+                continue
+            
+            offset = int(self.bg_offsets[i])
+            
+            # Draw two copies for seamless scrolling
+            src_rect = None
+            
+            # First copy
+            dst_rect1 = sdl2.SDL_Rect(-offset, 0, self.width, self.height)
+            sdl2.SDL_RenderCopy(self.renderer, texture, src_rect, dst_rect1)
+            
+            # Second copy (for seamless loop)
+            dst_rect2 = sdl2.SDL_Rect(self.width - offset, 0, self.width, self.height)
+            sdl2.SDL_RenderCopy(self.renderer, texture, src_rect, dst_rect2)
 
     def _draw_overlay(self):
         rect = sdl2.SDL_Rect(0, 0, self.width, self.height)
@@ -178,6 +258,55 @@ class GameMenu:
         sdl2.SDL_SetRenderDrawColor(self.renderer, 0, 0, 0, 180)
         sdl2.SDL_RenderFillRect(self.renderer, rect)
         sdl2.SDL_SetRenderDrawBlendMode(self.renderer, sdl2.SDL_BLENDMODE_NONE)
+    
+    def _render_main_menu(self):
+        """Render main menu with title and cloth placeholder"""
+        # Draw title "Yasuo's Journey" at the top
+        self._draw_centered_text("YASUO'S JOURNEY", -220, self.title_font, (255, 215, 100))
+        
+        # Draw cloth placeholder in center
+        if self.placeholder_texture:
+            # Scale placeholder to fit nicely
+            scale = 1.5
+            scaled_w = int(self.placeholder_w * scale)
+            scaled_h = int(self.placeholder_h * scale)
+            
+            placeholder_x = (self.width - scaled_w) // 2
+            placeholder_y = (self.height - scaled_h) // 2 + 20
+            
+            placeholder_rect = sdl2.SDL_Rect(placeholder_x, placeholder_y, scaled_w, scaled_h)
+            sdl2.SDL_RenderCopy(self.renderer, self.placeholder_texture, None, placeholder_rect)
+            
+            # Draw menu options on the cloth
+            start_y = placeholder_y + 50
+            line_height = 60
+            
+            for i, option in enumerate(self.main_options):
+                color = YELLOW if i == self.selected_index else (220, 200, 170)
+                
+                y_pos = start_y + (i * line_height)
+                
+                # Draw sword prefix for selected option
+                if i == self.selected_index and self.prefix_texture:
+                    text_surface = self.menu_font.render(option, color=color)
+                    text_x = (self.width - text_surface.w) // 2 - 20
+                    text_y = y_pos
+                    
+                    # Position sword to the left of text
+                    sword_scale = 0.2
+                    sword_w = int(self.prefix_w * sword_scale)
+                    sword_h = int(self.prefix_h * sword_scale)
+                    sword_x = text_x - sword_w
+                    sword_y = text_y + (text_surface.h - sword_h) // 2
+                    
+                    sword_rect = sdl2.SDL_Rect(sword_x, sword_y, sword_w, sword_h)
+                    sdl2.SDL_RenderCopy(self.renderer, self.prefix_texture, None, sword_rect)
+                    sdl2.SDL_FreeSurface(text_surface)
+                
+                self._draw_centered_text(option, y_pos - self.height // 2, self.menu_font, color)
+        else:
+            # Fallback if placeholder not loaded
+            self._render_list("YASUO'S JOURNEY", self.main_options)
 
     def _render_list(self, title, options):
         self._draw_centered_text(title, -100, self.title_font, YELLOW)
@@ -186,56 +315,99 @@ class GameMenu:
 
         for i, option in enumerate(options):
             color = YELLOW if i == self.selected_index else WHITE
-            prefix = "> " if i == self.selected_index else "  "
-            text = f"{prefix}{option}"
-            self._draw_centered_text(text, (i * line_height), self.menu_font, color, offset_y_base=start_y)
+            
+            # Draw sword prefix for selected option
+            if i == self.selected_index and self.prefix_texture:
+                text_surface = self.menu_font.render(option, color=color)
+                text_x = (self.width - text_surface.w) // 2 - 20
+                text_y = start_y + (i * line_height)
+                
+                # Position sword to the left of text
+                sword_scale = 0.2
+                sword_w = int(self.prefix_w * sword_scale)
+                sword_h = int(self.prefix_h * sword_scale)
+                sword_x = text_x - sword_w
+                sword_y = text_y + (text_surface.h - sword_h) // 2
+                
+                sword_rect = sdl2.SDL_Rect(sword_x, sword_y, sword_w, sword_h)
+                sdl2.SDL_RenderCopy(self.renderer, self.prefix_texture, None, sword_rect)
+                sdl2.SDL_FreeSurface(text_surface)
+            
+            self._draw_centered_text(option, (i * line_height), self.menu_font, color, offset_y_base=start_y)
 
     def _render_options(self):
-        """Vẽ menu Option với thanh volume"""
-        self._draw_centered_text("OPTIONS", -120, self.title_font, YELLOW)
+        """Vẽ menu Option với thanh volume - improved layout"""
+        self._draw_centered_text("OPTIONS", -180, self.title_font, YELLOW)
         
-        start_y = self.height // 2 - 40
-        line_height = 50
+        start_y = self.height // 2 - 60
+        line_height = 80
         
         for i, item in enumerate(self.option_items):
             color = YELLOW if i == self.selected_index else WHITE
             
-            # Vẽ Label (Music, SFX, Back)
-            prefix = "> " if i == self.selected_index else "   "
-            text = f"{prefix}{item}"
-            
-            # Tính vị trí text
-            # Vẽ text lệch trái một chút để chừa chỗ cho thanh volume
             if item == "Back":
-                self._draw_centered_text(text, (i * line_height), self.menu_font, color, offset_y_base=start_y)
-            else:
-                # Vẽ Label bên trái
-                # Hardcode vị trí X cho đơn giản: width/2 - 150
-                label_y = start_y + (i * line_height)
-                self._draw_text_at(text, self.width // 2 - 200, label_y, self.menu_font, color)
+                # Center the Back button
+                y_pos = start_y + (i * line_height) + 20
                 
-                # Vẽ thanh Volume bên phải
+                # Draw sword prefix for selected option
+                if i == self.selected_index and self.prefix_texture:
+                    text_surface = self.menu_font.render(item, color=color)
+                    text_x = (self.width - text_surface.w) // 2 - 20
+                    
+                    # Position sword to the left of text
+                    sword_scale = 0.2
+                    sword_w = int(self.prefix_w * sword_scale)
+                    sword_h = int(self.prefix_h * sword_scale)
+                    sword_x = text_x - sword_w
+                    sword_y = y_pos + (text_surface.h - sword_h) // 2
+                    
+                    sword_rect = sdl2.SDL_Rect(sword_x, sword_y, sword_w, sword_h)
+                    sdl2.SDL_RenderCopy(self.renderer, self.prefix_texture, None, sword_rect)
+                    sdl2.SDL_FreeSurface(text_surface)
+                
+                self._draw_centered_text(item, (i * line_height) + 20, self.menu_font, color, offset_y_base=start_y)
+            else:
+                # Draw label and volume bar with more spacing
+                label_y = start_y + (i * line_height)
+                label_x = self.width // 2 - 250
+                
+                # Draw sword prefix for selected option
+                if i == self.selected_index and self.prefix_texture:
+                    # Position sword to the left of label
+                    sword_scale = 0.2
+                    sword_w = int(self.prefix_w * sword_scale)
+                    sword_h = int(self.prefix_h * sword_scale)
+                    sword_x = label_x - sword_w - 10
+                    sword_y = label_y
+                    
+                    sword_rect = sdl2.SDL_Rect(sword_x, sword_y, sword_w, sword_h)
+                    sdl2.SDL_RenderCopy(self.renderer, self.prefix_texture, None, sword_rect)
+                
+                # Draw label more to the left
+                self._draw_text_at(item, label_x, label_y, self.menu_font, color)
+                
+                # Draw volume bar more to the right with more space
                 volume = self.music_volume if i == 0 else self.sfx_volume
-                self._draw_volume_bar(self.width // 2 + 50, label_y + 5, 150, 20, volume, color)
+                self._draw_volume_bar(self.width // 2 + 20, label_y + 5, 180, 25, volume, color)
 
     def _render_controls(self):
-        """Vẽ bảng hướng dẫn phím"""
+        """Vẽ bảng hướng dẫn phím - improved layout"""
         self._draw_centered_text("CONTROLS", -200, self.title_font, YELLOW)
         
-        start_y = self.height // 2 - 120
-        line_height = 35
+        start_y = self.height // 2 - 150
+        line_height = 40
         
-        # Vẽ Header
-        self._draw_text_at("KEY", self.width // 2 - 200, start_y - 40, self.menu_font, GRAY)
-        self._draw_text_at("ACTION", self.width // 2 + 50, start_y - 40, self.menu_font, GRAY)
+        # Draw header with more spacing
+        self._draw_text_at("KEY", self.width // 2 - 250, start_y - 50, self.menu_font, GRAY)
+        self._draw_text_at("ACTION", self.width // 2 + 80, start_y - 50, self.menu_font, GRAY)
         
         for i, (key, action) in enumerate(self.controls_text):
             y = start_y + (i * line_height)
-            self._draw_text_at(key, self.width // 2 - 200, y, self.info_font, YELLOW)
-            self._draw_text_at(action, self.width // 2 + 50, y, self.info_font, WHITE)
+            self._draw_text_at(key, self.width // 2 - 250, y, self.info_font, YELLOW)
+            self._draw_text_at(action, self.width // 2 + 80, y, self.info_font, WHITE)
             
         # Footer
-        self._draw_centered_text("Press Enter to Return", 250, self.info_font, GRAY)
+        self._draw_centered_text("Press Enter or ESC to Return", 280, self.info_font, GRAY)
 
     def _draw_volume_bar(self, x, y, w, h, percent, color):
         """Vẽ thanh volume đơn giản"""
@@ -279,3 +451,13 @@ class GameMenu:
         sdl2.SDL_RenderCopy(self.renderer, texture, None, dst)
         sdl2.SDL_FreeSurface(surface)
         sdl2.SDL_DestroyTexture(texture)
+    
+    def cleanup(self):
+        """Clean up textures"""
+        for texture in self.bg_textures:
+            if texture:
+                sdl2.SDL_DestroyTexture(texture)
+        if self.placeholder_texture:
+            sdl2.SDL_DestroyTexture(self.placeholder_texture)
+        if self.prefix_texture:
+            sdl2.SDL_DestroyTexture(self.prefix_texture)

@@ -250,6 +250,9 @@ def run():
         dt = (current_time - last_time) / 1000.0
         last_time = current_time
         
+        # Update menu background animation
+        game_menu.update(dt)
+        
         events = sdl2.ext.get_events()
         
         # 1. MENU INPUT
@@ -505,8 +508,6 @@ def run():
     hud.cleanup()
     npc_manager.cleanup()
     projectile_manager.cleanup()
+    game_menu.cleanup()
     sound_manager.cleanup()
     sdl2.ext.quit()
-
-if __name__ == "__main__":
-    run()
