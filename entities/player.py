@@ -58,9 +58,8 @@ class Player:
         
         # --- PHYSICS & MOVEMENT ---
         self.facing_right = True
-        self.move_speed = 300
-        # [ITEM] Tốc độ chạy cộng thêm (từ Giày)
-        self.move_speed_bonus = 0 
+        self.base_move_speed = 300 # Tốc độ gốc
+        self.move_speed_bonus = 0  # [ITEM] Tốc độ cộng thêm
         
         self.ground_y = y
         self.vel_y = 0
@@ -79,9 +78,14 @@ class Player:
         self.base_attack_damage = PLAYER_ATTACK_DAMAGE
         self.attack_damage = self.base_attack_damage 
         
-        # [ITEM] Chỉ số mới từ trang bị
-        self.lifesteal_ratio = 0.05 # 5% mặc định
-        self.damage_reduction = 0.0 # Giảm sát thương (từ Giáp gai)
+        # [ITEM & HUD STATS] Các chỉ số mở rộng
+        self.lifesteal_ratio = 0.05   # 5% hút máu mặc định
+        self.damage_reduction = 0.0   # % Giảm sát thương (Thornmail)
+        self.armor = 30               # Giáp cơ bản
+        self.crit_chance = 0          # % Chí mạng
+        self.attack_range = 150       # Tầm đánh cơ bản
+        self.attack_speed = 1.0       # Tốc độ đánh
+        self.hp_regen = PLAYER_HEALTH_REGEN
         
         self.is_blocking = False
         self.exhausted = False
@@ -115,6 +119,11 @@ class Player:
     @property
     def height(self): return self.entity.sprite.size[1]
     
+    # [NEW PROPERTY] Tổng tốc độ di chuyển
+    @property
+    def move_speed(self):
+        return self.base_move_speed + self.move_speed_bonus
+
     def get_hitbox(self):
         hitbox_w = 40
         hitbox_h = 80
@@ -165,6 +174,8 @@ class Player:
         multiplier = 1.0
         if "damage_boost" in self.buffs:
             multiplier = self.buffs["damage_boost"]['value']
+        
+        # [ITEM] Cập nhật Attack Damage dựa trên Base (đã cộng item) * Buff
         self.attack_damage = int(self.base_attack_damage * multiplier)
 
     def update(self, dt, world, factory, renderer, active_list_q, active_list_w, game_map=None, boxes=None):
@@ -172,9 +183,9 @@ class Player:
         self.cooldowns.update(1)
         self.handle_buffs(dt)
         
-        # 1. Di chuyển X (Tính thêm bonus từ Item Giày)
+        # 1. Di chuyển X (Dùng property move_speed đã tính bonus)
         dx = 0
-        current_speed = (self.move_speed + self.move_speed_bonus)
+        current_speed = self.move_speed
         
         if self.state == 'run': dx = (current_speed * 1.5) * dt
         elif self.state == 'walk': dx = current_speed * dt
@@ -339,7 +350,8 @@ class Player:
             self.is_running = False; self.exhausted = True; return False
 
     def regenerate(self):
-        if self.hp < self.max_hp: self.hp = min(self.hp + PLAYER_HEALTH_REGEN, self.max_hp)
+        # Sử dụng self.hp_regen để hỗ trợ buff hồi máu
+        if self.hp < self.max_hp: self.hp = min(self.hp + self.hp_regen, self.max_hp)
         if self.state == 'walk' and self.stamina < self.max_stamina:
             self.stamina = min(self.stamina + PLAYER_STAMINA_REGEN_WALK, self.max_stamina)
         if self.exhausted and self.stamina > self.max_stamina * 0.3: self.exhausted = False
@@ -396,14 +408,17 @@ class Player:
         # [ITEM] THORNMAIL: Giảm sát thương nhận vào
         if self.damage_reduction > 0:
             final_dmg = int(final_dmg * (1.0 - self.damage_reduction))
-            
+        
+        # [ITEM] Trừ giáp (cơ chế đơn giản)
+        damage_after_armor = max(1, final_dmg - int(self.armor * 0.1))
+
         if self.is_blocking:
             if self.stamina >= BLOCK_STAMINA_COST_PER_HIT:
                 self.stamina -= BLOCK_STAMINA_COST_PER_HIT
-                final_dmg = int(final_dmg * (1.0 - BLOCK_DAMAGE_REDUCTION))
+                damage_after_armor = int(damage_after_armor * (1.0 - BLOCK_DAMAGE_REDUCTION))
             else: self.is_blocking = False
         
-        self.hp -= final_dmg
+        self.hp -= damage_after_armor
         if self.hp <= 0: self.die()
         else:
             self.flash_timer = 0.1

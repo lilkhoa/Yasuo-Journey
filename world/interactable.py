@@ -142,6 +142,8 @@ class Barrel:
         """
         self.x = x
         self.y = y
+        self.width = BARREL_RENDER_WIDTH
+        self.height = BARREL_RENDER_HEIGHT 
 
         self.texture = texture      # barrel texture
         self.item_data = item_data  # dict of item's texture can be dropped
@@ -164,14 +166,30 @@ class Barrel:
         self.invulnerable_timer = 0
         self.invulnerable_duration = 0.4
 
+        # --- PHYSICS PROPERTIES ---
+        self.vel_y = 0
+        self.gravity = GRAVITY
+        self.is_falling = True
+        self.push_timer = 0 
+        self.is_being_pushed = False
+
         sdl2.SDL_SetTextureBlendMode(self.texture, sdl2.SDL_BLENDMODE_BLEND)
 
-    def update(self, dt):
+    @property
+    def rect(self):
+        return SDL_Rect(int(self.x), int(self.y), self.width, self.height)
+
+    def update(self, dt, game_map=None):
         """
             Update shaking animation and fading at each frame
+            Also update physics if passed game_map
         """
         if self.is_broken:
             return
+        
+        # Physics Update
+        if game_map:
+            self.update_physics(dt, game_map)
         
         # Decrease invulnerable time
         if self.invulnerable_timer > 0:
@@ -191,6 +209,79 @@ class Barrel:
                 self.is_broken = True
                 self.is_fading = False
 
+    def update_physics(self, dt, game_map):
+        # 1. gravity
+        self.vel_y += self.gravity
+        if self.vel_y > MAX_FALL_SPEED:
+            self.vel_y = MAX_FALL_SPEED
+        
+        self.y += self.vel_y
+
+        # 2. Collide with Map (vertical axis - Y)
+        nearby_tiles = game_map.get_tile_rects_around(self.x, self.y, self.width, self.height)
+        
+        box_rect = self.rect # use property
+        self.is_falling = True
+
+        for tile in nearby_tiles:
+            if sdl2.SDL_HasIntersection(box_rect, tile):
+                if self.vel_y > 0:  # falling and reach the ground surface
+                    self.y = tile.y - self.height
+                    self.vel_y = 0
+                    self.is_falling = False
+        
+        # reset pushing state
+        if not self.is_being_pushed:
+            self.push_timer = max(0, self.push_timer - dt * 2)
+
+        self.is_being_pushed = False
+
+    def push(self, dx, dt, game_map):
+        """
+            Called from the Player when horizontal collision
+        """
+        if self.is_broken: return False, 0
+
+        self.is_being_pushed = True
+
+        # increase timer
+        if self.push_timer < BOX_PUSH_THRESHOLD:
+            self.push_timer += dt
+            return False, 0 
+
+        # calculate new speed
+        push_dx = int(dx * BOX_PUSH_SPEED_RATIO)
+        if push_dx == 0 and dx != 0:
+            push_dx = 1 if dx > 0 else -1
+
+        # predict new position
+        next_x = self.x + push_dx
+
+        if next_x < 0:
+            self.x = 0
+            return False, 0
+        
+        if (next_x + self.width) > game_map.width_pixel:
+            self.x = game_map.width_pixel - self.width
+            return False, 0
+        
+        future_rect = SDL_Rect(int(next_x), int(self.y), self.width, self.height)
+
+        # check collision with wall
+        nearby_tiles = game_map.get_tile_rects_around(int(next_x), int(self.y), self.width, self.height)
+
+        can_move = True
+        for tile in nearby_tiles:
+            if sdl2.SDL_HasIntersection(future_rect, tile):
+                can_move = False
+                break
+                    
+        if can_move: 
+            self.x = next_x
+            return True, push_dx
+        else:
+            return False, 0
+
     def get_bounds(self):
         return SDL_Rect(int(self.x), int(self.y), BARREL_RENDER_WIDTH, BARREL_RENDER_HEIGHT)
     
@@ -208,8 +299,8 @@ class Barrel:
         dst_rect = SDL_Rect(
             int(render_x - camera.camera.x),
             int(self.y - camera.camera.y),
-            BARREL_RENDER_WIDTH,
-            BARREL_RENDER_HEIGHT
+            self.width, # Use class width
+            self.height # Use class height
         )
 
         if self.is_fading:
@@ -217,7 +308,6 @@ class Barrel:
 
         sdl2.SDL_RenderCopy(renderer, self.texture, self.src_rect, dst_rect)
 
-        # Need to do, if not all the barrel in the map will be faded
         if self.is_fading:
            sdl2.SDL_SetTextureAlphaMod(self.texture, 255)
 
@@ -246,8 +336,8 @@ class Barrel:
 
             # create item at the barrel
             item = DroppedItem(
-                self.x + BARREL_RENDER_WIDTH/2,
-                self.y + BARREL_RENDER_HEIGHT/2,
+                self.x + self.width/2,
+                self.y + self.height/2,
                 tex,
                 width, height,
                 self.text_renderer,
@@ -397,4 +487,3 @@ class Chest:
                 bg_color=(0, 0, 0, 200),
                 radius=8
             )
-
