@@ -273,8 +273,18 @@ def run():
                     mod = event.key.keysym.mod
                     
                     if key == sdl2.SDLK_f:
-                        for chest in chests: chest.interact()
-                        for item in dropped_items: item.interact(notif_system, player)
+                        for chest in chests: 
+                            if collect_timer <= 0: 
+                                if chest.interact():
+                                    collect_timer = COLLECT_INTERVAL
+                                    break
+                        
+                        for item in dropped_items: 
+                            if collect_timer <= 0:
+                                if item.interact(notif_system, player):
+                                    collect_timer = COLLECT_INTERVAL
+                                    break
+
                         item_manager.handle_interact_key(player)
                     
                     # [MASTERY TRIGGER] Ctrl + 6
@@ -283,6 +293,8 @@ def run():
 
                 if not handle_input(event, player, world, software_factory, renderer, active_tornadoes, active_walls, npc_manager):
                     running = False
+            
+            collect_timer -= dt
         
         # 3. UPDATE
         if game_menu.state == MenuState.GAME_PLAYING:
