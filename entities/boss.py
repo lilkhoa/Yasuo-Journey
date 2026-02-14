@@ -444,7 +444,7 @@ class Boss:
         
         # Boss only uses skills when visible on screen
         if self.skill_cooldown >= self.skill_cooldown_max and not self.is_attacking and self.is_on_screen():
-            if random.random() < 0.2:  # 2% chance per frame (~1 skill every 3-4 seconds on average)
+            if random.random() < 0.2: 
                 self._choose_random_skill()
                 return
         

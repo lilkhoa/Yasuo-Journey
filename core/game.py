@@ -287,6 +287,11 @@ def run():
     kill_count = 0
     game_over = False
     game_over_timer = 0
+    
+    # Boss encounter system
+    boss_encountered = False
+    boss_fight_text_timer = 0.0
+    boss_fight_text_duration = 2.0  # Display for 3 seconds
 
     # 4. game loop
     running = True
@@ -361,6 +366,18 @@ def run():
         all_minions = []
         for boss in alive_bosses:
             all_minions.extend([m for m in boss.minions if m.health > 0])
+        
+        # Check for boss encounter (first time boss appears on screen)
+        if not boss_encountered and alive_bosses:
+            for boss in alive_bosses:
+                if boss.is_on_screen():
+                    boss_encountered = True
+                    boss_fight_text_timer = boss_fight_text_duration
+                    break
+        
+        # Update boss fight text timer
+        if boss_fight_text_timer > 0:
+            boss_fight_text_timer -= dt
         
         all_combat_targets = alive_npcs + alive_bosses + all_minions
         
@@ -606,6 +623,22 @@ def run():
         sdl2.SDL_DestroyTexture(p_tex)
         
         hud.render()
+        
+        if boss_fight_text_timer > 0:
+            if not hasattr(run, 'boss_text_renderer'):
+                run.boss_text_renderer = TextRenderer(sdl_renderer, "assets/fonts/arial.ttf", size=72)
+            
+            center_x = WINDOW_WIDTH // 2
+            center_y = WINDOW_HEIGHT // 3
+            
+            run.boss_text_renderer.renderer_text(
+                "BOSS FIGHT",
+                center_x, center_y,
+                color=(255, 50, 50),
+                draw_bg=True,
+                bg_color=(0, 0, 0, 200),
+                radius=15
+            )
 
         renderer.present()
         sdl2.SDL_Delay(1000 // FPS)
