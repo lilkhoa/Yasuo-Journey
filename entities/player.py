@@ -29,6 +29,7 @@ from combat.skill_e import SkillE
 from combat.utils import load_grid_sprite_sheet, flip_sprites_horizontal
 from settings import *
 from combat.cooldown import CooldownManager
+from items.item import ItemType, ItemCategory, ITEM_REGISTRY
 
 # --- CLASS XỬ LÝ MASTERY EMOTE ---
 class MasteryEmote:
@@ -125,9 +126,9 @@ class MasteryEmote:
         # Căn giữa trên đầu
         offset_x = 64 - (self.target_width // 2)
         dst_rect = sdl2.SDL_Rect(
-            int(x - camera_x + offset_x), 
-            int(y - camera_y - self.target_height + 20),
-            self.target_width,
+            int(x - camera_x + offset_x-30), 
+            int(y - camera_y - self.target_height + 70),
+            self.target_width+60,
             self.target_height
         )
         # Cần bật Blend Mode để kênh Alpha hoạt động (hiển thị trong suốt)
@@ -186,7 +187,6 @@ class Player:
         
         # --- PHYSICS & MOVEMENT ---
         self.facing_right = True
-        self.base_move_speed = PLAYER_SPEED_WALK
         self.move_speed_bonus = 0
         
         self.ground_y = y
@@ -203,18 +203,31 @@ class Player:
         self.max_stamina = PLAYER_MAX_STAMINA
         self.stamina = self.max_stamina
         
+        # Base stats
         self.base_attack_damage = PLAYER_ATTACK_DAMAGE
-        self.attack_damage = self.base_attack_damage 
+        self.base_move_speed = PLAYER_SPEED_WALK
+        self.base_armor = 30
+        self.base_lifesteal = 0.05
         
-        # [ITEM & HUD STATS]
-        self.lifesteal_ratio = 0.05
+        # Current stats ( = Base + Item)
+        self.attack_damage = self.base_attack_damage 
+        self.move_speed_bonus = 0
+        self.lifesteal_ratio = self.base_lifesteal
         self.damage_reduction = 0.0
-        self.armor = 30
+        self.armor = self.base_armor
         self.crit_chance = 0
         self.attack_range = 150
         self.attack_speed = 1.0
         self.hp_regen = PLAYER_HEALTH_REGEN
         
+        # INVENTORY
+        self.gold = 0
+        self.consumables = []   # Queue size 3
+        self.equipment = []    # Queue size 5
+        self.max_consumables = 3
+        self.max_equipments = 5
+
+
         self.is_blocking = False
         self.exhausted = False
         self.invincible = False 
@@ -317,10 +330,19 @@ class Player:
             self.color_mod = (255, 255, 255)
 
     def update_stats(self):
+        # Logic buff tạm thời
         multiplier = 1.0
         if "damage_boost" in self.buffs:
             multiplier = self.buffs["damage_boost"]['value']
-        self.attack_damage = int(self.base_attack_damage * multiplier)
+        
+        # Base dmg + Equipment Dmg
+        equipment_bonus = 0
+        for item in self.equipment:
+            if item == ItemType.BLOODTHIRSTER: equipment_bonus += 10
+            elif item == ItemType.INFINITY_EDGE: equipment_bonus += 50
+            
+        total_base = self.base_attack_damage + equipment_bonus
+        self.attack_damage = int(total_base * multiplier)
 
     def update(self, dt, world, factory, renderer, active_list_q, active_list_w, game_map=None, boxes=None):
         # [NEW] Update Mastery
@@ -616,3 +638,76 @@ class Player:
         self.stamina = min(self.stamina + Reward_Kill_Stamina, self.max_stamina)
 
     def die(self): self.state = 'dead'; self.frame_index = 0
+
+    def collect_item(self, item_type):
+        category = ITEM_REGISTRY.get(item_type)
+
+        if category == ItemCategory.CURRENCY:
+            self.gold += 1 
+            print(f"[Player] Gold: {self.gold}")
+
+        elif category == ItemCategory.CONSUMABLE:
+            if len(self.consumables) >= self.max_consumables:
+                removed = self.consumables.pop(0)   # FIFO
+                print(f"[Player] Inventory Full! Drop {removed}")
+            
+            self.consumables.append(item_type)
+            print(f"[Player] Added Consumable: {item_type.name}")
+
+        elif category == ItemCategory.EQUIPMENT:
+            if len(self.equipment) >= self.max_equipments:
+                removed = self.equipment.pop(0)
+                print(f"[Player] Equipment Full! Lost {removed}")
+            
+            self.equipment.append(item_type)
+            self.recalculate_stats()    # Recalculate stats based on new list
+            print(f"[Player] Equipped: {item_type.name}")
+
+    def use_consumable(self, slot_index):
+        """
+            Called when pressing 1, 2, 3
+        """
+        if 0 <= slot_index < len(self.consumables):
+            item_type = self.consumables.pop(slot_index)
+            self.apply_consumable_effect(item_type)
+            return True
+        return False
+
+    def apply_consumable_effect(self, item_type):
+        if item_type == ItemType.TEAR:
+            self.stamina += 50
+            print("Used Tear of Goddess")
+        if item_type == ItemType.HEALTH_POTION:
+            self.hp = min(self.hp + 100, self.max_hp)
+            # if self.sound_manager: self.sound_manager.play_sound("player_land") # Reuse sound or add potion sound
+            print("Used Health Potion")
+        elif item_type == ItemType.HOURGLASS:
+            self.activate_star_skill(duration=3.0)
+            print("Used Hourglass")
+
+    def recalculate_stats(self):
+        # Reset to base
+        self.attack_damage = self.base_attack_damage
+        self.move_speed_bonus = 0
+        self.lifesteal_ratio = self.base_lifesteal
+        self.damage_reduction = 0.0
+        self.armor = self.base_armor
+        self.max_stamina = PLAYER_MAX_STAMINA # Reset stamina max
+        
+        # Apply all items in queue
+        for item in self.equipment:
+            if item == ItemType.GREAVES:
+                self.move_speed_bonus += 50
+            elif item == ItemType.BLOODTHIRSTER:
+                self.lifesteal_ratio += 0.10
+                self.attack_damage += 10
+            elif item == ItemType.INFINITY_EDGE:
+                self.attack_damage += 50
+            elif item == ItemType.THORNMAIL:
+                self.armor += 10 # +10 Armor flat
+                # Max HP logic is tricky if we remove item (hp > new max_hp). 
+                # For simplicity, Thornmail gives damage reduction here or just Armor
+                self.damage_reduction += 0.05 
+
+        # Cap stats if needed
+        self.stamina = min(self.stamina, self.max_stamina)

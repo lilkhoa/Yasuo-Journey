@@ -170,4 +170,4 @@ BOX_WIDTH = 44
 BOX_HEIGHT = 44
 
 # OPEN_COLLECTING_INTERVAL
-COLLECT_INTERVAL = 0.1      # have to wait 0.4s to collect/open the next item
+COLLECT_INTERVAL = 0.05      # have to wait 0.4s to collect/open the next item

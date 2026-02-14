@@ -10,7 +10,7 @@ from core.camera import Camera
 from entities.player import Player
 
 from .map import GameMap
-from .item import DroppedItem
+from items.item import DroppedItem
 
 BOX_PUSH_THRESHOLD = 0.2  # Time (second) which the player need to hold before pushing
 BOX_PUSH_SPEED_RATIO = 0.7 # Speed of Player while pushing the box (reduce 30% to normal)
