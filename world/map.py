@@ -132,10 +132,3 @@ class GameMap:
                     rects.append(tile_rect)
         
         return rects
-
-
-
-
-
-        
-

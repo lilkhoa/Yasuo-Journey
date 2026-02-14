@@ -22,7 +22,6 @@ from settings import (
     SUMMON_WAIT_DURATION,
 )
 
-
 class SkillPhase(Enum):
     """Enumeration for skill execution phases."""
     DASH_TO_CENTER = 0
@@ -233,7 +232,6 @@ class MeteorSkill:
     def start(self):
         """Start the skill execution."""
         from entities.boss import BossState
-        
         self.phase = 0
         self.timer = 0
         
@@ -311,9 +309,8 @@ class MeteorSkill:
         # Diagonal velocity (right-to-left = negative X, top-to-bottom = positive Y)
         velocity_x = random.uniform(METEOR_VELOCITY_X_MIN, METEOR_VELOCITY_X_MAX)  # Always negative
         velocity_y = random.uniform(METEOR_VELOCITY_Y_MIN, METEOR_VELOCITY_Y_MAX)  # Always positive
-        
         # Spawn meteor projectile
-        self.boss.projectile_manager.spawn_boss_meteor(
+        meteor = self.boss.projectile_manager.spawn_boss_meteor(
             spawn_x, spawn_y,
             velocity_x, velocity_y,
             self.boss.meteor_damage,
