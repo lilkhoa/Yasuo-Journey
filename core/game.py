@@ -83,8 +83,15 @@ def run():
     factory = sdl2.ext.SpriteFactory(sdl2.ext.TEXTURE, renderer=renderer)
     sound_manager = get_sound_manager()
     sound_manager.initialize()
+    sound_manager.load_player_sounds()
     sound_manager.load_npc_sounds()
     sound_manager.load_boss_sounds()
+    
+    # Load and play background music
+    if sound_manager.load_background_music():
+        sound_manager.play_music(loops=-1)  # Loop forever
+    else:
+        print("[AUDIO] Warning: Could not load background music")
 
     try:
         tileset_sprite = factory.from_image("assets/Map/oak_woods_tileset.png")
@@ -290,6 +297,7 @@ def run():
     
     # Boss encounter system
     boss_encountered = False
+    boss_music_playing = False
     boss_fight_text_timer = 0.0
     boss_fight_text_duration = 2.0  # Display for 3 seconds
 
@@ -373,7 +381,18 @@ def run():
                 if boss.is_on_screen():
                     boss_encountered = True
                     boss_fight_text_timer = boss_fight_text_duration
+                    
+                    # Switch to boss music
+                    sound_manager.switch_to_boss_music(fade_out_ms=1000, fade_in_ms=1000)
+                    boss_music_playing = True
                     break
+        
+        # Check if boss music should switch back to normal (boss off-screen or dead)
+        if boss_music_playing:
+            boss_on_screen = any(boss.is_on_screen() for boss in alive_bosses)
+            if not boss_on_screen:
+                sound_manager.switch_to_normal_music(fade_out_ms=1000, fade_in_ms=1000)
+                boss_music_playing = False
         
         # Update boss fight text timer
         if boss_fight_text_timer > 0:
@@ -468,6 +487,10 @@ def run():
             
             # 3. PLAYER ATTACK -> NPC/BOSS/MINION
             if player.state == 'attacking':
+                # Initialize attack hit tracking on first frame of attack
+                if not hasattr(player, '_attack_hit_anything'):
+                    player._attack_hit_anything = False
+                
                 # Use actual body hitbox for accurate checking
                 bx, by, bw, bh = player.get_hitbox().x, player.get_hitbox().y, player.get_hitbox().w, player.get_hitbox().h
                 player_attack_range = 50 # Tầm đánh 50px từ người
@@ -486,6 +509,10 @@ def run():
                     if not barrel.is_broken:
                         if sdl2.SDL_HasIntersection(atk_rect, barrel.get_bounds()):
                             barrel.take_damage(1, dropped_items, renderer.sdlrenderer)
+                            # Play barrel hit sound
+                            if not player._attack_hit_anything:
+                                sound_manager.play_sound("player_auto_barrel")
+                                player._attack_hit_anything = True
                     
                 # Hit NPCs
                 for npc in alive_npcs:
@@ -496,6 +523,10 @@ def run():
                             setattr(player, '_attack_hit_npc_' + str(id(npc)), True)
                             npc.take_damage(player.attack_damage)
                             player.on_hit_enemy(player.attack_damage)
+                            # Play NPC hit sound
+                            if not player._attack_hit_anything:
+                                sound_manager.play_sound("player_auto_npc")
+                                player._attack_hit_anything = True
                             print(f"[COMBAT] Player hit NPC! NPC HP: {npc.health}")
                             if not npc.is_alive():
                                 kill_count += 1
@@ -511,6 +542,10 @@ def run():
                             setattr(player, '_attack_hit_boss_' + str(id(boss)), True)
                             boss.take_damage(player.attack_damage)
                             player.on_hit_enemy(player.attack_damage)
+                            # Play NPC hit sound
+                            if not player._attack_hit_anything:
+                                sound_manager.play_sound("player_auto_npc")
+                                player._attack_hit_anything = True
                 
                 # Hit Minions
                 for minion in all_minions:
@@ -521,12 +556,23 @@ def run():
                             setattr(player, '_attack_hit_minion_' + str(id(minion)), True)
                             minion.take_damage(player.attack_damage)
                             player.on_hit_enemy(player.attack_damage)
+                            # Play NPC hit sound
+                            if not player._attack_hit_anything:
+                                sound_manager.play_sound("player_auto_npc")
+                                player._attack_hit_anything = True
                             print(f"[COMBAT] Player hit Boss Minion! Minion HP: {minion.health}")
                             if minion.health <= 0:
                                 kill_count += 1
                                 player.on_kill_enemy()
                                 print(f"[COMBAT] Minion killed! Total kills: {kill_count}")
             else:
+                # Attack ended - play miss sound if nothing was hit
+                if hasattr(player, '_attack_hit_anything'):
+                    if not player._attack_hit_anything:
+                        sound_manager.play_sound("player_auto_miss")
+                    delattr(player, '_attack_hit_anything')
+                
+                # Clean up hit tracking flags
                 for npc in npc_manager.npcs:
                     if hasattr(player, '_attack_hit_npc_' + str(id(npc))):
                         delattr(player, '_attack_hit_npc_' + str(id(npc)))
@@ -640,7 +686,6 @@ def run():
     hud.cleanup()
     npc_manager.cleanup()
     projectile_manager.cleanup()
+    sound_manager.cleanup()
     sdl2.ext.quit()
-
-if __name__ == "__main__":
-    run()
+    
