@@ -220,6 +220,29 @@ def run():
     
     hud = SkillBarHUD(renderer.sdlrenderer, player)
     
+    # ===== COIN DROP SYSTEM =====
+    # Helper function to drop coins when enemies die (works for all damage sources)
+    def drop_coin_on_death(entity, num_coins=1):
+        """Drop coins when an entity dies. Called automatically via death callback."""
+        coin_name, coin_w, coin_h, coin_tex = common_drop_table["coin"]
+        ex, ey, ew, eh = entity.get_bounds()
+        
+        for i in range(num_coins):
+            offset_x = (i - num_coins//2) * 20 if num_coins > 1 else 0
+            coin_item = DroppedItem(
+                ex + ew/2 + offset_x,
+                ey + eh/2,
+                coin_tex,
+                coin_w, coin_h,
+                text_renderer,
+                "coin", coin_name
+            )
+            dropped_items.append(coin_item)
+        
+        print(f"[COIN DROP] {num_coins} coin(s) dropped from {entity.__class__.__name__}")
+    # ============================
+    
+    # NPC spawning from NPC_MAP
     for y, row in enumerate(NPC_MAP):
         for x, char in enumerate(row):
             if char == ' ':
@@ -232,24 +255,29 @@ def run():
                 # Spawn Ghost
                 npc = npc_manager.spawn_ghost(world_x, grid_y_pos)
                 npc.set_player(player)
+                npc.on_death_callback = lambda n: drop_coin_on_death(n, 1)
                 make_npc_compatible(npc)
                 
             elif char == 'S':
                 # Spawn Shooter
                 npc = npc_manager.spawn_shooter(world_x, grid_y_pos)
                 npc.set_player(player)
+                npc.on_death_callback = lambda n: drop_coin_on_death(n, 1)
                 make_npc_compatible(npc)
                 
             elif char == 'O':
                 # Spawn Onre
                 npc = npc_manager.spawn_onre(world_x, grid_y_pos)
                 npc.set_player(player)
+                npc.on_death_callback = lambda n: drop_coin_on_death(n, 1)
                 make_npc_compatible(npc)
                 
             elif char == 'B':
                 # Spawn Boss (offset Y upward for flying entrance)
                 boss = boss_manager.spawn_boss(world_x, grid_y_pos - 400)
                 boss.set_player(player)
+                # Boss drops 5 coins (set callback for minions when they're spawned)
+                boss.minion_death_callback = lambda m: drop_coin_on_death(m, 1)
                 make_npc_compatible(boss)
 
 
@@ -455,7 +483,7 @@ def run():
                         ax, ay, aw, ah = attack_hitbox
                         if (ax < nx + nw and ax + aw > nx and ay < ny + nh and ay + ah > ny):
                             setattr(player, '_attack_hit_npc_' + str(id(npc)), True)
-                            npc.take_damage(player.attack_damage) # Sử dụng attack_damage mới (có buff)
+                            npc.take_damage(player.attack_damage)
                             player.on_hit_enemy(player.attack_damage)
                             print(f"[COMBAT] Player hit NPC! NPC HP: {npc.health}")
                             if not npc.is_alive():
@@ -472,11 +500,6 @@ def run():
                             setattr(player, '_attack_hit_boss_' + str(id(boss)), True)
                             boss.take_damage(player.attack_damage)
                             player.on_hit_enemy(player.attack_damage)
-                            print(f"[COMBAT] Player hit BOSS! Boss HP: {boss.health}/{boss.max_health}")
-                            if not boss.is_alive():
-                                kill_count += 1
-                                player.on_kill_enemy()
-                                print(f"[COMBAT] *** BOSS DEFEATED! *** Total kills: {kill_count}")
                 
                 # Hit Minions
                 for minion in all_minions:

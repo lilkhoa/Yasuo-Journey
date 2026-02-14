@@ -971,6 +971,11 @@ class Boss:
         """Spawn a minion at the specified position."""
         minion = BossMinion(x, y, self.sprite_factory, self.renderer, self.projectile_manager, self.minion_textures_preloaded)
         minion.set_player(self.player)
+        
+        # Set death callback for minion (if boss has one configured)
+        if hasattr(self, 'minion_death_callback'):
+            minion.on_death_callback = self.minion_death_callback
+        
         self.minions.append(minion)
         return minion
     

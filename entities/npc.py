@@ -595,6 +595,10 @@ class NPC:
             self.current_frame = 0
             self.death_animation_complete = False
             self.velocity_x = 0
+            
+            # Trigger death callback (for coin drops, etc.)
+            if self.on_death_callback:
+                self.on_death_callback(self)
     
     def render(self, camera_x=0, camera_y=0):
         """Render NPC sprite to screen using PySDL2.
