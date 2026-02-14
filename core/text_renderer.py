@@ -38,7 +38,7 @@ class TextRenderer:
         w = surface.contents.w
         h = surface.contents.h
 
-        draw_x = int(x)
+        draw_x = int(x) - w//2
         draw_y = int(y)
 
         if draw_bg:

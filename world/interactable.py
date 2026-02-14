@@ -569,7 +569,7 @@ class Chest:
             
             text = ""
             if self.state == "CLOSED":
-                text = "Press F to open"
+                text = "F: Open"
 
             # Draw small black background
             text_bg_x = player.x - 10
