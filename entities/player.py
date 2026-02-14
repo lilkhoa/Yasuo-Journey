@@ -114,7 +114,6 @@ class Player:
         offset_y = (128 - hitbox_h)
         return sdl2.SDL_Rect(int(self.x + offset_x), int(self.y + offset_y), hitbox_w, hitbox_h)
 
-    # --- [FIX LỖI] THÊM HÀM NÀY ĐỂ TƯƠNG THÍCH VỚI PROJECTILE ---
     def get_bounds(self):
         """Trả về (x, y, w, h) của hitbox để hệ thống đạn NPC sử dụng"""
         rect = self.get_hitbox()

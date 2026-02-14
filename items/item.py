@@ -7,7 +7,7 @@ import math
 class ItemType(Enum):
     HEALTH_POTION = 0   # Hồi máu
     STAMINA_POTION = 1  # Hồi nội năng
-    STR_POTION = 2      # Thuốc kích thích (Dame tạm thời)
+    STR_POTION = 2      # Thuốc kích dục (Dame tạm thời)
     INFINITY_SWORD = 3  # Vô cực kiếm (Dame vĩnh viễn)
     STAR = 4            # Ngôi sao (Bất tử)
 
