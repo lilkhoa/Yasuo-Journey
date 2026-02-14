@@ -237,7 +237,7 @@ def run():
             grid_y_pos = (y * TILE_SIZE) # because we scale the block has the same size to the ground block
 
             if char == "B":
-                new_box = Box(world_x, grid_y_pos, box_tileset_texture)
+                new_box = Box(world_x, grid_y_pos, common_drop_table, box_tileset_texture, text_renderer)
                 boxes.append(new_box)
             
             elif char == "b":   # barrel
@@ -460,8 +460,15 @@ def run():
                     # Đánh từ mép trái người ra ngoài
                     attack_hitbox = (bx - player_attack_range, by, player_attack_range, bh)
                 
+                atk_rect = sdl2.SDL_Rect(*attack_hitbox) 
+
+                # Hit Box
+                for box in boxes:
+                    if not box.is_broken:
+                        if sdl2.SDL_HasIntersection(atk_rect, box.rect):
+                            box.take_damage(1, dropped_items, renderer.sdlrenderer)
+
                 # Hit Barrels
-                atk_rect = sdl2.SDL_Rect(*attack_hitbox)    
                 for barrel in barrels:
                     if not barrel.is_broken:
                         if sdl2.SDL_HasIntersection(atk_rect, barrel.get_bounds()):
