@@ -121,6 +121,10 @@ class DroppedItem:
                 self.is_collected = True
                 notification_system.add_notification(self.item_name, self.texture)
                 DroppedItem.collected_count += 1
+
+                if DroppedItem.collected_count > 0:
+                    print(f"Collected {DroppedItem.collected_count} items!")
+                return True
         
-        if DroppedItem.collected_count > 0:
-            print(f"Collected {DroppedItem.collected_count} items!")
+        return False
+        

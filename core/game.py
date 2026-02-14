@@ -169,6 +169,8 @@ def run():
     text_renderer = TextRenderer(renderer.sdlrenderer, "assets/fonts/arial.ttf", size=10)
     notif_system = ItemNotificationSystem(text_renderer)    
 
+    collect_timer = COLLECT_INTERVAL
+
     # [NEW] KHỞI TẠO ITEM MANAGER
     item_manager = ItemManager(renderer, text_renderer)
 
@@ -310,14 +312,21 @@ def run():
             
             if event.type == sdl2.SDL_KEYDOWN:
                 if event.key.keysym.sym == sdl2.SDLK_f:
-                    for chest in chests:
-                        chest.interact()
+                    if collect_timer <= 0:
+                        for chest in chests:
+                            if chest.interact():
+                                collect_timer = COLLECT_INTERVAL
+                                break
+                    if collect_timer <= 0:
+                        for item in dropped_items:
+                            if item.interact(notif_system, player):
+                                collect_timer = COLLECT_INTERVAL
+                                break
 
-                    for item in dropped_items:
-                        item.interact(notif_system, player)
-                    
                     # [NEW] Interact with Item Manager items
                     item_manager.handle_interact_key(player)
+                    
+            collect_timer -= dt
 
             # Xử lý input sự kiện (Skills, Jump, Attack)
             if not handle_input(event, player, world, software_factory, renderer, active_tornadoes, active_walls, npc_manager):

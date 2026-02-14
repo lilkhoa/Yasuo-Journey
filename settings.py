@@ -168,3 +168,6 @@ COLOR_BACKGROUND = (20, 20, 30, 255)
 # BOX SETTINGS
 BOX_WIDTH = 44
 BOX_HEIGHT = 44
+
+# OPEN_COLLECTING_INTERVAL
+COLLECT_INTERVAL = 0.1      # have to wait 0.4s to collect/open the next item
