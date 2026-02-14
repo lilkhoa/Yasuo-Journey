@@ -152,7 +152,7 @@ def run():
         chest_tileset_sprite = factory.from_image("assets/Map/interactable_objects/TX Chest Animation.png")
         chest_tileset_texture = chest_tileset_sprite.texture
 
-        # --- LOAD ITEM ICONS ---
+        # --- LOAD ITEM ICONS (Dùng cho Drop cũ) ---
         coin_sprite = factory.from_image("assets/Map/items/Golden Coin.png")
         coin_texture = coin_sprite.texture
 
@@ -210,6 +210,23 @@ def run():
     dropped_items = []  # list manager dropped itemsc
     text_renderer = TextRenderer(renderer.sdlrenderer, "assets/fonts/arial.ttf", size=10)
     notif_system = ItemNotificationSystem(text_renderer)    
+
+    # [NEW] KHỞI TẠO ITEM MANAGER
+    item_manager = ItemManager(renderer, text_renderer)
+
+    # [NEW] SPAWN TEST ITEMS (Tạo 8 món đồ để test)
+    test_items_list = [
+        ItemType.COIN, ItemType.TEAR, ItemType.HEALTH_POTION,
+        ItemType.GREAVES, ItemType.BLOODTHIRSTER, 
+        ItemType.INFINITY_EDGE, ItemType.THORNMAIL, ItemType.HOURGLASS
+    ]
+    
+    print("--- SPAWNING TEST ITEMS ---")
+    start_x = 250
+    start_y = 480
+    for i, item_type in enumerate(test_items_list):
+        # Spawn các item cách nhau 60px
+        item_manager.spawn_item(start_x + i * 60, start_y, item_type)
 
     for y, row in enumerate(INTERACT_MAP):
         for x, char in enumerate(row):
@@ -291,6 +308,9 @@ def run():
 
                     for item in dropped_items:
                         item.interact(notif_system, player)
+                    
+                    # [NEW] Interact with Item Manager items
+                    item_manager.handle_interact_key(player)
 
             # Xử lý input sự kiện (Skills, Jump, Attack)
             if not handle_input(event, player, world, software_factory, renderer, active_tornadoes, active_walls, npc_manager):
@@ -320,11 +340,13 @@ def run():
         for chest in chests:
             chest.update(dt, player, dropped_items, renderer.sdlrenderer)
         
-        # Item updating
+        # Item updating (Old items)
         for item in dropped_items:
             item.update(dt, my_map, player)
-        
         dropped_items = [item for item in dropped_items if not item.is_collected]
+
+        # [NEW] UPDATE ITEM MANAGER
+        item_manager.update(dt, player)
 
         notif_system.update()
 
@@ -550,6 +572,9 @@ def run():
 
         for item in dropped_items:
             item.render(sdl_renderer, camera, player)
+
+        # [NEW] RENDER ITEM MANAGER
+        item_manager.render(camera.camera.x, camera.camera.y, player)
 
         notif_system.render(sdl_renderer)
 

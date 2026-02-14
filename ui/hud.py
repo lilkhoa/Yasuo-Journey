@@ -18,11 +18,6 @@ FONT_PATH = os.path.join(BASE_DIR, "..", "assets/fonts/arial.ttf")
 class SkillBarHUD:
     """
     Renders the skill bar HUD at the bottom of the screen.
-    
-    Components:
-    - Resource bars (HP, Mana/Stamina) - THINNER
-    - Skill icons with cooldown overlay - TIGHT BOUNDING BOX
-    - Stats panel (left side) - SEPARATED with 10 Stats (3 Cols x 3 Rows)
     """
     
     def __init__(self, renderer, player):
@@ -180,7 +175,11 @@ class SkillBarHUD:
         line_h = 24
         icon_s = 18
         
-        # 9 Stats (HP removed) arranged in 3 columns
+        # [UPDATED] Lấy đúng tên biến trong player.py
+        # attack_damage (int), attack_speed (float), crit_chance (int/float)
+        # lifesteal_ratio (float 0.1 -> 10%), attack_range (int), move_speed (prop)
+        # armor (int), hp_regen (float), max_stamina (int)
+        
         stats_data = [
             # Col 1: Offensive
             (col1_x, start_y, 'AD', f"{getattr(self.player, 'attack_damage', 0)}"),
@@ -188,7 +187,7 @@ class SkillBarHUD:
             (col1_x, start_y + line_h*2, 'Crit', f"{getattr(self.player, 'crit_chance', 0)}%"),
             
             # Col 2: Utility / Combat
-            (col2_x, start_y, 'LifeSteal', f"{getattr(self.player, 'life_steal', 0)}%"),
+            (col2_x, start_y, 'LifeSteal', f"{int(getattr(self.player, 'lifesteal_ratio', 0) * 100)}%"),
             (col2_x, start_y + line_h, 'Range', f"{getattr(self.player, 'attack_range', 0)}"),
             (col2_x, start_y + line_h*2, 'Speed', f"{int(getattr(self.player, 'move_speed', 0))}"),
             

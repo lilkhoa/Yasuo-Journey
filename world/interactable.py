@@ -487,4 +487,3 @@ class Chest:
                 bg_color=(0, 0, 0, 200),
                 radius=8
             )
-
