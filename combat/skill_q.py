@@ -3,6 +3,7 @@ import sdl2.ext
 import os
 from combat.skill import Skill
 from combat.utils import load_grid_sprite_sheet
+from settings import DAMAGE_SKILL_Q
 
 def load_tornado_assets(factory, asset_dir):
     filename = "mytornado.png"
@@ -24,7 +25,7 @@ class TornadoObject:
         self.max_hits = max_hits
         self.hit_count = 0
         self.active = True
-        self.damage_base = 100
+        self.damage_base = DAMAGE_SKILL_Q
         self.decay_rate = 0.8 
         self.anim_frame = 0
         self.anim_timer = 0

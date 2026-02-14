@@ -59,6 +59,9 @@ class Player:
         # --- PHYSICS & MOVEMENT ---
         self.facing_right = True
         self.move_speed = 300
+        # [ITEM] Tốc độ chạy cộng thêm (từ Giày)
+        self.move_speed_bonus = 0 
+        
         self.ground_y = y
         self.vel_y = 0
         self.gravity = GRAVITY
@@ -72,16 +75,21 @@ class Player:
         self.hp = self.max_hp
         self.max_stamina = PLAYER_MAX_STAMINA
         self.stamina = self.max_stamina
+        
         self.base_attack_damage = PLAYER_ATTACK_DAMAGE
-        self.attack_damage = self.base_attack_damage # Damage thực tế (có buff)
+        self.attack_damage = self.base_attack_damage 
+        
+        # [ITEM] Chỉ số mới từ trang bị
+        self.lifesteal_ratio = 0.05 # 5% mặc định
+        self.damage_reduction = 0.0 # Giảm sát thương (từ Giáp gai)
         
         self.is_blocking = False
         self.exhausted = False
-        self.invincible = False # Bất tử (Star item)
-        self.flash_timer = 0    # Hiệu ứng nhấp nháy đỏ khi bị đánh
-        self.color_mod = (255, 255, 255) # Màu sắc nhân vật (dùng cho buff)
+        self.invincible = False 
+        self.flash_timer = 0
+        self.color_mod = (255, 255, 255)
         
-        self.buffs = {} # {name: {'timer': float, 'value': float}}
+        self.buffs = {} 
 
         self.state = 'idle'
         self.prev_state = 'idle'
@@ -115,11 +123,9 @@ class Player:
         return sdl2.SDL_Rect(int(self.x + offset_x), int(self.y + offset_y), hitbox_w, hitbox_h)
 
     def get_bounds(self):
-        """Trả về (x, y, w, h) của hitbox để hệ thống đạn NPC sử dụng"""
         rect = self.get_hitbox()
         return (rect.x, rect.y, rect.w, rect.h)
 
-    # --- BUFF & STATS SYSTEM ---
     def apply_buff(self, name, duration, value=0):
         self.buffs[name] = {'timer': duration, 'value': value}
         if name == "damage_boost":
@@ -144,36 +150,34 @@ class Player:
                 self.invincible = False
                 self.color_mod = (255, 255, 255)
 
-        # Hiệu ứng hình ảnh cho Buff
         if "star_invincible" in self.buffs:
             import time
-            # Nhấp nháy vàng
             if int(time.time() * 10) % 2 == 0:
                 self.color_mod = (255, 255, 0)
             else:
                 self.color_mod = (255, 200, 200)
         elif "damage_boost" in self.buffs:
-            self.color_mod = (200, 100, 255) # Tím
+            self.color_mod = (200, 100, 255)
         else:
             self.color_mod = (255, 255, 255)
 
     def update_stats(self):
-        # Tính damage
         multiplier = 1.0
         if "damage_boost" in self.buffs:
             multiplier = self.buffs["damage_boost"]['value']
         self.attack_damage = int(self.base_attack_damage * multiplier)
 
-    # --- LOGIC CHÍNH ---
     def update(self, dt, world, factory, renderer, active_list_q, active_list_w, game_map=None, boxes=None):
         self.regenerate()
         self.cooldowns.update(1)
-        self.handle_buffs(dt) # Cập nhật buff
+        self.handle_buffs(dt)
         
-        # 1. Di chuyển X
+        # 1. Di chuyển X (Tính thêm bonus từ Item Giày)
         dx = 0
-        if self.state == 'run': dx = PLAYER_SPEED_RUN * dt
-        elif self.state == 'walk': dx = PLAYER_SPEED_WALK * dt
+        current_speed = (self.move_speed + self.move_speed_bonus)
+        
+        if self.state == 'run': dx = (current_speed * 1.5) * dt
+        elif self.state == 'walk': dx = current_speed * dt
         
         if dx > 0:
             if not self.facing_right: dx = -dx
@@ -183,7 +187,7 @@ class Player:
                 player_rect = self.get_hitbox()
                 future = sdl2.SDL_Rect(player_rect.x + int(dx), player_rect.y, player_rect.w, player_rect.h)
                 for box in boxes:
-                    if sdl2.SDL_HasIntersection(future, box.rect):
+                    if sdl2.SDL_HasIntersection(future, box.rect) and not self.is_jumping:
                         moved, box_dx = box.push(dx, dt, game_map)
                         actual_dx = int(box_dx) if moved else 0
                         break
@@ -210,12 +214,13 @@ class Player:
         if game_map:
             hitbox = self.get_hitbox()
             tiles = game_map.get_tile_rects_around(hitbox.x, hitbox.y, hitbox.w, hitbox.h)
-            feet = sdl2.SDL_Rect(hitbox.x + 10, hitbox.y + hitbox.h, hitbox.w - 20, 4)
+            feet_rect = sdl2.SDL_Rect(hitbox.x + 10, hitbox.y + hitbox.h, hitbox.w - 20, 4)
             
             for tile in tiles:
                 if sdl2.SDL_HasIntersection(hitbox, tile):
-                    if self.vel_y >= 0:
-                        self.entity.sprite.y = tile.y - 128
+                    if self.vel_y > 0: 
+                        align_y = tile.y - 80 - 48  
+                        self.entity.sprite.y = align_y
                         self.vel_y = 0
                         self.ground_y = tile.y
                         on_ground = True
@@ -223,24 +228,25 @@ class Player:
                         self.entity.sprite.y = tile.y + tile.h - 48
                         self.vel_y = 0
                 elif not on_ground and self.vel_y >= 0:
-                     if sdl2.SDL_HasIntersection(feet, tile):
-                        if abs(self.entity.sprite.y - (tile.y - 128)) <= 8:
-                            self.entity.sprite.y = tile.y - 128
+                    if sdl2.SDL_HasIntersection(feet_rect, tile):
+                        align_y = tile.y - 80 - 48
+                        if abs(self.entity.sprite.y - align_y) <= 8: 
+                            self.entity.sprite.y = align_y
                             self.vel_y = 0
                             self.ground_y = tile.y
                             on_ground = True
 
-        # Box collision Y
         if boxes and not on_ground:
-            hitbox = self.get_hitbox()
             for box in boxes:
-                if sdl2.SDL_HasIntersection(hitbox, box.rect):
-                    if self.vel_y >= 0:
-                        self.entity.sprite.y = box.rect.y - 128
+                if self.vel_y >= 0:
+                    if sdl2.SDL_HasIntersection(feet_rect, box.rect):
+                        align_y = box.rect.y - 80 - 48
+                        self.entity.sprite.y = align_y
                         self.vel_y = 0
+                        self.ground_y = box.rect.y
                         on_ground = True
                         break
-        
+
         self.is_jumping = not on_ground
         if on_ground: self.jump_count = 0
         if self.is_jumping and self.vel_y == 0: self.vel_y = self.gravity
@@ -386,10 +392,15 @@ class Player:
     def take_damage(self, amount):
         if self.invincible: return
         final_dmg = int(amount)
+        
+        # [ITEM] THORNMAIL: Giảm sát thương nhận vào
+        if self.damage_reduction > 0:
+            final_dmg = int(final_dmg * (1.0 - self.damage_reduction))
+            
         if self.is_blocking:
             if self.stamina >= BLOCK_STAMINA_COST_PER_HIT:
                 self.stamina -= BLOCK_STAMINA_COST_PER_HIT
-                final_dmg = int(amount * (1.0 - BLOCK_DAMAGE_REDUCTION))
+                final_dmg = int(final_dmg * (1.0 - BLOCK_DAMAGE_REDUCTION))
             else: self.is_blocking = False
         
         self.hp -= final_dmg
@@ -402,7 +413,10 @@ class Player:
 
     def on_hit_enemy(self, damage):
         self.stamina = min(self.stamina + Reward_Hit_Stamina, self.max_stamina)
-        self.hp = min(self.hp + damage * (PLAYER_LIFESTEAL/100), self.max_hp)
+        # [ITEM] BLOODTHIRSTER: Hút máu theo tỷ lệ
+        heal = int(damage * self.lifesteal_ratio)
+        if heal > 0:
+            self.hp = min(self.hp + heal, self.max_hp)
 
     def on_kill_enemy(self):
         self.stamina = min(self.stamina + Reward_Kill_Stamina, self.max_stamina)

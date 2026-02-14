@@ -956,10 +956,14 @@ class BossMeteorProjectile(Projectile):
         self.rotation_angle = math.degrees(math.atan2(velocity_y, velocity_x)) - 180
         
         # Longer lifetime for meteors (they travel from top of screen)
-        self.lifetime = 600  # 10 seconds (plenty of time to cross screen)
+        self.lifetime = 60  # 10 seconds (plenty of time to cross screen)
         
         # Track if explosion has been spawned
         self.explosion_spawned = False
+        
+        # Debug counter
+        self.update_count = 0
+        self.last_debug_y = y
         
         # Load or use preloaded meteor textures
         self.frame_textures = []
@@ -1005,9 +1009,19 @@ class BossMeteorProjectile(Projectile):
         if not self.active:
             return
         
-        # Update position
-        self.x += self.velocity_x * delta_time
-        self.y += self.velocity_y * delta_time
+        # Track updates for debugging
+        self.update_count += 1
+        old_x, old_y = self.x, self.y
+        
+        # Update position - velocities are in pixels/frame, NOT pixels/second
+        # So we DON'T multiply by delta_time (which is in seconds)
+        self.x += self.velocity_x
+        self.y += self.velocity_y
+        
+        # Debug every 30 updates (about every 0.5 seconds)
+        if self.update_count % 30 == 0:
+            distance_moved = self.y - self.last_debug_y
+            self.last_debug_y = self.y
         
         # Update animation
         self._update_animation()
@@ -1022,8 +1036,8 @@ class BossMeteorProjectile(Projectile):
             # Deactivate meteor
             self.active = False
         
-        # Update lifetime
-        self.lifetime -= delta_time
+        # Update lifetime - this should use delta_time since it's a counter
+        self.lifetime -= 1  # Decrement by 1 frame, not by seconds
         if self.lifetime <= 0:
             self.active = False
     
@@ -1042,6 +1056,19 @@ class BossMeteorProjectile(Projectile):
             self._spawn_explosion(explosion_x=self.x + self.width / 2,
                                   explosion_y=self.y + self.height / 2)
             self.explosion_spawned = True
+        self.active = False
+    
+    def on_hit(self):
+        """
+        Override on_hit to trigger explosion when meteor hits player.
+        This ensures explosion animation and sound play on player collision.
+        """
+        # Trigger explosion at meteor center
+        if not self.explosion_spawned:
+            self._spawn_explosion(explosion_x=self.x + self.width / 2,
+                                  explosion_y=self.y + self.height / 2)
+            self.explosion_spawned = True
+        # Deactivate meteor
         self.active = False
     
     def _update_animation(self):
@@ -1181,8 +1208,9 @@ class BossExplosionEffect(Projectile):
         # Update animation
         self._update_animation()
         
-        # Update lifetime
-        self.lifetime -= delta_time
+        # Update lifetime - decrement by frames, not seconds
+        # lifetime is set as frame count (e.g., 10 frames * 5 = 50 frames)
+        self.lifetime -= 1
         if self.lifetime <= 0:
             self.active = False
     
@@ -1434,9 +1462,7 @@ class BossKamehamehaProjectile(Projectile):
         self.boss_x = x
         self.boss_y = y
         self._update_position()
-        
-        # Laser lifetime (2 seconds at 60 FPS)
-        self.lifetime = 60
+        self.lifetime = 1.2
         
         # Sprite sheet with 9 frames (left to right order)
         self.sprite_texture = None
@@ -1458,6 +1484,10 @@ class BossKamehamehaProjectile(Projectile):
             self._load_sprite_sheet()
         
         self.animation_speed = 0.15
+        
+        # Damage cooldown to prevent hitting every frame (continuous beam damage at intervals)
+        self.damage_cooldown = 0.0  # Time until next damage tick
+        self.damage_interval = 0.2  # Deal damage every 0.2 seconds (5 times per second)
     
     def _load_sprite_sheet(self):
         """Load sprite sheet from disk (fallback)."""
@@ -1508,6 +1538,10 @@ class BossKamehamehaProjectile(Projectile):
         
         # Update animation
         self._update_animation()
+        
+        # Update damage cooldown
+        if self.damage_cooldown > 0:
+            self.damage_cooldown -= delta_time
         
         # Update lifetime
         self.lifetime -= delta_time
@@ -1565,9 +1599,29 @@ class BossKamehamehaProjectile(Projectile):
             flip
         )
     
+    def check_collision(self, target):
+        """
+        Override collision check to respect damage cooldown.
+        Only returns True (allows damage) when cooldown has expired.
+        """
+        if not self.active:
+            return False
+        
+        # Check if damage cooldown is active
+        if self.damage_cooldown > 0:
+            return False  # Can't deal damage yet
+        
+        # Use parent's collision detection
+        collision_detected = super().check_collision(target)
+        
+        if collision_detected:
+            # Reset damage cooldown for next damage tick
+            self.damage_cooldown = self.damage_interval
+        
+        return collision_detected
+    
     def on_hit(self):
         """Override on_hit to keep laser active (doesn't deactivate on collision)."""
-        # Laser persists through hits, dealing continuous damage
         pass
     
     def cleanup(self):

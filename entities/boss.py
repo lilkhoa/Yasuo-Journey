@@ -424,12 +424,14 @@ class Boss:
         if self.jump_cooldown > 0:
             self.jump_cooldown -= 1
         
-        # Check HP thresholds for meteor skill (priority)
-        self._check_meteor_thresholds()
+        if self.current_skill is None:
+            self._check_meteor_thresholds()
         
         # Update movement if moving for skill (must be before skill update)
         if self.is_moving_to_center or self.is_returning_from_center:
             self._update_skill_movement()
+        
+        self._update_minions()
         
         # Update skill execution if active
         if self.current_skill is not None:
@@ -439,9 +441,6 @@ class Boss:
         # Update jumping physics
         if self.is_jumping:
             self._update_jump()
-        
-        # Update summoned minions
-        self._update_minions()
         
         # Boss only uses skills when visible on screen
         if self.skill_cooldown >= self.skill_cooldown_max and not self.is_attacking and self.is_on_screen():
@@ -746,10 +745,6 @@ class Boss:
         self.skill_cooldown = 0
         self._kamehameha_fired = False  # Reset flag to ensure laser fires exactly once
         
-        # Play kamehameha charging sound
-        # if self.sound_manager:
-        #     self.sound_manager.play_sound("boss_kamehameha")
-        
         self.state = BossState.CASTING
         self.current_frame = 0
         self.frame_counter = 0
@@ -848,7 +843,7 @@ class Boss:
         direction = self.direction.value
         
         # Spawn kamehameha laser beam (stationary, attached to boss)
-        self.projectile_manager.spawn_boss_kamehameha(
+        laser = self.projectile_manager.spawn_boss_kamehameha(
             spawn_x, spawn_y, direction, self, self.laser_damage
         )
     

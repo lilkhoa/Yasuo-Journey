@@ -16,6 +16,13 @@ SHOP_FRAME_HEIGHT = 128
 SHOP_TOTAL_FRAMES = 6   # number of sprite in the sheet 
 SHOP_ANIM_SPEED = 150   # change frame speed (ms). frame / 1000 (ms)=> 150 ms / frame
 
+FENCE_SCALE = 3
+GRASS_SCALE = 4
+LAMP_SCALE = 4
+ROCK_SCALE = 4
+SIGN_SCALE = 4
+SHOP_SCALE = 4
+
 DECO_DEFINITIONS = {
     'f': 'FENCE_1',      
     'F': 'FENCE_2',   
@@ -74,19 +81,19 @@ class Decoration:
             print(f"Loading image error: {E}")
             return
 
-        # Define original size (w, h) for each one
+        # Define original size (w, h, scale_factor) for each one
         self.DECO_INFO = {
-            'FENCE_1'   : (73, 19),
-            'FENCE_2'   : (72, 19),
-            'GRASS_1'   : (8, 3),
-            'GRASS_2'   : (10, 5),
-            'GRASS_3'   : (9, 4),
-            'LAMP'      : (23, 57),
-            'ROCK_1'    : (20, 11),
-            'ROCK_2'    : (27, 12),
-            'ROCK_3'    : (45, 18),
-            'SIGN'      : (22, 31),
-            'SHOP'      : (SHOP_FRAME_WIDTH, SHOP_FRAME_HEIGHT)      
+            'FENCE_1'   : (73, 19, FENCE_SCALE),
+            'FENCE_2'   : (72, 19, FENCE_SCALE),
+            'GRASS_1'   : (8, 3, GRASS_SCALE),
+            'GRASS_2'   : (10, 5, GRASS_SCALE),
+            'GRASS_3'   : (9, 4, GRASS_SCALE),
+            'LAMP'      : (23, 57, LAMP_SCALE),
+            'ROCK_1'    : (20, 11, ROCK_SCALE),
+            'ROCK_2'    : (27, 12, ROCK_SCALE),
+            'ROCK_3'    : (45, 18, ROCK_SCALE),
+            'SIGN'      : (22, 31, SIGN_SCALE),
+            'SHOP'      : (SHOP_FRAME_WIDTH, SHOP_FRAME_HEIGHT, SHOP_SCALE)      
         }
         
     def render(self, renderer, char_code: str, grid_x, grid_y, camera: Camera):
@@ -96,7 +103,7 @@ class Decoration:
         if char_code not in DECO_DEFINITIONS: return
 
         name = DECO_DEFINITIONS[char_code]
-        w, h = self.DECO_INFO[name]
+        w, h, scale_factor = self.DECO_INFO[name]
         texture = self.textures[name]
 
         # process shop animation
@@ -113,8 +120,8 @@ class Decoration:
         
         # 2. alignment for bottom edge of deco == bottom of grid cell
         # => this make we place the fence or grass properly on the block
-        dst_w = int(w * SCALE_FACTOR)
-        dst_h = int(h * SCALE_FACTOR)
+        dst_w = int(w * scale_factor)
+        dst_h = int(h * scale_factor)
 
         # offset y for bottom of deco texture touch the bottom of the grid cell
         # render y = (Bottom of grid cell) - (height of texture)
