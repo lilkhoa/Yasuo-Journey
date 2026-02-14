@@ -22,17 +22,25 @@ DECO_MAP = [
     "                                                  ", 
 ]
 
-# INTERACT MAP (Layer dành riêng cho vật thể tương tác)
-# 'B' = Box (Thùng đẩy)
-# 'b' = Barrel (Thùng phuy đập vỡ)
-# 'C' = Chest (Rương)
 INTERACT_MAP = [
     "                                                  ", 
     "                                                  ", 
-    "   C                                               ", 
-    "                                                  ", # Thùng đẩy trên cao
-    "        b                         b               ", # Rương và Thùng phuy
-    " B                                                ", 
+    "   C                                              ", 
+    "                     bb             C             ", 
+    "        b                                         ",
     "                                                  ", 
+    "                           bb                     ", 
     "                                                  ", 
+]
+
+# NPC SPAWN MAP
+NPC_MAP = [
+    "                                                  ", # Row 0
+    "                                                  ", # Row 1
+    "   O                  G             GG            ", # Row 2
+    "        G           S  S                          ", # Row 3
+    "                                                  ", # Row 4
+    "                            O                     ", # Row 5
+    "                                                B ", # Row 6: 
+    "                                                  ", # Row 7
 ]

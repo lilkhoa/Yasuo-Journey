@@ -58,7 +58,7 @@ class Player:
         
         # --- PHYSICS & MOVEMENT ---
         self.facing_right = True
-        self.base_move_speed = 300 # Tốc độ gốc
+        self.base_move_speed = PLAYER_SPEED_WALK # Tốc độ gốc
         self.move_speed_bonus = 0  # [ITEM] Tốc độ cộng thêm
         
         self.ground_y = y
@@ -187,7 +187,7 @@ class Player:
         dx = 0
         current_speed = self.move_speed
         
-        if self.state == 'run': dx = (current_speed * 1.5) * dt
+        if self.state == 'run': dx = PLAYER_SPEED_RUN * dt
         elif self.state == 'walk': dx = current_speed * dt
         
         if dx > 0:

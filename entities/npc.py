@@ -121,7 +121,7 @@ class NPC:
         self.damage = damage
         self.attack_range = attack_range
         self.detection_range = detection_range
-        self.vertical_detection_range = self.height
+        self.vertical_detection_range = self.height - 20
         
         # Movement
         self.speed = speed
@@ -407,7 +407,6 @@ class NPC:
         
         if not self.is_chasing and player_in_detection and is_on_same_vertical_level:
             # Player entered detection area - start chasing
-            print(f"[NPC] Player detected at {player_x:.0f}! Starting chase. NPC at {self.x:.0f}")
             self._start_chase()
         elif self.is_chasing:
             # Add hysteresis buffer to prevent jittery behavior at boundary
@@ -433,7 +432,6 @@ class NPC:
                             self.direction = Direction.RIGHT
                         else:
                             self.direction = Direction.LEFT
-                        print(f"[NPC] Player in attack range! Distance={distance_to_player:.0f}, attacking...")
                         self._attack_player()
                 else:
                     # Player out of attack range - continue chasing if not attacking
@@ -442,7 +440,6 @@ class NPC:
     
     def _start_chase(self):
         """Start chasing the player."""
-        print(f"[NPC] Chase started! State: {self.state.value} -> CHASE")
         self.is_chasing = True
         self.returning_to_spawn = False
         # Don't stop patrol mode - we'll resume after chase
@@ -690,6 +687,7 @@ class Ghost(NPC):
             attack_cooldown_max=NPC_GHOST_ATTACK_COOLDOWN
         )
         
+        self.is_flying = True
         self.projectile_manager = projectile_manager
         self.projectile_fired_this_attack = False
         self.sound_manager = sound_manager
@@ -736,9 +734,6 @@ class Ghost(NPC):
                             'height': h.value,
                             'frames': frames
                         }
-                        # Debug output for Attack_3 and Attack_4
-                        if state in [NPCState.ATTACK_3, NPCState.ATTACK_4]:
-                            print(f"Loaded {state.value}: {w.value}x{h.value} pixels, {frames} frames, frame_width={w.value//frames}")
                 except Exception as e:
                     print(f"Failed to load {filepath}: {e}")
         
@@ -806,7 +801,6 @@ class Ghost(NPC):
             charge_type: 1 for Charge_1, 2 for Charge_2
         """
         if not self.projectile_manager:
-            print(f"[GHOST] ERROR: No projectile manager!")
             return
         
         # Calculate projectile spawn position (in front of Ghost)
@@ -815,9 +809,6 @@ class Ghost(NPC):
         proj_y = self.y + 20
         
         direction = 1 if self.direction == Direction.RIGHT else -1
-        
-        print(f"[GHOST] Firing projectile! Pos=({proj_x:.0f}, {proj_y:.0f}), dir={direction}, charge={charge_type}")
-        
         # Spawn the projectile through the manager
         self.projectile_manager.spawn_ghost_projectile(
             proj_x, proj_y, direction, self, charge_type
@@ -832,8 +823,6 @@ class Ghost(NPC):
         """
         if self.attack_cooldown > 0 or self.is_attacking:
             return
-        
-        print(f"[GHOST] Starting attack! Type={attack_type}, frame={self.current_frame}")
         
         attack_states = {
             3: NPCState.ATTACK_3,
@@ -1067,7 +1056,7 @@ class Onre(NPC):
         self.melee_hitbox_width = 20
         self.melee_hitbox_height = 60
         self.melee_hitbox_offset = 20
-        
+        self.is_flying = True
         # Dangerous frames for each attack type
         self.dangerous_frames_map = {
             NPCState.ATTACK_1: [2, 3, 4],
@@ -1088,10 +1077,6 @@ class Onre(NPC):
             if os.path.exists(sound_path):
                 try:
                     self.attack_sounds[i] = sdl2.sdlmixer.Mix_LoadWAV(sound_path.encode('utf-8'))
-                    if self.attack_sounds[i]:
-                        print(f"[Onre] Loaded attack sound {i+1} from {sound_path}")
-                    else:
-                        print(f"[Onre] Failed to load attack sound {i+1}: {sdl2.sdlmixer.Mix_GetError()}")
                 except Exception as e:
                     print(f"[Onre] Error loading attack sound {i+1}: {e}")
             else:

@@ -956,7 +956,7 @@ class BossMeteorProjectile(Projectile):
         self.rotation_angle = math.degrees(math.atan2(velocity_y, velocity_x)) - 180
         
         # Longer lifetime for meteors (they travel from top of screen)
-        self.lifetime = 60  # 10 seconds (plenty of time to cross screen)
+        self.lifetime = 600  # 10 seconds (plenty of time to cross screen)
         
         # Track if explosion has been spawned
         self.explosion_spawned = False
@@ -1462,7 +1462,7 @@ class BossKamehamehaProjectile(Projectile):
         self.boss_x = x
         self.boss_y = y
         self._update_position()
-        self.lifetime = 1.2
+        self.lifetime = 1.5
         
         # Sprite sheet with 9 frames (left to right order)
         self.sprite_texture = None
