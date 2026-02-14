@@ -137,6 +137,146 @@ class SoundManager:
         """
         sdl2.sdlmixer.Mix_Volume(-1, volume)
     
+    def load_music(self, filepath):
+        """
+        Load background music from file.
+        
+        Args:
+            filepath: Path to the music file
+            
+        Returns:
+            bool: True if music loaded successfully, False otherwise
+        """
+        if not self.initialized:
+            return False
+        
+        # Check if file exists
+        if not os.path.exists(filepath):
+            return False
+        
+        # Free existing music if any
+        if self.music:
+            sdl2.sdlmixer.Mix_FreeMusic(self.music)
+            self.music = None
+        
+        # Load music
+        try:
+            music = sdl2.sdlmixer.Mix_LoadMUS(filepath.encode('utf-8'))
+            if music:
+                self.music = music
+                return True
+            else:
+                return False
+        except Exception as e:
+            return False
+    
+    def play_music(self, loops=-1, fade_in_ms=0):
+        """
+        Play the loaded background music.
+        
+        Args:
+            loops: Number of times to loop (-1 = loop forever, 0 = play once)
+            fade_in_ms: Fade in duration in milliseconds (0 = no fade)
+            
+        Returns:
+            bool: True if music started playing, False otherwise
+        """
+        if not self.initialized or not self.music:
+            return False
+        
+        if fade_in_ms > 0:
+            return sdl2.sdlmixer.Mix_FadeInMusic(self.music, loops, fade_in_ms) == 0
+        else:
+            return sdl2.sdlmixer.Mix_PlayMusic(self.music, loops) == 0
+    
+    def stop_music(self, fade_out_ms=0):
+        """
+        Stop the currently playing music.
+        
+        Args:
+            fade_out_ms: Fade out duration in milliseconds (0 = stop immediately)
+        """
+        if fade_out_ms > 0:
+            sdl2.sdlmixer.Mix_FadeOutMusic(fade_out_ms)
+        else:
+            sdl2.sdlmixer.Mix_HaltMusic()
+    
+    def is_music_playing(self):
+        """
+        Check if music is currently playing.
+        
+        Returns:
+            bool: True if music is playing, False otherwise
+        """
+        return sdl2.sdlmixer.Mix_PlayingMusic() != 0
+    
+    def set_music_volume(self, volume):
+        """
+        Set the volume for music.
+        
+        Args:
+            volume: Volume level (0-128)
+        """
+        sdl2.sdlmixer.Mix_VolumeMusic(volume)
+    
+    def load_player_sounds(self):
+        """
+        Load all player sounds (attacks, skills, movement, damage).
+        
+        Returns:
+            bool: True if all sounds loaded successfully
+        """
+        success = True
+        
+        # Player normal attack sounds
+        success &= self.load_sound("player_auto_barrel", os.path.join("assets", "Sounds", "auto-barrel.ogg"))
+        success &= self.load_sound("player_auto_npc", os.path.join("assets", "Sounds", "auto-npc.ogg"))
+        success &= self.load_sound("player_auto_miss", os.path.join("assets", "Sounds", "auto.ogg"))
+        
+        # Skill sounds
+        success &= self.load_sound("player_q1", os.path.join("assets", "Sounds", "Q-1.ogg"))
+        success &= self.load_sound("player_q2", os.path.join("assets", "Sounds", "Q-2.ogg"))
+        success &= self.load_sound("player_w1", os.path.join("assets", "Sounds", "W-1.ogg"))
+        success &= self.load_sound("player_w2", os.path.join("assets", "Sounds", "W-2.ogg"))
+        success &= self.load_sound("player_e1", os.path.join("assets", "Sounds", "E-1.ogg"))
+        success &= self.load_sound("player_e2", os.path.join("assets", "Sounds", "E-2.ogg"))
+        
+        # Movement sounds
+        success &= self.load_sound("player_walk", os.path.join("assets", "Sounds", "player-walk.mp3"))
+        success &= self.load_sound("player_run", os.path.join("assets", "Sounds", "run.mp3"))
+        
+        # Jump sounds
+        success &= self.load_sound("player_jump", os.path.join("assets", "Sounds", "jump-1.ogg"))
+        success &= self.load_sound("player_land", os.path.join("assets", "Sounds", "jump-2.mp3"))
+        
+        # Damage sounds
+        success &= self.load_sound("player_hit", os.path.join("assets", "Sounds", "hit-1.mp3"))
+        success &= self.load_sound("player_hurt", os.path.join("assets", "Sounds", "hit-2.ogg"))
+        
+        return success
+    
+    def load_game_sounds(self):
+        """
+        Load general game sounds (chest, items, game states).
+        
+        Returns:
+            bool: True if all sounds loaded successfully
+        """
+        success = True
+        
+        # Game state sounds
+        success &= self.load_sound("game_over", os.path.join("assets", "Sounds", "game-over.mp3"))
+        success &= self.load_sound("victory", os.path.join("assets", "Sounds", "victory.mp3"))
+        
+        # Item sounds
+        success &= self.load_sound("item_pickup", os.path.join("assets", "Sounds", "item-pickup.mp3"))
+        success &= self.load_sound("item_pop", os.path.join("assets", "Sounds", "item-pop.mp3"))
+        
+        # Chest sound
+        success &= self.load_sound("chest_open", os.path.join("assets", "Sounds", "chest-open.mp3"))
+        
+        return success
+    
     def load_npc_sounds(self):
         """
         Load all NPC attack sounds.
@@ -183,6 +323,42 @@ class SoundManager:
         success &= self.load_sound("boss_hurt", os.path.join("assets", "Boss", "Boss", "Hurt", "hurt.mp3"))
         
         return success
+    
+    def load_background_music(self):
+        """
+        Load background music tracks.
+        Helper to manage which track is loaded.
+        
+        Returns:
+            bool: True if normal background music loaded successfully
+        """
+        # Load normal background music initially
+        return self.load_music(os.path.join("assets", "Sounds", "background-normal.mp3"))
+    
+    def switch_to_boss_music(self, fade_out_ms=1000, fade_in_ms=1000):
+        if self.music:
+            sdl2.sdlmixer.Mix_FreeMusic(self.music)
+            self.music = None
+        
+        # Stop current music with fade out
+        self.stop_music(fade_out_ms)
+        
+        # Load boss music
+        if self.load_music(os.path.join("assets", "Sounds", "background-boss.mp3")):
+            self.play_music(loops=-1, fade_in_ms=fade_in_ms)
+    
+    def switch_to_normal_music(self, fade_out_ms=1000, fade_in_ms=1000):
+        """Switch from boss music back to normal background music."""
+        if self.music:
+            sdl2.sdlmixer.Mix_FreeMusic(self.music)
+            self.music = None
+        
+        # Stop current music with fade out
+        self.stop_music(fade_out_ms)
+        
+        # Load normal background music
+        if self.load_music(os.path.join("assets", "Sounds", "background-normal.mp3")):
+            self.play_music(loops=-1, fade_in_ms=fade_in_ms)
     
     def cleanup(self):
         """Clean up all loaded sounds and close audio."""
