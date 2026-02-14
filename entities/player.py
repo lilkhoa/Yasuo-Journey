@@ -58,7 +58,9 @@ class Player:
         
         # --- PHYSICS & MOVEMENT ---
         self.facing_right = True
-        self.move_speed = 300
+        self.base_move_speed = 300 # Tốc độ gốc
+        self.move_speed_bonus = 0  # [ITEM] Tốc độ cộng thêm
+        
         self.ground_y = y
         self.vel_y = 0
         self.gravity = GRAVITY
@@ -72,16 +74,26 @@ class Player:
         self.hp = self.max_hp
         self.max_stamina = PLAYER_MAX_STAMINA
         self.stamina = self.max_stamina
+        
         self.base_attack_damage = PLAYER_ATTACK_DAMAGE
-        self.attack_damage = self.base_attack_damage # Damage thực tế (có buff)
+        self.attack_damage = self.base_attack_damage 
+        
+        # [ITEM & HUD STATS] Các chỉ số mở rộng
+        self.lifesteal_ratio = 0.05   # 5% hút máu mặc định
+        self.damage_reduction = 0.0   # % Giảm sát thương (Thornmail)
+        self.armor = 30               # Giáp cơ bản
+        self.crit_chance = 0          # % Chí mạng
+        self.attack_range = 150       # Tầm đánh cơ bản
+        self.attack_speed = 1.0       # Tốc độ đánh
+        self.hp_regen = PLAYER_HEALTH_REGEN
         
         self.is_blocking = False
         self.exhausted = False
-        self.invincible = False # Bất tử (Star item)
-        self.flash_timer = 0    # Hiệu ứng nhấp nháy đỏ khi bị đánh
-        self.color_mod = (255, 255, 255) # Màu sắc nhân vật (dùng cho buff)
+        self.invincible = False 
+        self.flash_timer = 0
+        self.color_mod = (255, 255, 255)
         
-        self.buffs = {} # {name: {'timer': float, 'value': float}}
+        self.buffs = {} 
 
         self.state = 'idle'
         self.prev_state = 'idle'
@@ -107,6 +119,11 @@ class Player:
     @property
     def height(self): return self.entity.sprite.size[1]
     
+    # [NEW PROPERTY] Tổng tốc độ di chuyển
+    @property
+    def move_speed(self):
+        return self.base_move_speed + self.move_speed_bonus
+
     def get_hitbox(self):
         hitbox_w = 40
         hitbox_h = 80
@@ -114,13 +131,10 @@ class Player:
         offset_y = (128 - hitbox_h)
         return sdl2.SDL_Rect(int(self.x + offset_x), int(self.y + offset_y), hitbox_w, hitbox_h)
 
-    # --- [FIX LỖI] THÊM HÀM NÀY ĐỂ TƯƠNG THÍCH VỚI PROJECTILE ---
     def get_bounds(self):
-        """Trả về (x, y, w, h) của hitbox để hệ thống đạn NPC sử dụng"""
         rect = self.get_hitbox()
         return (rect.x, rect.y, rect.w, rect.h)
 
-    # --- BUFF & STATS SYSTEM ---
     def apply_buff(self, name, duration, value=0):
         self.buffs[name] = {'timer': duration, 'value': value}
         if name == "damage_boost":
@@ -145,36 +159,36 @@ class Player:
                 self.invincible = False
                 self.color_mod = (255, 255, 255)
 
-        # Hiệu ứng hình ảnh cho Buff
         if "star_invincible" in self.buffs:
             import time
-            # Nhấp nháy vàng
             if int(time.time() * 10) % 2 == 0:
                 self.color_mod = (255, 255, 0)
             else:
                 self.color_mod = (255, 200, 200)
         elif "damage_boost" in self.buffs:
-            self.color_mod = (200, 100, 255) # Tím
+            self.color_mod = (200, 100, 255)
         else:
             self.color_mod = (255, 255, 255)
 
     def update_stats(self):
-        # Tính damage
         multiplier = 1.0
         if "damage_boost" in self.buffs:
             multiplier = self.buffs["damage_boost"]['value']
+        
+        # [ITEM] Cập nhật Attack Damage dựa trên Base (đã cộng item) * Buff
         self.attack_damage = int(self.base_attack_damage * multiplier)
 
-    # --- LOGIC CHÍNH ---
     def update(self, dt, world, factory, renderer, active_list_q, active_list_w, game_map=None, boxes=None):
         self.regenerate()
         self.cooldowns.update(1)
-        self.handle_buffs(dt) # Cập nhật buff
+        self.handle_buffs(dt)
         
-        # 1. Di chuyển X
+        # 1. Di chuyển X (Dùng property move_speed đã tính bonus)
         dx = 0
-        if self.state == 'run': dx = PLAYER_SPEED_RUN * dt
-        elif self.state == 'walk': dx = PLAYER_SPEED_WALK * dt
+        current_speed = self.move_speed
+        
+        if self.state == 'run': dx = (current_speed * 1.5) * dt
+        elif self.state == 'walk': dx = current_speed * dt
         
         if dx > 0:
             if not self.facing_right: dx = -dx
@@ -215,12 +229,8 @@ class Player:
             
             for tile in tiles:
                 if sdl2.SDL_HasIntersection(hitbox, tile):
-                    if self.vel_y > 0: # Đang rơi xuống -> Chạm đất
-                        # Đặt chân nhân vật lên đầu tile
-                        # Tính toán: Hitbox.bottom = Tile.top
-                        # Sprite.y = Tile.top - Hitbox.height - offset_y
-                        # Snap vị trí nhân vật nằm ngay ngắn trên mặt tile
-                        align_y = tile.y - 80 - 48  # 80 là h, 48 là off_y
+                    if self.vel_y > 0: 
+                        align_y = tile.y - 80 - 48  
                         self.entity.sprite.y = align_y
                         self.vel_y = 0
                         self.ground_y = tile.y
@@ -230,10 +240,8 @@ class Player:
                         self.vel_y = 0
                 elif not on_ground and self.vel_y >= 0:
                     if sdl2.SDL_HasIntersection(feet_rect, tile):
-                        # Phát hiện đất ngay dưới chân -> Hút dính xuống
                         align_y = tile.y - 80 - 48
-                        # Chỉ hút nếu khoảng cách rất gần (tránh hút từ xa)
-                        if abs(self.entity.sprite.y - align_y) <= 3: 
+                        if abs(self.entity.sprite.y - align_y) <= 8: 
                             self.entity.sprite.y = align_y
                             self.vel_y = 0
                             self.ground_y = tile.y
@@ -342,7 +350,8 @@ class Player:
             self.is_running = False; self.exhausted = True; return False
 
     def regenerate(self):
-        if self.hp < self.max_hp: self.hp = min(self.hp + PLAYER_HEALTH_REGEN, self.max_hp)
+        # Sử dụng self.hp_regen để hỗ trợ buff hồi máu
+        if self.hp < self.max_hp: self.hp = min(self.hp + self.hp_regen, self.max_hp)
         if self.state == 'walk' and self.stamina < self.max_stamina:
             self.stamina = min(self.stamina + PLAYER_STAMINA_REGEN_WALK, self.max_stamina)
         if self.exhausted and self.stamina > self.max_stamina * 0.3: self.exhausted = False
@@ -395,13 +404,21 @@ class Player:
     def take_damage(self, amount):
         if self.invincible: return
         final_dmg = int(amount)
+        
+        # [ITEM] THORNMAIL: Giảm sát thương nhận vào
+        if self.damage_reduction > 0:
+            final_dmg = int(final_dmg * (1.0 - self.damage_reduction))
+        
+        # [ITEM] Trừ giáp (cơ chế đơn giản)
+        damage_after_armor = max(1, final_dmg - int(self.armor * 0.1))
+
         if self.is_blocking:
             if self.stamina >= BLOCK_STAMINA_COST_PER_HIT:
                 self.stamina -= BLOCK_STAMINA_COST_PER_HIT
-                final_dmg = int(amount * (1.0 - BLOCK_DAMAGE_REDUCTION))
+                damage_after_armor = int(damage_after_armor * (1.0 - BLOCK_DAMAGE_REDUCTION))
             else: self.is_blocking = False
         
-        self.hp -= final_dmg
+        self.hp -= damage_after_armor
         if self.hp <= 0: self.die()
         else:
             self.flash_timer = 0.1
@@ -411,7 +428,10 @@ class Player:
 
     def on_hit_enemy(self, damage):
         self.stamina = min(self.stamina + Reward_Hit_Stamina, self.max_stamina)
-        self.hp = min(self.hp + damage * (PLAYER_LIFESTEAL/100), self.max_hp)
+        # [ITEM] BLOODTHIRSTER: Hút máu theo tỷ lệ
+        heal = int(damage * self.lifesteal_ratio)
+        if heal > 0:
+            self.hp = min(self.hp + heal, self.max_hp)
 
     def on_kill_enemy(self):
         self.stamina = min(self.stamina + Reward_Kill_Stamina, self.max_stamina)

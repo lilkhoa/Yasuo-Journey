@@ -112,7 +112,7 @@ def run():
         chest_tileset_sprite = factory.from_image("assets/Map/interactable_objects/TX Chest Animation.png")
         chest_tileset_texture = chest_tileset_sprite.texture
 
-        # --- LOAD ITEM ICONS ---
+        # --- LOAD ITEM ICONS (Dùng cho Drop cũ) ---
         coin_sprite = factory.from_image("assets/Map/items/Golden Coin.png")
         coin_texture = coin_sprite.texture
 
@@ -171,6 +171,23 @@ def run():
     text_renderer = TextRenderer(renderer.sdlrenderer, "assets/fonts/arial.ttf", size=10)
     notif_system = ItemNotificationSystem(text_renderer)    
 
+    # [NEW] KHỞI TẠO ITEM MANAGER
+    item_manager = ItemManager(renderer, text_renderer)
+
+    # [NEW] SPAWN TEST ITEMS (Tạo 8 món đồ để test)
+    test_items_list = [
+        ItemType.COIN, ItemType.TEAR, ItemType.HEALTH_POTION,
+        ItemType.GREAVES, ItemType.BLOODTHIRSTER, 
+        ItemType.INFINITY_EDGE, ItemType.THORNMAIL, ItemType.HOURGLASS
+    ]
+    
+    print("--- SPAWNING TEST ITEMS ---")
+    start_x = 250
+    start_y = 480
+    for i, item_type in enumerate(test_items_list):
+        # Spawn các item cách nhau 60px
+        item_manager.spawn_item(start_x + i * 60, start_y, item_type)
+
     for y, row in enumerate(INTERACT_MAP):
         for x, char in enumerate(row):
             # calculate the real position
@@ -180,7 +197,7 @@ def run():
             grid_y_pos = (y * TILE_SIZE) # because we scale the block has the same size to the ground block
 
             if char == "B":
-                new_box = Box(world_x, grid_y_pos, box_tileset_texture)
+                new_box = Box(world_x, grid_y_pos, common_drop_table, box_tileset_texture, text_renderer)
                 boxes.append(new_box)
             
             elif char == "b":   # barrel
@@ -267,6 +284,9 @@ def run():
 
                     for item in dropped_items:
                         item.interact(notif_system, player)
+                    
+                    # [NEW] Interact with Item Manager items
+                    item_manager.handle_interact_key(player)
 
             # Xử lý input sự kiện (Skills, Jump, Attack)
             if not handle_input(event, player, world, software_factory, renderer, active_tornadoes, active_walls, npc_manager):
@@ -274,9 +294,12 @@ def run():
         
         # Update Logic
         keys = sdl2.SDL_GetKeyboardState(None)
+        # Combine boxes and unbroken barrels for physics
+        all_obstacles = boxes + [b for b in barrels if not b.is_broken]
+
         player.set_blocking(keys[sdl2.SDLK_s])
         player.handle_movement(keys)
-        player.update(dt, world, software_factory, None, active_tornadoes, active_walls, game_map=my_map, boxes=boxes)
+        player.update(dt, world, software_factory, None, active_tornadoes, active_walls, game_map=my_map, boxes=all_obstacles)
         
         if player.entity.sprite.x < 0: player.entity.sprite.x = 0
         if player.entity.sprite.x > my_map.width_pixel - 128: player.entity.sprite.x = my_map.width_pixel - 128
@@ -287,17 +310,19 @@ def run():
 
         # Barrel updating
         for barrel in barrels:
-            barrel.update(dt)
+            barrel.update(dt, my_map)
 
         # Chest updating
         for chest in chests:
             chest.update(dt, player, dropped_items, renderer.sdlrenderer)
         
-        # Item updating
+        # Item updating (Old items)
         for item in dropped_items:
             item.update(dt, my_map, player)
-        
         dropped_items = [item for item in dropped_items if not item.is_collected]
+
+        # [NEW] UPDATE ITEM MANAGER
+        item_manager.update(dt, player)
 
         notif_system.update()
 
@@ -325,7 +350,8 @@ def run():
                 w.delete()
                 active_walls.remove(w)
                 
-        player.skill_e.update_dash(dt, all_combat_targets, boxes)
+                
+        player.skill_e.update_dash(dt, all_combat_targets, all_obstacles, my_map)
         if player.skill_e.is_dashing: player.state = 'dashing_e'
         elif player.state == 'dashing_e' and not player.skill_e.is_dashing: player.state = 'idle'
 
@@ -335,13 +361,20 @@ def run():
         
         # ============== COMBAT COLLISION SYSTEM ==============
         if not game_over:
-            # 0. PROJECTILE -> BOX
+            # 0. PROJECTILE -> BOX / BARREL
             for projectile in projectile_manager.projectiles[:]:
                 proj_rect = sdl2.SDL_Rect(int(projectile.x), int(projectile.y), projectile.width, projectile.height)
+                # Check Boxes
                 for box in boxes:
                     if sdl2.SDL_HasIntersection(proj_rect, box.rect):
                         projectile.on_hit()
                         break
+                # Check Barrels (Unbroken)
+                if projectile.active: # Only check if not already hit box
+                    for barrel in barrels:
+                        if not barrel.is_broken and sdl2.SDL_HasIntersection(proj_rect, barrel.rect):
+                            projectile.on_hit()
+                            break
 
             # 1. NPC PROJECTILE -> PLAYER
             for projectile in projectile_manager.projectiles[:]:
@@ -392,16 +425,26 @@ def run():
             
             # 3. PLAYER ATTACK -> NPC/BOSS/MINION
             if player.state == 'attacking':
-                px, py, pw, ph = player.x, player.y, player.width, player.height
-                player_attack_range = 60
+                # Use actual body hitbox for accurate checking
+                bx, by, bw, bh = player.get_hitbox().x, player.get_hitbox().y, player.get_hitbox().w, player.get_hitbox().h
+                player_attack_range = 50 # Tầm đánh 50px từ người
                 
                 if player.facing_right:
-                    attack_hitbox = (px + pw - 20, py + 20, player_attack_range, ph - 40)
+                    # Đánh từ mép phải người ra ngoài
+                    attack_hitbox = (bx + bw, by, player_attack_range, bh)
                 else:
-                    attack_hitbox = (px - player_attack_range + 20, py + 20, player_attack_range, ph - 40)
+                    # Đánh từ mép trái người ra ngoài
+                    attack_hitbox = (bx - player_attack_range, by, player_attack_range, bh)
                 
+                atk_rect = sdl2.SDL_Rect(*attack_hitbox) 
+
+                # Hit Box
+                for box in boxes:
+                    if not box.is_broken:
+                        if sdl2.SDL_HasIntersection(atk_rect, box.rect):
+                            box.take_damage(1, dropped_items, renderer.sdlrenderer)
+
                 # Hit Barrels
-                atk_rect = sdl2.SDL_Rect(*attack_hitbox)    
                 for barrel in barrels:
                     if not barrel.is_broken:
                         if sdl2.SDL_HasIntersection(atk_rect, barrel.get_bounds()):
@@ -512,6 +555,9 @@ def run():
 
         for item in dropped_items:
             item.render(sdl_renderer, camera, player)
+
+        # [NEW] RENDER ITEM MANAGER
+        item_manager.render(camera.camera.x, camera.camera.y, player)
 
         notif_system.render(sdl_renderer)
 

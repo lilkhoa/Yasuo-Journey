@@ -62,7 +62,7 @@ class WallObject:
 
 class SkillW(Skill):
     def __init__(self, owner):
-        super().__init__(owner, cooldown_time=15.0)
+        super().__init__(owner, cooldown_time=0.1)
 
     def execute(self, world, factory, renderer, skill_sprites=None):
         print("Casting W: Fire Wall!")
