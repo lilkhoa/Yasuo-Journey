@@ -956,7 +956,7 @@ class BossMeteorProjectile(Projectile):
         self.rotation_angle = math.degrees(math.atan2(velocity_y, velocity_x)) - 180
         
         # Longer lifetime for meteors (they travel from top of screen)
-        self.lifetime = 60  # 10 seconds (plenty of time to cross screen)
+        self.lifetime = 600  # 10 seconds (plenty of time to cross screen)
         
         # Track if explosion has been spawned
         self.explosion_spawned = False

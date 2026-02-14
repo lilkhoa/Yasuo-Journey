@@ -38,3 +38,14 @@ INTERACT_MAP = [
     "                    b                                                           C                                           b               ", # Barrel và Chest dưới đất
     "                                                                                                                                            ",
 ]
+
+NPC_MAP = [
+    "                                                                                                                                            ",
+    "                                                                                                                                            ",
+    "                                                                                                                                            ",
+    "                                                                                                                                            ",
+    "                                                                                                                                            ",
+    "                                                                                                                                            ",
+    "      G     S       O                                 G         S                                                              B            ", # Row 6: Main ground NPCs
+    "                                                                                                                                            ",
+]

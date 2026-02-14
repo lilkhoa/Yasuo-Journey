@@ -10,7 +10,7 @@ from world.interactable import Box
 from world.decoration import Decoration
 from world.item import DroppedItem
 from world.interactable import Barrel, Chest, BARREL_RENDER_WIDTH, BARREL_RENDER_HEIGHT
-from world.matrix_map import TERRAIN_MAP, DECO_MAP, INTERACT_MAP
+from world.matrix_map import TERRAIN_MAP, DECO_MAP, INTERACT_MAP, NPC_MAP
 from sdl2 import SDL_Rect, SDL_RenderCopy
 from core.camera import Camera
 from core.text_renderer import TextRenderer
@@ -31,46 +31,6 @@ from items.item import ItemManager, ItemType
 
 # Sound manager
 from core.sound import get_sound_manager
-
-
-# Long test map to test camera scroll: TERRAIN
-TERRAIN_MAP = [
-    "                                                  ",  
-    "                                                  ", 
-    "                                                  ", 
-    "  2233                    2233                    ", 
-    "          (- - 8 8 8 8 8 8        (- - 8 8 8 8 8 8", 
-    "      [== 78 8 0 0 0 0 0 0    [== 78 8 0 0 0 0 0 0", 
-    "-5===5------68 0 0 0 0 0 0-5= =5- - - 68 0 0 0 0 0", 
-    "0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 ", 
-]
-
-# DECO MAP (Mask Map)
-DECO_MAP = [
-    "                                                  ", 
-    "    ff                                            ", 
-    "                                                  ", 
-    "                          S                       ", # f: hàng rào, S: Shop
-    "          g g              l      g g             ", # g: cỏ, l: đèn
-    "      r   r                       r               ", # r: đá
-    "                                                  ", 
-    "                                                  ", 
-]
-
-# INTERACT MAP (Layer dành riêng cho vật thể tương tác)
-# 'B' = Box (Thùng đẩy)
-# 'b' = Barrel (Thùng phuy đập vỡ)
-# 'C' = Chest (Rương)
-INTERACT_MAP = [
-    "                                                  ", 
-    "                                                  ", 
-    "   C                                               ", 
-    "                                                  ", # Thùng đẩy trên cao
-    "        b                         b               ", # Rương và Thùng phuy
-    " B                                                ", 
-    "                                                  ", 
-    "                                                  ", 
-]
 
 
 
@@ -237,7 +197,7 @@ def run():
                 new_chest = Chest(world_x, grid_y_pos, chest_tileset_texture, common_drop_table, text_renderer)
                 chests.append(new_chest)
 
-    player = Player(world, software_factory, 100, 350) # Spawn gần mặt đất
+    player = Player(world, software_factory, 1000, 350) # Spawn gần mặt đất
     
     projectile_manager = ProjectileManager(renderer.sdlrenderer)
     npc_manager = NPCManager(software_factory, None, renderer.sdlrenderer, projectile_manager, sound_manager)
@@ -245,22 +205,38 @@ def run():
     
     hud = SkillBarHUD(renderer.sdlrenderer, player)
     
-    npc_ground_y = 500
-    
-    g1 = npc_manager.spawn_ghost(350, npc_ground_y)
-    g1.set_player(player)
-    make_npc_compatible(g1)
-    s1 = npc_manager.spawn_shooter(550, npc_ground_y)
-    s1.set_player(player)
-    make_npc_compatible(s1)
-    o1 = npc_manager.spawn_onre(750, npc_ground_y)
-    o1.set_player(player)
-    make_npc_compatible(o1)
+    for y, row in enumerate(NPC_MAP):
+        for x, char in enumerate(row):
+            if char == ' ':
+                continue
+            
+            world_x = x * TILE_SIZE
+            grid_y_pos = y * TILE_SIZE
+            
+            if char == 'G':
+                # Spawn Ghost
+                npc = npc_manager.spawn_ghost(world_x, grid_y_pos)
+                npc.set_player(player)
+                make_npc_compatible(npc)
+                
+            elif char == 'S':
+                # Spawn Shooter
+                npc = npc_manager.spawn_shooter(world_x, grid_y_pos)
+                npc.set_player(player)
+                make_npc_compatible(npc)
+                
+            elif char == 'O':
+                # Spawn Onre
+                npc = npc_manager.spawn_onre(world_x, grid_y_pos)
+                npc.set_player(player)
+                make_npc_compatible(npc)
+                
+            elif char == 'B':
+                # Spawn Boss (offset Y upward for flying entrance)
+                boss = boss_manager.spawn_boss(world_x, grid_y_pos - 200)
+                boss.set_player(player)
+                make_npc_compatible(boss)
 
-    # Boss spawn
-    boss = boss_manager.spawn_boss(4500, npc_ground_y - 400)
-    boss.set_player(player)
-    make_npc_compatible(boss)
 
     active_tornadoes = []
     active_walls = []
