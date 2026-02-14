@@ -1,5 +1,6 @@
 import sdl2
 import sdl2.ext
+import sdl2.sdlmixer
 import os
 import sys
 
@@ -20,7 +21,10 @@ from settings import *
 from combat.cooldown import CooldownManager
 
 class Player:
-    def __init__(self, world, factory, x, y):
+    def __init__(self, world, factory, x, y, sound_manager=None):
+        # --- 0. SOUND MANAGER ---
+        self.sound_manager = sound_manager
+        
         # --- 1. LOAD ANIMATION ---
         self.anims_right = {}
         self.anims_right['idle'] = load_grid_sprite_sheet(factory, os.path.join(PLAYER_ASSET_DIR, "Idle.png"), cols=6, rows=1)
@@ -107,6 +111,11 @@ class Player:
         self.skill_q = SkillQ(self)
         self.skill_w = SkillW(self)
         self.skill_e = SkillE(self)
+        
+        # Sound tracking
+        self.was_on_ground = True
+        self.walk_sound_channel = -1
+        self.run_sound_channel = -1
 
     @property
     def sprite(self): return self.entity.sprite
@@ -259,7 +268,12 @@ class Player:
                         break
 
         self.is_jumping = not on_ground
-        if on_ground: self.jump_count = 0
+        if on_ground: 
+            self.jump_count = 0
+            # Play landing sound if just landed
+            if not self.was_on_ground and self.sound_manager:
+                self.sound_manager.play_sound("player_land")
+        self.was_on_ground = on_ground
         if self.is_jumping and self.vel_y == 0: self.vel_y = self.gravity
         if self.entity.sprite.y > 1000: self.die()
 
@@ -301,12 +315,22 @@ class Player:
             if self.frame_index >= len(frames):
                 if self.state == 'casting_q':
                     self.spawn_tornado(world, factory, renderer, active_list_q)
+                    # Play Q-2 sound when spawning tornado
+                    if self.sound_manager:
+                        self.sound_manager.play_sound("player_q2")
                     self.state = 'idle'
                 elif self.state == 'casting_w':
                     self.spawn_wall(world, factory, renderer, active_list_w)
+                    # Play W-2 sound when spawning wall
+                    if self.sound_manager:
+                        self.sound_manager.play_sound("player_w2")
                     self.state = 'idle'
                 elif self.state == 'dashing_e':
-                    if not self.skill_e.is_dashing: self.state = 'idle'
+                    if not self.skill_e.is_dashing: 
+                        # Play E-2 sound when dash ends
+                        if self.sound_manager:
+                            self.sound_manager.play_sound("player_e2")
+                        self.state = 'idle'
                 elif self.state == 'attacking': self.state = 'idle'
                 elif self.state == 'dead': 
                     self.frame_index = len(frames) - 1
@@ -324,6 +348,9 @@ class Player:
             self.vel_y = self.jump_force
             self.is_jumping = True
             self.jump_count += 1
+            # Play jump sound
+            if self.sound_manager:
+                self.sound_manager.play_sound("player_jump")
 
     def handle_movement(self, keys):
         if self.is_blocking or self.state in ['casting_q', 'casting_w', 'dashing_e', 'attacking', 'dead', 'hurt']: return
@@ -336,11 +363,31 @@ class Player:
             
         if has_input:
             run_key = keys[sdl2.SDL_SCANCODE_LSHIFT] or keys[sdl2.SDL_SCANCODE_RSHIFT]
-            if run_key and self.try_run(): self.state = 'run'
-            else: self.state = 'walk'; self.is_running = False
+            if run_key and self.try_run(): 
+                self.state = 'run'
+                # Play run sound (looping)
+                if self.sound_manager and self.run_sound_channel == -1:
+                    self.run_sound_channel = self.sound_manager.play_sound("player_run", loops=-1)
+            else: 
+                self.state = 'walk'
+                self.is_running = False
+                # Stop run sound
+                if self.run_sound_channel != -1:
+                    sdl2.sdlmixer.Mix_HaltChannel(self.run_sound_channel)
+                    self.run_sound_channel = -1
+                # Play walk sound (looping)
+                if self.sound_manager and self.walk_sound_channel == -1:
+                    self.walk_sound_channel = self.sound_manager.play_sound("player_walk", loops=-1)
         else:
             if not self.is_jumping: self.state = 'idle'
             self.is_running = False
+            # Stop movement sounds
+            if self.walk_sound_channel != -1:
+                sdl2.sdlmixer.Mix_HaltChannel(self.walk_sound_channel)
+                self.walk_sound_channel = -1
+            if self.run_sound_channel != -1:
+                sdl2.sdlmixer.Mix_HaltChannel(self.run_sound_channel)
+                self.run_sound_channel = -1
 
     def try_run(self):
         if self.exhausted: return False
@@ -363,6 +410,9 @@ class Player:
             self.cooldowns.start_cooldown("skill_q", SKILL_Q_COOLDOWN)
             if direction: self.facing_right = (direction > 0)
             self.state = 'casting_q'; self.frame_index = 0
+            # Play Q-1 sound when starting cast
+            if self.sound_manager:
+                self.sound_manager.play_sound("player_q1")
 
     def start_w(self, direction=0):
         if self.stamina < SKILL_W_COST or not self.cooldowns.is_ready("skill_w"): return
@@ -371,6 +421,9 @@ class Player:
             self.cooldowns.start_cooldown("skill_w", SKILL_W_COOLDOWN)
             if direction: self.facing_right = (direction > 0)
             self.state = 'casting_w'; self.frame_index = 0
+            # Play W-1 sound when starting cast
+            if self.sound_manager:
+                self.sound_manager.play_sound("player_w1")
 
     def start_e(self, world, factory, renderer, direction):
         if self.stamina < SKILL_E_COST or not self.cooldowns.is_ready("skill_e"): return
@@ -380,6 +433,9 @@ class Player:
             self.facing_right = (direction > 0)
             self.state = 'dashing_e'; self.frame_index = 0
             self.skill_e.cast(world, factory, renderer)
+            # Play E-1 sound when starting dash
+            if self.sound_manager:
+                self.sound_manager.play_sound("player_e1")
 
     def spawn_tornado(self, world, factory, renderer, active_list):
         if self.tornado_frames: 
@@ -423,7 +479,13 @@ class Player:
         else:
             self.flash_timer = 0.1
             self.hit_count += 1
+            # Play hit sound
+            if self.sound_manager:
+                self.sound_manager.play_sound("player_hit")
             if self.hit_count >= PLAYER_HITS_TO_STAGGER and self.state != 'dead':
+                # Play hurt sound when entering hurt state
+                if self.sound_manager:
+                    self.sound_manager.play_sound("player_hurt")
                 self.state = 'hurt'; self.hurt_timer = 0; self.hit_count = 0
 
     def on_hit_enemy(self, damage):

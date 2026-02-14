@@ -83,8 +83,16 @@ def run():
     factory = sdl2.ext.SpriteFactory(sdl2.ext.TEXTURE, renderer=renderer)
     sound_manager = get_sound_manager()
     sound_manager.initialize()
+    sound_manager.load_player_sounds()
     sound_manager.load_npc_sounds()
     sound_manager.load_boss_sounds()
+    sound_manager.load_game_sounds()
+    
+    # Load and play background music
+    if sound_manager.load_background_music():
+        sound_manager.play_music(loops=-1)  # Loop forever
+    else:
+        print("[AUDIO] Warning: Could not load background music")
 
     try:
         tileset_sprite = factory.from_image("assets/Map/oak_woods_tileset.png")
@@ -212,7 +220,7 @@ def run():
                 new_chest = Chest(world_x, grid_y_pos, chest_tileset_texture, common_drop_table, text_renderer)
                 chests.append(new_chest)
 
-    player = Player(world, software_factory, 100, 350) # Spawn gần mặt đất
+    player = Player(world, software_factory, 100, 350, sound_manager) # Spawn gần mặt đất
     
     projectile_manager = ProjectileManager(renderer.sdlrenderer)
     npc_manager = NPCManager(software_factory, None, renderer.sdlrenderer, projectile_manager, sound_manager)
@@ -239,6 +247,8 @@ def run():
             )
             dropped_items.append(coin_item)
         
+        # Play item pop sound for coin drops
+        sound_manager.play_sound("item_pop")
         print(f"[COIN DROP] {num_coins} coin(s) dropped from {entity.__class__.__name__}")
     # ============================
     
@@ -287,11 +297,19 @@ def run():
     kill_count = 0
     game_over = False
     game_over_timer = 0
+    game_over_sound_played = False
     
     # Boss encounter system
     boss_encountered = False
+    boss_music_playing = False
     boss_fight_text_timer = 0.0
     boss_fight_text_duration = 2.0  # Display for 3 seconds
+    
+    # Victory system
+    victory = False
+    victory_timer = 0
+    victory_text_duration = 3.0
+    victory_sound_played = False
 
     # 4. game loop
     running = True
@@ -373,11 +391,34 @@ def run():
                 if boss.is_on_screen():
                     boss_encountered = True
                     boss_fight_text_timer = boss_fight_text_duration
+                    
+                    # Switch to boss music
+                    sound_manager.switch_to_boss_music(fade_out_ms=1000, fade_in_ms=1000)
+                    boss_music_playing = True
                     break
+        
+        # Check if boss music should switch back to normal (boss off-screen or dead)
+        if boss_music_playing:
+            boss_on_screen = any(boss.is_on_screen() for boss in alive_bosses)
+            if not boss_on_screen:
+                sound_manager.switch_to_normal_music(fade_out_ms=1000, fade_in_ms=1000)
+                boss_music_playing = False
         
         # Update boss fight text timer
         if boss_fight_text_timer > 0:
             boss_fight_text_timer -= dt
+        
+        # Check for victory (boss encountered but all bosses are dead)
+        if boss_encountered and not victory and len(alive_bosses) == 0:
+            victory = True
+            victory_timer = victory_text_duration
+            if not victory_sound_played:
+                sound_manager.play_sound("victory")
+                victory_sound_played = True
+        
+        # Update victory timer
+        if victory_timer > 0:
+            victory_timer -= dt
         
         all_combat_targets = alive_npcs + alive_bosses + all_minions
         
@@ -468,6 +509,10 @@ def run():
             
             # 3. PLAYER ATTACK -> NPC/BOSS/MINION
             if player.state == 'attacking':
+                # Initialize attack hit tracking on first frame of attack
+                if not hasattr(player, '_attack_hit_anything'):
+                    player._attack_hit_anything = False
+                
                 # Use actual body hitbox for accurate checking
                 bx, by, bw, bh = player.get_hitbox().x, player.get_hitbox().y, player.get_hitbox().w, player.get_hitbox().h
                 player_attack_range = 50 # Tầm đánh 50px từ người
@@ -486,6 +531,10 @@ def run():
                     if not barrel.is_broken:
                         if sdl2.SDL_HasIntersection(atk_rect, barrel.get_bounds()):
                             barrel.take_damage(1, dropped_items, renderer.sdlrenderer)
+                            # Play barrel hit sound
+                            if not player._attack_hit_anything:
+                                sound_manager.play_sound("player_auto_barrel")
+                                player._attack_hit_anything = True
                     
                 # Hit NPCs
                 for npc in alive_npcs:
@@ -496,6 +545,10 @@ def run():
                             setattr(player, '_attack_hit_npc_' + str(id(npc)), True)
                             npc.take_damage(player.attack_damage)
                             player.on_hit_enemy(player.attack_damage)
+                            # Play NPC hit sound
+                            if not player._attack_hit_anything:
+                                sound_manager.play_sound("player_auto_npc")
+                                player._attack_hit_anything = True
                             print(f"[COMBAT] Player hit NPC! NPC HP: {npc.health}")
                             if not npc.is_alive():
                                 kill_count += 1
@@ -511,6 +564,10 @@ def run():
                             setattr(player, '_attack_hit_boss_' + str(id(boss)), True)
                             boss.take_damage(player.attack_damage)
                             player.on_hit_enemy(player.attack_damage)
+                            # Play NPC hit sound
+                            if not player._attack_hit_anything:
+                                sound_manager.play_sound("player_auto_npc")
+                                player._attack_hit_anything = True
                 
                 # Hit Minions
                 for minion in all_minions:
@@ -521,12 +578,23 @@ def run():
                             setattr(player, '_attack_hit_minion_' + str(id(minion)), True)
                             minion.take_damage(player.attack_damage)
                             player.on_hit_enemy(player.attack_damage)
+                            # Play NPC hit sound
+                            if not player._attack_hit_anything:
+                                sound_manager.play_sound("player_auto_npc")
+                                player._attack_hit_anything = True
                             print(f"[COMBAT] Player hit Boss Minion! Minion HP: {minion.health}")
                             if minion.health <= 0:
                                 kill_count += 1
                                 player.on_kill_enemy()
                                 print(f"[COMBAT] Minion killed! Total kills: {kill_count}")
             else:
+                # Attack ended - play miss sound if nothing was hit
+                if hasattr(player, '_attack_hit_anything'):
+                    if not player._attack_hit_anything:
+                        sound_manager.play_sound("player_auto_miss")
+                    delattr(player, '_attack_hit_anything')
+                
+                # Clean up hit tracking flags
                 for npc in npc_manager.npcs:
                     if hasattr(player, '_attack_hit_npc_' + str(id(npc))):
                         delattr(player, '_attack_hit_npc_' + str(id(npc)))
@@ -541,6 +609,9 @@ def run():
             if player.state == 'dead':
                 game_over = True
                 game_over_timer = 3.0
+                if not game_over_sound_played:
+                    sound_manager.play_sound("game_over")
+                    game_over_sound_played = True
                 print("[GAME] Player died! Game Over in 3 seconds...")
         
         else:
@@ -553,6 +624,7 @@ def run():
                 player.is_blocking = False
                 player.invincible = False
                 game_over = False
+                game_over_sound_played = False
                 print(f"[GAME] Player respawned! Kills: {kill_count}")
 
         # Render
@@ -618,6 +690,7 @@ def run():
         
         hud.render()
         
+        # Display boss fight text
         if boss_fight_text_timer > 0:
             if not hasattr(run, 'boss_text_renderer'):
                 run.boss_text_renderer = TextRenderer(sdl_renderer, "assets/fonts/arial.ttf", size=72)
@@ -633,6 +706,40 @@ def run():
                 bg_color=(0, 0, 0, 200),
                 radius=15
             )
+        
+        # Display game over text
+        if game_over and game_over_timer > 0:
+            if not hasattr(run, 'game_over_text_renderer'):
+                run.game_over_text_renderer = TextRenderer(sdl_renderer, "assets/fonts/arial.ttf", size=72)
+            
+            center_x = WINDOW_WIDTH // 2
+            center_y = WINDOW_HEIGHT // 3
+            
+            run.game_over_text_renderer.renderer_text(
+                "GAME OVER",
+                center_x, center_y,
+                color=(255, 255, 255),
+                draw_bg=True,
+                bg_color=(0, 0, 0, 200),
+                radius=15
+            )
+        
+        # Display victory text
+        if victory_timer > 0:
+            if not hasattr(run, 'victory_text_renderer'):
+                run.victory_text_renderer = TextRenderer(sdl_renderer, "assets/fonts/arial.ttf", size=72)
+            
+            center_x = WINDOW_WIDTH // 2
+            center_y = WINDOW_HEIGHT // 3
+            
+            run.victory_text_renderer.renderer_text(
+                "VICTORY",
+                center_x, center_y,
+                color=(255, 255, 50),
+                draw_bg=True,
+                bg_color=(0, 0, 0, 200),
+                radius=15
+            )
 
         renderer.present()
         sdl2.SDL_Delay(1000 // FPS)
@@ -640,7 +747,6 @@ def run():
     hud.cleanup()
     npc_manager.cleanup()
     projectile_manager.cleanup()
+    sound_manager.cleanup()
     sdl2.ext.quit()
-
-if __name__ == "__main__":
-    run()
+    
