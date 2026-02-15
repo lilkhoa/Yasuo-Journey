@@ -8,6 +8,7 @@ from settings import *
 from world.map import GameMap
 from world.interactable import Box
 from world.decoration import Decoration
+from world.checkpoint import CheckpointStatue
 from items.item import DroppedItem, ItemType, ItemCategory, ITEM_REGISTRY
 from world.interactable import Barrel, Chest, BARREL_RENDER_WIDTH, BARREL_RENDER_HEIGHT
 from world.matrix_map import TERRAIN_MAP, DECO_MAP, INTERACT_MAP, NPC_MAP
@@ -133,7 +134,11 @@ def run():
         thornmail_texture = thornmail_sprite.texture
         hourglass_sprite = factory.from_image("assets/Map/LOL_Equipment/64x64_Zhonyas_Hourglass.png")
         hourglass_texture = hourglass_sprite.texture
-    
+
+        # Load statue texture
+        statue_sprite = factory.from_image("assets/Map/interactable_objects/inazuma_statue.png")
+        statue_texture = statue_sprite.texture
+
     except Exception as e:
         print(f"Load sprite error: {e}")
         return
@@ -175,8 +180,12 @@ def run():
     text_renderer = TextRenderer(renderer.sdlrenderer, "assets/fonts/arial.ttf", size=10)
     notif_system = ItemNotificationSystem(text_renderer)    
 
-
     collect_timer = COLLECT_INTERVAL
+
+    checkpoints = []
+    # Variable to store revive data
+    last_checkpoint_data = None
+    last_checkpoint_pos = None
 
     for y, row in enumerate(INTERACT_MAP):
         for x, char in enumerate(row):
@@ -184,13 +193,20 @@ def run():
             grid_y_pos = (y * TILE_SIZE)
             if char == "B":
                 boxes.append(Box(world_x, grid_y_pos, box_tileset_texture))
+
             elif char == "b":
                 barrel_h, barrel_w = BARREL_RENDER_HEIGHT, BARREL_RENDER_WIDTH
                 real_x = (world_x + TILE_SIZE // 2) - barrel_w // 2
                 real_y = (grid_y_pos + TILE_SIZE) - barrel_h
                 barrels.append(Barrel(real_x, real_y, barrel_tileset_texture, common_drop_table, text_renderer))
+
             elif char == 'C':
                 chests.append(Chest(world_x, grid_y_pos, chest_tileset_texture, common_drop_table, text_renderer))
+
+            elif char == 'P':
+                statue = CheckpointStatue(world_x, grid_y_pos, statue_texture, text_renderer)
+                checkpoints.append(statue)
+
 
     # --- INIT PLAYER ---
     player = Player(world, software_factory, 100, 350, sound_manager, renderer_ptr=renderer.sdlrenderer)
@@ -327,6 +343,22 @@ def run():
                                     if sound_manager:
                                         sound_manager.play_sound("item_pickup")
                                     break
+
+                        for statue in checkpoints:
+                            if collect_timer <= 0:
+                                saved_data = statue.interact(player)
+                                if saved_data: 
+                                    # 1. store revive data
+                                    last_checkpoint_data = saved_data
+
+                                    # 2. Store revive spawn pos
+                                    last_checkpoint_pos = (statue.x + statue.width//2 - 64, y + statue.height - 128)
+                                    
+                                    # 3. reset collect timer
+                                    collect_timer = COLLECT_INTERVAL
+                                    if sound_manager:
+                                        sound_manager.play_sound("activate_statue")
+                                    break
                     
                     # [MASTERY TRIGGER] Ctrl + 6
                     if key == sdl2.SDLK_6 and (mod & sdl2.KMOD_CTRL):
@@ -409,6 +441,8 @@ def run():
             for barrel in barrels: barrel.update(dt, my_map)
             for chest in chests: chest.update(dt, player, dropped_items, renderer.sdlrenderer)
             for item in dropped_items: item.update(dt, my_map, player)
+            for statue in checkpoints:
+                statue.update(dt, player)
             dropped_items = [item for item in dropped_items if not item.is_collected]
 
             notif_system.update()
@@ -542,6 +576,26 @@ def run():
                     game_over = True; game_over_timer = 3.0
                     if not game_over_sound_played:
                         sound_manager.play_sound("game_over"); game_over_sound_played = True
+
+                
+                if player.state == 'dead' and player.dead_animation_complete:
+                    # revive immediately to test
+                    if last_checkpoint_data and last_checkpoint_pos:
+                        # CASE 1: Có Checkpoint -> Load lại trạng thái cũ
+                        spawn_x, spawn_y = last_checkpoint_pos
+                        player.load_save_data(last_checkpoint_data, spawn_x, spawn_y)
+                    
+                    else:
+                        # CASE 2: Không có Checkpoint -> Reset về đầu map
+                        print("[SYSTEM] No checkpoint. Restarting level...")
+                        # Reset thủ công hoặc load lại scene
+                        player.hp = player.max_hp
+                        player.entity.sprite.x = 100
+                        player.entity.sprite.y = 350
+                        player.state = 'idle'
+                        player.is_blocking = False
+                        player.dead_animation_complete = False
+
             else:
                 game_over_timer -= dt
                 if game_over_timer <= 0 and not fade_active:
@@ -570,7 +624,9 @@ def run():
             for barrel in barrels: barrel.render(sdl_renderer, camera)
             for chest in chests: chest.render(sdl_renderer, camera, player)
             for item in dropped_items: item.render(sdl_renderer, camera, player)
-            
+            for statue in checkpoints:
+                statue.render(sdl_renderer, camera)
+
             notif_system.render(sdl_renderer)
 
             npc_manager.render_all(camera.camera.x, camera.camera.y)
