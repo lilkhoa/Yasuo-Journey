@@ -255,6 +255,9 @@ class SoundManager:
         # Damage sounds
         success &= self.load_sound("player_hit", os.path.join("assets", "Sounds", "hit-1.mp3"))
         success &= self.load_sound("player_hurt", os.path.join("assets", "Sounds", "hit-2.ogg"))
+
+        # Press to activating the statue
+        success &= self.load_sound("statue_click", os.path.join("assets", "Sounds", "press_F_activate.mp3"))
         
         return success
     
@@ -278,6 +281,9 @@ class SoundManager:
         # Chest sound
         success &= self.load_sound("chest_open", os.path.join("assets", "Sounds", "chest-open.mp3"))
         
+        # Activating statue sound
+        success &= self.load_sound("statue_process", os.path.join("assets", "Sounds", "activating_statue.mp3"))
+
         return success
     
     def load_npc_sounds(self):

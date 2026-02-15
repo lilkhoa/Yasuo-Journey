@@ -91,6 +91,11 @@ def run():
     sound_manager.load_game_sounds()
     sound_manager.load_item_sounds()
     
+    if sound_manager.get_sound("statue_process"):
+        sound_manager.set_volume("statue_process", 128) # Max volume
+    if sound_manager.get_sound("statue_click"):
+        sound_manager.set_volume("statue_click", 128)   # Max volume
+
     if sound_manager.load_background_music():
         sound_manager.play_music(loops=-1)
     else:
@@ -205,6 +210,10 @@ def run():
 
             elif char == 'P':
                 statue = CheckpointStatue(world_x, grid_y_pos, statue_texture, text_renderer)
+                statue.set_sounds(
+                    sound_manager.get_sound("statue_click"),
+                    sound_manager.get_sound("statue_process")
+                )
                 checkpoints.append(statue)
 
 
@@ -346,8 +355,6 @@ def run():
                                     
                                     # 3. reset collect timer
                                     collect_timer = COLLECT_INTERVAL
-                                    if sound_manager:
-                                        sound_manager.play_sound("activate_statue")
                                     break
                     
                     # [MASTERY TRIGGER] Ctrl + 6
