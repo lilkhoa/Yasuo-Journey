@@ -224,7 +224,6 @@ def run():
     # LOAD COIN FROM SAVE FILE
     saved_gold = load_saved_data()
     player.gold = saved_gold
-    print(f"[SYSTEM] Welcome back! Loaded Gold: {player.gold}")
 
     projectile_manager = ProjectileManager(renderer.sdlrenderer)
     npc_manager = NPCManager(software_factory, None, renderer.sdlrenderer, projectile_manager, sound_manager)
@@ -289,6 +288,12 @@ def run():
     victory_timer = 0
     victory_text_duration = 3.0
     victory_sound_played = False
+    
+    # Fade to black variables
+    fade_active = False
+    fade_alpha = 0
+    fade_duration = 2.0  # 2 seconds to fade to black
+    fade_timer = 0.0
 
     game_menu = GameMenu(renderer.sdlrenderer, WINDOW_WIDTH, WINDOW_HEIGHT)
 
@@ -374,6 +379,41 @@ def run():
             
             collect_timer -= dt
         
+        # 2.5. FADE UPDATE
+        if fade_active:
+            fade_timer += dt
+            fade_alpha = int((fade_timer / fade_duration) * 255)
+            if fade_alpha > 255:
+                fade_alpha = 255
+            
+            if fade_timer >= fade_duration:
+                # Fade complete - return to main menu and reset game state
+                fade_active = False
+                fade_alpha = 0
+                fade_timer = 0.0
+                game_menu.state = MenuState.MAIN_MENU
+                game_menu.selected_index = 0
+                
+                # Reset game state
+                player.hp = player.max_hp
+                player.stamina = player.max_stamina
+                player.state = 'idle'
+                player.entity.sprite.position = (100, 350)
+                player.is_blocking = False
+                player.invincible = False
+                game_over = False
+                game_over_sound_played = False
+                victory = False
+                victory_sound_played = False
+                victory_timer = 0
+                game_over_timer = 0
+                boss_encountered = False
+                
+                # Switch back to normal music
+                if boss_music_playing:
+                    sound_manager.switch_to_normal_music(fade_out_ms=1000, fade_in_ms=1000)
+                    boss_music_playing = False
+        
         # 3. UPDATE
         if game_menu.state == MenuState.GAME_PLAYING:
             keys = sdl2.SDL_GetKeyboardState(None)
@@ -429,7 +469,13 @@ def run():
                 if not victory_sound_played:
                     sound_manager.play_sound("victory")
                     victory_sound_played = True
-            if victory_timer > 0: victory_timer -= dt
+            if victory_timer > 0:
+                victory_timer -= dt
+                if victory_timer <= 0 and not fade_active:
+                    # Start fade to black after victory text
+                    fade_active = True
+                    fade_timer = 0.0
+                    fade_alpha = 0
             
             all_combat_targets = alive_npcs + alive_bosses + all_minions
             
@@ -529,11 +575,11 @@ def run():
                         sound_manager.play_sound("game_over"); game_over_sound_played = True
             else:
                 game_over_timer -= dt
-                if game_over_timer <= 0:
-                    player.hp = player.max_hp; player.stamina = player.max_stamina
-                    player.state = 'idle'; player.entity.sprite.position = (100, 350)
-                    player.is_blocking = False; player.invincible = False
-                    game_over = False; game_over_sound_played = False
+                if game_over_timer <= 0 and not fade_active:
+                    # Start fade to black after game over text
+                    fade_active = True
+                    fade_timer = 0.0
+                    fade_alpha = 0
 
         # --- RENDER ---
         renderer.clear()
@@ -592,6 +638,15 @@ def run():
                 run.victory_text_renderer.renderer_text("VICTORY", WINDOW_WIDTH//2, WINDOW_HEIGHT//3, color=(255, 255, 50), draw_bg=True, bg_color=(0, 0, 0, 200), radius=15)
 
         game_menu.render()
+        
+        # Render fade overlay
+        if fade_active and fade_alpha > 0:
+            fade_rect = sdl2.SDL_Rect(0, 0, WINDOW_WIDTH, WINDOW_HEIGHT)
+            sdl2.SDL_SetRenderDrawBlendMode(sdl_renderer, sdl2.SDL_BLENDMODE_BLEND)
+            sdl2.SDL_SetRenderDrawColor(sdl_renderer, 0, 0, 0, fade_alpha)
+            sdl2.SDL_RenderFillRect(sdl_renderer, fade_rect)
+            sdl2.SDL_SetRenderDrawBlendMode(sdl_renderer, sdl2.SDL_BLENDMODE_NONE)
+        
         renderer.present()
         sdl2.SDL_Delay(1000 // FPS)
 
