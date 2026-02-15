@@ -250,7 +250,7 @@ class Player:
         self.skill_e = SkillE(self)
         
         # --- UPGRADE SYSTEM ---
-        self.gold = 10 # Starting gold for testing (can be 0)
+        # self.gold = 10 # Starting gold for testing (can be 0)
         self.skill_levels = {'q': 0, 'w': 0, 'e': 0, 'a': 0} # 0 = Base Level
         self.consumables = [] # List of item types (max 3)
         self.equipment = []   # List of item types (max 5)
