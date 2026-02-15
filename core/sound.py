@@ -359,6 +359,20 @@ class SoundManager:
         # Load normal background music
         if self.load_music(os.path.join("assets", "Sounds", "background-normal.mp3")):
             self.play_music(loops=-1, fade_in_ms=fade_in_ms)
+
+    def load_item_sounds(self):
+        """
+        Load all item-related sounds (pickup, use, drop).
+        
+        Returns:
+            bool: True if all sounds loaded successfully
+        """
+        success = True
+        success &= self.load_sound("HOURGLASS", os.path.join("assets", "Map", "LOL_Equipment", "Zhonyas-sound.mp3"))
+        success &= self.load_sound("TEAR", os.path.join("assets", "Map", "LOL_Equipment", "mana-sound.mp3"))
+        success &= self.load_sound("HEALTH_POTION", os.path.join("assets", "Map", "LOL_Equipment", "heal-sound.mp3"))
+        
+        return success
     
     def cleanup(self):
         """Clean up all loaded sounds and close audio."""

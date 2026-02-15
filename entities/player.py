@@ -666,12 +666,13 @@ class Player:
     def use_consumable(self, slot_index):
         """
             Called when pressing 1, 2, 3
+            Returns the ItemType if successful, None if slot is empty
         """
         if 0 <= slot_index < len(self.consumables):
             item_type = self.consumables.pop(slot_index)
             self.apply_consumable_effect(item_type)
-            return True
-        return False
+            return item_type
+        return None
 
     def apply_consumable_effect(self, item_type):
         if item_type == ItemType.TEAR:

@@ -88,6 +88,7 @@ def run():
     sound_manager.load_npc_sounds()
     sound_manager.load_boss_sounds()
     sound_manager.load_game_sounds()
+    sound_manager.load_item_sounds()
     
     if sound_manager.load_background_music():
         sound_manager.play_music(loops=-1)
@@ -270,8 +271,6 @@ def run():
         if menu_action == "QUIT_GAME": running = False
         elif menu_action == "START_GAME": pass
         elif menu_action == "UPDATE_VOLUME":
-            # Apply volume changes to sound manager
-            # Convert 0-100 scale to 0-128 scale for SDL_mixer
             music_volume = int((game_menu.get_volume()[0] / 100.0) * 128)
             sfx_volume = int((game_menu.get_volume()[1] / 100.0) * 128)
             sound_manager.set_music_volume(music_volume)
@@ -310,11 +309,19 @@ def run():
 
                     # PHÍM 1, 2, 3: Dùng Consumable
                     elif key == sdl2.SDLK_1:
-                        if not player.use_consumable(0): print("Slot 1 Empty")
+                        item_type = player.use_consumable(0)
+                        if item_type:
+                            sound_manager.play_sound(item_type.name)
+                        else:
+                            print("Slot 1 Empty")    
                     elif key == sdl2.SDLK_2:
-                        player.use_consumable(1)
+                        item_type = player.use_consumable(1)
+                        if item_type:
+                            sound_manager.play_sound(item_type.name)
                     elif key == sdl2.SDLK_3:
-                        player.use_consumable(2)
+                        item_type = player.use_consumable(2)
+                        if item_type:
+                            sound_manager.play_sound(item_type.name)
 
                 if not handle_input(event, player, world, software_factory, renderer, active_tornadoes, active_walls, npc_manager):
                     running = False
