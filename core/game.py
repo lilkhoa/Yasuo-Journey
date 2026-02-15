@@ -306,6 +306,16 @@ def run():
             sfx_volume = int((game_menu.get_volume()[1] / 100.0) * 128)
             sound_manager.set_music_volume(music_volume)
             sound_manager.set_master_volume(sfx_volume)
+        elif menu_action == "BACK_TO_MAIN":
+            # Stop all sound effects when returning to menu from pause
+            sound_manager.stop_all_sounds()
+            # Reset player sound channels
+            player.walk_sound_channel = -1
+            player.run_sound_channel = -1
+            # Switch back to normal music if boss music was playing
+            if boss_music_playing:
+                sound_manager.switch_to_normal_music(fade_out_ms=1000, fade_in_ms=1000)
+                boss_music_playing = False
 
 
         # 2. GAME INPUT
@@ -390,6 +400,9 @@ def run():
                 game_menu.state = MenuState.MAIN_MENU
                 game_menu.selected_index = 0
                 
+                # Stop all sound effects (footsteps, etc.)
+                sound_manager.stop_all_sounds()
+                
                 # Reset game state
                 player.hp = player.max_hp
                 player.stamina = player.max_stamina
@@ -397,6 +410,8 @@ def run():
                 player.entity.sprite.position = (100, 350)
                 player.is_blocking = False
                 player.invincible = False
+                player.walk_sound_channel = -1
+                player.run_sound_channel = -1
                 game_over = False
                 game_over_sound_played = False
                 victory = False
@@ -494,15 +509,7 @@ def run():
             
             # Collision Logic
             if not game_over:
-                # Projectile Hit
-                for projectile in projectile_manager.projectiles[:]:
-                    proj_rect = sdl2.SDL_Rect(int(projectile.x), int(projectile.y), projectile.width, projectile.height)
-                    for box in boxes:
-                        if sdl2.SDL_HasIntersection(proj_rect, box.rect): projectile.on_hit(); break
-                    if projectile.active:
-                        for barrel in barrels:
-                            if not barrel.is_broken and sdl2.SDL_HasIntersection(proj_rect, barrel.rect): projectile.on_hit(); break
-
+                # Projectile-Player collision (NPC projectiles hit player only, pass through obstacles)
                 for projectile in projectile_manager.projectiles[:]:
                     if projectile.check_collision(player):
                         player.take_damage(projectile.damage); projectile.on_hit()
@@ -625,6 +632,35 @@ def run():
             npc_manager.render_all(camera.camera.x, camera.camera.y)
             boss_manager.render_all(camera.camera.x, camera.camera.y)
             projectile_manager.render_all(camera.camera.x, camera.camera.y)
+            
+            # Debug: Draw collision boxes
+            if DEBUG_COLLISION_BOXES:
+                # Draw boss collision boxes
+                for boss in boss_manager.bosses:
+                    if boss.is_alive():
+                        bx, by, bw, bh = boss.get_bounds()
+                        boss_rect = sdl2.SDL_Rect(
+                            int(bx - camera.camera.x),
+                            int(by - camera.camera.y),
+                            int(bw),
+                            int(bh)
+                        )
+                        sdl2.SDL_SetRenderDrawColor(sdl_renderer, 255, 0, 0, 255)  # Red
+                        sdl2.SDL_RenderDrawRect(sdl_renderer, boss_rect)
+                
+                # Draw skill Q tornado collision boxes
+                for t in active_tornadoes:
+                    if t.active:
+                        t_width = t.sprite.size[0]
+                        t_height = t.sprite.size[1]
+                        tornado_rect = sdl2.SDL_Rect(
+                            int(t.sprite.x + 20 - camera.camera.x),
+                            int(t.sprite.y + 20 - camera.camera.y),
+                            int(t_width - 40),
+                            int(t_height - 20)
+                        )
+                        sdl2.SDL_SetRenderDrawColor(sdl_renderer, 0, 255, 0, 255)  # Green
+                        sdl2.SDL_RenderDrawRect(sdl_renderer, tornado_rect)
             
             # Render Player
             p_dst = SDL_Rect(int(player.entity.sprite.x - camera.camera.x), int(player.entity.sprite.y - camera.camera.y), 128, 128)

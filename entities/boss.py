@@ -129,7 +129,6 @@ class Boss:
         self.width = 256
         self.height = 256
         
-        
         # Combat stats from settings
         self.health = BOSS_HEALTH
         self.max_health = BOSS_HEALTH
@@ -693,9 +692,9 @@ class Boss:
         Meteor skill is NOT included in random selection - it's HP threshold-based only.
         """
         skills = [
-            SkillType.CIRCULAR_SHOOTING,
+            # SkillType.CIRCULAR_SHOOTING,
             SkillType.KAMEHAMEHA,
-            SkillType.SUMMON_MINIONS
+            # SkillType.SUMMON_MINIONS
         ]
         
         chosen_skill = random.choice(skills)
@@ -1113,6 +1112,56 @@ class Boss:
         # Reset texture color mod after rendering
         if self.damage_flash_timer > 0:
             sdl2.SDL_SetTextureColorMod(texture, 255, 255, 255)  # Reset to normal
+        
+        # Render health bar above boss
+        self._render_health_bar(camera_x, camera_y)
+    
+    def _render_health_bar(self, camera_x=0, camera_y=0):
+        """
+        Render health bar above the boss's head.
+        
+        Args:
+            camera_x: Camera x offset
+            camera_y: Camera y offset
+        """
+        bar_width = 200
+        bar_height = 16
+        bar_x = int(self.x + (self.width - bar_width) / 2 - camera_x)
+        bar_y = int(self.y - 30 - camera_y)
+        
+        # Border
+        border_thickness = 2
+        border_rect = sdl2.SDL_Rect(
+            bar_x - border_thickness,
+            bar_y - border_thickness,
+            bar_width + (border_thickness * 2),
+            bar_height + (border_thickness * 2)
+        )
+        sdl2.SDL_SetRenderDrawColor(self.renderer, 0, 0, 0, 255)
+        sdl2.SDL_RenderFillRect(self.renderer, border_rect)
+        
+        # Background (dark red)
+        sdl2.SDL_SetRenderDrawColor(self.renderer, 60, 0, 0, 255)
+        bg_rect = sdl2.SDL_Rect(bar_x, bar_y, bar_width, bar_height)
+        sdl2.SDL_RenderFillRect(self.renderer, bg_rect)
+        
+        # Foreground (health - color changes based on percentage)
+        health_percent = max(0.0, min(1.0, self.health / self.max_health))
+        fg_width = int(bar_width * health_percent)
+        
+        if fg_width > 0:
+            if health_percent > 0.5:
+                # Green
+                sdl2.SDL_SetRenderDrawColor(self.renderer, 0, 220, 0, 255)
+            elif health_percent > 0.25:
+                # Yellow
+                sdl2.SDL_SetRenderDrawColor(self.renderer, 220, 220, 0, 255)
+            else:
+                # Red
+                sdl2.SDL_SetRenderDrawColor(self.renderer, 220, 0, 0, 255)
+            
+            fg_rect = sdl2.SDL_Rect(bar_x, bar_y, fg_width, bar_height)
+            sdl2.SDL_RenderFillRect(self.renderer, fg_rect)
     
     def get_bounds(self):
         """

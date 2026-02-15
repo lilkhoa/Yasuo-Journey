@@ -9,7 +9,8 @@ import sdl2.ext
 from settings import (
     WINDOW_WIDTH, WINDOW_HEIGHT,
     PLAYER_MAX_HEALTH, PLAYER_MAX_STAMINA,
-    SKILL_Q_COOLDOWN, SKILL_W_COOLDOWN, SKILL_E_COOLDOWN, ATTACK_COOLDOWN
+    SKILL_Q_COOLDOWN, SKILL_W_COOLDOWN, SKILL_E_COOLDOWN, ATTACK_COOLDOWN,
+    SKILL_Q_COST, SKILL_W_COST, SKILL_E_COST
 )
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -71,6 +72,7 @@ class SkillBarHUD:
         # Load textures
         self.skill_icons = {}
         self.stat_icons = {}
+        self.no_mana_overlay = None
         self._load_textures()
         
         try:
@@ -101,6 +103,11 @@ class SkillBarHUD:
         """Load skill and stat icon textures."""
         base_skill_path = os.path.join("assets", "Skill_Icons")
         base_stat_path = os.path.join("assets", "Stats")
+        
+        # Load no-mana overlay
+        no_mana_path = os.path.join(base_skill_path, "no-mana.jpg")
+        if os.path.exists(no_mana_path):
+            self.no_mana_overlay = self._load_texture(no_mana_path)
         
         # Load skill icons
         for skill in ['Q', 'W', 'E', 'R', 'A', 'S', 'passive']:
@@ -283,6 +290,13 @@ class SkillBarHUD:
             cooldown = self._get_cooldown_remaining(skill)
             max_cd = self._get_cooldown_max(skill)
             
+            # Check if skill needs mana indicator
+            needs_mana_overlay = False
+            if cooldown <= 0 and skill in ['Q', 'W', 'E']:
+                skill_cost = self._get_skill_cost(skill)
+                if self.player.stamina < skill_cost:
+                    needs_mana_overlay = True
+            
             if cooldown > 0:
                 sdl2.SDL_SetRenderDrawBlendMode(self.renderer, sdl2.SDL_BLENDMODE_BLEND)
                 sdl2.SDL_SetRenderDrawColor(self.renderer, 0, 0, 0, 200)
@@ -310,8 +324,15 @@ class SkillBarHUD:
                         sdl2.SDL_FreeSurface(text_surface)
                         sdl2.SDL_DestroyTexture(text_texture)
             
+            # No-Mana Overlay
+            if needs_mana_overlay and self.no_mana_overlay:
+                sdl2.SDL_SetTextureAlphaMod(self.no_mana_overlay, 180)
+                sdl2.SDL_SetTextureBlendMode(self.no_mana_overlay, sdl2.SDL_BLENDMODE_BLEND)
+                sdl2.SDL_RenderCopy(self.renderer, self.no_mana_overlay, None, bg_rect)
+                sdl2.SDL_SetTextureAlphaMod(self.no_mana_overlay, 255)
+            
             # Border
-            color = (255, 215, 0, 255) if cooldown <= 0 else (100, 100, 100, 255)
+            color = (255, 215, 0, 255) if cooldown <= 0 and not needs_mana_overlay else (100, 100, 100, 255)
             sdl2.SDL_SetRenderDrawColor(self.renderer, *color)
             sdl2.SDL_RenderDrawRect(self.renderer, bg_rect)
             
@@ -337,9 +358,6 @@ class SkillBarHUD:
                 # Vertical bar
                 r2 = sdl2.SDL_Rect(px + plus_size//2 - 2, py, 4, plus_size)
                 sdl2.SDL_RenderFillRect(self.renderer, r2)
-                
-                # Optional: Text hint "Ctrl+Key" could be added but might clutter
-
 
     def _get_cooldown_remaining(self, skill):
         skill_map = {'Q': 'skill_q', 'W': 'skill_w', 'E': 'skill_e', 'A': 'attack', 'S': 'block'}
@@ -349,6 +367,11 @@ class SkillBarHUD:
     def _get_cooldown_max(self, skill):
         cmap = {'Q': SKILL_Q_COOLDOWN, 'W': SKILL_W_COOLDOWN, 'E': SKILL_E_COOLDOWN, 'A': ATTACK_COOLDOWN, 'S': 30}
         return cmap.get(skill, 60)
+    
+    def _get_skill_cost(self, skill):
+        """Get stamina cost for a skill."""
+        cost_map = {'Q': SKILL_Q_COST, 'W': SKILL_W_COST, 'E': SKILL_E_COST}
+        return cost_map.get(skill, 0)
 
     def _draw_level_indicator(self, x, y, level):
         """Draw small dots indicating skill level inside icon bottom."""
@@ -443,3 +466,5 @@ class SkillBarHUD:
             if t: sdl2.SDL_DestroyTexture(t)
         for t in self.stat_icons.values():
             if t: sdl2.SDL_DestroyTexture(t)
+        if self.no_mana_overlay:
+            sdl2.SDL_DestroyTexture(self.no_mana_overlay)
