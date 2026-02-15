@@ -260,13 +260,23 @@ def run():
         dt = (current_time - last_time) / 1000.0
         last_time = current_time
         
+        # Update menu background animation
+        game_menu.update(dt)
+        
         events = sdl2.ext.get_events()
         
         # 1. MENU INPUT
         menu_action = game_menu.handle_input(events)
         if menu_action == "QUIT_GAME": running = False
         elif menu_action == "START_GAME": pass
-        elif menu_action == "UPDATE_VOLUME": pass
+        elif menu_action == "UPDATE_VOLUME":
+            # Apply volume changes to sound manager
+            # Convert 0-100 scale to 0-128 scale for SDL_mixer
+            music_volume = int((game_menu.get_volume()[0] / 100.0) * 128)
+            sfx_volume = int((game_menu.get_volume()[1] / 100.0) * 128)
+            sound_manager.set_music_volume(music_volume)
+            sound_manager.set_master_volume(sfx_volume)
+
 
         # 2. GAME INPUT
         for event in events:
@@ -535,6 +545,3 @@ def run():
     projectile_manager.cleanup()
     sound_manager.cleanup()
     sdl2.ext.quit()
-
-if __name__ == "__main__":
-    run()

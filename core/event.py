@@ -29,11 +29,5 @@ def handle_input(event, player, world, factory, renderer, active_tornadoes, acti
             player.start_e(world, factory, renderer, dash_dir)
         elif key == sdl2.SDLK_a:
             player.attack()
-        
-        # Cheat / Spawn Test
-        elif key == sdl2.SDLK_1:
-            npc_manager.spawn_ghost(1200, 350)
-        elif key == sdl2.SDLK_2:
-             npc_manager.spawn_shooter(1200, 350)
     
     return True

@@ -181,6 +181,9 @@ class NPC:
         # Hurt state management (Phase 2: stunned)
         self.hurt_animation_complete = False
         
+        # Death callback (for coin drops, etc.)
+        self.on_death_callback = None
+        
         # Load sprites (implemented by child classes)
         self._load_sprites()
     
@@ -530,6 +533,15 @@ class NPC:
             player: Player instance with x, y, width, height attributes
         """
         self.player = player
+    
+    def set_on_death_callback(self, callback):
+        """
+        Set the callback function to be called when NPC dies.
+        
+        Args:
+            callback: Function to call on death, receives self as argument
+        """
+        self.on_death_callback = callback
     
     def move_left(self):
         """Move NPC to the left. Can be overridden by child classes."""
