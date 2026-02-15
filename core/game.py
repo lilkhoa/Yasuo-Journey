@@ -198,7 +198,16 @@ def run():
     projectile_manager = ProjectileManager(renderer.sdlrenderer)
     npc_manager = NPCManager(software_factory, None, renderer.sdlrenderer, projectile_manager, sound_manager)
     boss_manager = BossManager(software_factory, None, renderer.sdlrenderer, projectile_manager, sound_manager, camera)
-    hud = SkillBarHUD(renderer.sdlrenderer, player, icon_map)
+    # Create Icon Map for HUD
+    icon_map = {}
+    for key, val in common_drop_table.items():
+        # val = (name, w, h, texture)
+        icon_map[key] = val[3]
+    
+    # Add special icons
+    icon_map["COIN_ICON"] = coin_texture
+
+    hud = SkillBarHUD(renderer.sdlrenderer, player, icon_map=icon_map)
     
     def drop_coin_on_death(entity, num_coins=1):
         coin_name, coin_w, coin_h, coin_tex = common_drop_table[ItemType.COIN]

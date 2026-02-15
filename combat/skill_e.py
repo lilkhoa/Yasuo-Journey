@@ -9,7 +9,9 @@ class SkillE(Skill):
         self.dash_duration = 0.2
         self.is_dashing = False
         self.dash_timer = 0
-        self.fixed_damage = 70
+        self.dash_timer = 0
+        from settings import DAMAGE_SKILL_E
+        self.base_damage = DAMAGE_SKILL_E
         self.hit_list = [] # Danh sách kẻ địch đã bị chém trong lần lướt này
 
     def execute(self, world, factory, renderer):
@@ -86,11 +88,13 @@ class SkillE(Skill):
             
             # Kiểm tra va chạm
             if sdl2.SDL_HasIntersection(p_rect, t_rect):
-                print(f"E Slash Hit! Gây {self.fixed_damage} damage.")
+                damage = self.base_damage * self.damage_multiplier
+                print(f"E Slash Hit! Gây {damage} damage.")
                 
                 # --- QUAN TRỌNG: GÂY DAMAGE THẬT SỰ ---
+                damage = self.base_damage * self.damage_multiplier
                 if hasattr(target, 'take_damage'):
-                    target.take_damage(self.fixed_damage)
+                    target.take_damage(damage)
                 
                 # Thêm vào danh sách đã đánh trúng (để không hit 1 quái nhiều lần trong 1 lần lướt)
                 self.hit_list.append(target)

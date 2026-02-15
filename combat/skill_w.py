@@ -19,7 +19,7 @@ def load_wall_assets(factory, skill_asset_dir):
     return sprites
 
 class WallObject:
-    def __init__(self, world, sprites_list, x, y, duration):
+    def __init__(self, world, sprites_list, x, y, duration, damage_multiplier=1.0):
         self.entity = sdl2.ext.Entity(world)
         self.sprites = sprites_list if isinstance(sprites_list, list) else [sprites_list]
         self.entity.sprite = self.sprites[0]
@@ -30,7 +30,8 @@ class WallObject:
         self.active = True
         
         # Stats
-        self.damage = 30
+        from settings import DAMAGE_SKILL_W
+        self.damage = DAMAGE_SKILL_W * damage_multiplier
         self.damage_interval = 0.5
         self.hit_timers = {}
         
@@ -72,7 +73,7 @@ class SkillW(Skill):
         spawn_x = self.owner.sprite.x + (70 * direction)
         spawn_y = self.owner.sprite.y - 15
         
-        wall = WallObject(world, sprites_to_use, spawn_x, spawn_y, duration=4.0)
+        wall = WallObject(world, sprites_to_use, spawn_x, spawn_y, duration=4.0, damage_multiplier=self.damage_multiplier)
         return wall
 
 # --- HÀM UPDATE LOGIC CHÍNH ---

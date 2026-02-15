@@ -119,10 +119,10 @@ PLAYER_JUMP_POWER = 12
 PLAYER_MAX_JUMPS = 1  # Single jump
 
 # Combat Settings
-ATTACK_COOLDOWN = 30
-SKILL_Q_COOLDOWN = 120
-SKILL_W_COOLDOWN = 180
-SKILL_E_COOLDOWN = 1
+ATTACK_COOLDOWN = 60
+SKILL_Q_COOLDOWN = 240
+SKILL_W_COOLDOWN = 300
+SKILL_E_COOLDOWN = 100
 
 # Damage Settings [MỚI]
 PLAYER_ATTACK_DAMAGE = 25
@@ -146,6 +146,13 @@ PLAYER_RUN_COST = 0.2           # Chạy tốn stamina
 SKILL_Q_COST = 20
 SKILL_W_COST = 30
 SKILL_E_COST = 15
+
+# Skill Upgrade System
+SKILL_MAX_LEVEL = 3
+SKILL_UPGRADE_COSTS = {1: 1, 2: 2, 3: 3} # Cost to reach Level: Coin Amount
+SKILL_DAMAGE_GROWTH = 1.2        # +20% damage per level
+SKILL_CD_REDUCE_RATE = 0.25      # Giảm 25% cooldown hiện tại
+SKILL_CD_REDUCE_FLAT_MIN = 0.2   # Giảm tối thiểu 0.2s
 PLAYER_HURT_DURATION = 0.5 # Thời gian hiệu ứng Hurt
 PLAYER_HITS_TO_STAGGER = 10 # Số lần bị đánh để kích hoạt Hurt stun
 
