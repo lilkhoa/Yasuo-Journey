@@ -2,8 +2,8 @@ import sys
 import os
 sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
 import sdl2
-import json
 import sdl2.ext
+import sdl2.sdlttf
 from settings import *
 from world.map import GameMap
 from world.interactable import Box
@@ -31,32 +31,6 @@ from ui.menu import GameMenu, MenuState
 
 # Sound manager
 from core.sound import get_sound_manager
-
-# CONFIG FILE STORE COINS
-SAVE_FILE = "coin_collected.json"
-
-def load_saved_data():
-    """Đọc dữ liệu từ file save_data.json"""
-    if not os.path.exists(SAVE_FILE):
-        return 0 # Mặc định 0 vàng nếu chưa có file save
-    
-    try:
-        with open(SAVE_FILE, 'r') as f:
-            data = json.load(f)
-            return data.get("gold", 0)
-    except Exception as e:
-        print(f"[System] Load error: {e}")
-        return 0
-    
-def save_game_data(gold_amount):
-    """Lưu số vàng hiện tại vào file"""
-    data = {"gold": gold_amount}
-    try:
-        with open(SAVE_FILE, 'w') as f:
-            json.dump(data, f)
-        print(f"[System] Game Saved! Total Gold: {gold_amount}")
-    except Exception as e:
-        print(f"[System] Save error: {e}")
 
 # --- HELPER CLASSES ---
 class SpriteWrapper:
@@ -221,11 +195,6 @@ def run():
     # --- INIT PLAYER ---
     player = Player(world, software_factory, 100, 350, sound_manager, renderer_ptr=renderer.sdlrenderer)
     
-    # LOAD COIN FROM SAVE FILE
-    saved_gold = load_saved_data()
-    player.gold = saved_gold
-    print(f"[SYSTEM] Welcome back! Loaded Gold: {player.gold}")
-
     projectile_manager = ProjectileManager(renderer.sdlrenderer)
     npc_manager = NPCManager(software_factory, None, renderer.sdlrenderer, projectile_manager, sound_manager)
     boss_manager = BossManager(software_factory, None, renderer.sdlrenderer, projectile_manager, sound_manager, camera)
@@ -308,13 +277,8 @@ def run():
         
         # 1. MENU INPUT
         menu_action = game_menu.handle_input(events)
-        if menu_action == "QUIT_GAME": 
-            save_game_data(player.gold)
-            running = False
-
-        elif menu_action == "START_GAME": 
-            pass
-
+        if menu_action == "QUIT_GAME": running = False
+        elif menu_action == "START_GAME": pass
         elif menu_action == "UPDATE_VOLUME":
             music_volume = int((game_menu.get_volume()[0] / 100.0) * 128)
             sfx_volume = int((game_menu.get_volume()[1] / 100.0) * 128)
@@ -325,7 +289,6 @@ def run():
         # 2. GAME INPUT
         for event in events:
             if event.type == sdl2.SDL_QUIT:
-                save_game_data(player.gold)
                 running = False
                 break
             
@@ -425,7 +388,6 @@ def run():
             if boss_encountered and not victory and len(alive_bosses) == 0:
                 victory = True
                 victory_timer = victory_text_duration
-                save_game_data(player.gold)
                 if not victory_sound_played:
                     sound_manager.play_sound("victory")
                     victory_sound_played = True
@@ -524,7 +486,6 @@ def run():
 
                 if player.state == 'dead':
                     game_over = True; game_over_timer = 3.0
-                    save_game_data(player.gold)
                     if not game_over_sound_played:
                         sound_manager.play_sound("game_over"); game_over_sound_played = True
             else:
