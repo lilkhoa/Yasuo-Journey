@@ -249,6 +249,12 @@ class Player:
         self.skill_w = SkillW(self)
         self.skill_e = SkillE(self)
         
+        # --- UPGRADE SYSTEM ---
+        self.gold = 10 # Starting gold for testing (can be 0)
+        self.skill_levels = {'q': 0, 'w': 0, 'e': 0} # 0 = Base Level
+        self.consumables = [] # List of item types (max 3)
+        self.equipment = []   # List of item types (max 5)
+        
         # Sound tracking
         self.was_on_ground = True
         self.walk_sound_channel = -1
@@ -557,7 +563,8 @@ class Player:
         if self.stamina < SKILL_Q_COST or not self.cooldowns.is_ready("skill_q"): return
         if self.state in ['idle', 'jumping', 'run', 'walk']:
             self.stamina -= SKILL_Q_COST
-            self.cooldowns.start_cooldown("skill_q", SKILL_Q_COOLDOWN)
+            cd = self.get_skill_cooldown('q')
+            self.cooldowns.start_cooldown("skill_q", cd)
             if direction: self.facing_right = (direction > 0)
             self.state = 'casting_q'; self.frame_index = 0
             if self.sound_manager:
@@ -567,7 +574,8 @@ class Player:
         if self.stamina < SKILL_W_COST or not self.cooldowns.is_ready("skill_w"): return
         if self.state in ['idle', 'jumping']:
             self.stamina -= SKILL_W_COST
-            self.cooldowns.start_cooldown("skill_w", SKILL_W_COOLDOWN)
+            cd = self.get_skill_cooldown('w')
+            self.cooldowns.start_cooldown("skill_w", cd)
             if direction: self.facing_right = (direction > 0)
             self.state = 'casting_w'; self.frame_index = 0
             if self.sound_manager:
@@ -577,9 +585,14 @@ class Player:
         if self.stamina < SKILL_E_COST or not self.cooldowns.is_ready("skill_e"): return
         if direction and self.state != 'dashing_e':
             self.stamina -= SKILL_E_COST
-            self.cooldowns.start_cooldown("skill_e", SKILL_E_COOLDOWN)
+            cd = self.get_skill_cooldown('e')
+            self.cooldowns.start_cooldown("skill_e", cd)
             self.facing_right = (direction > 0)
             self.state = 'dashing_e'; self.frame_index = 0
+            
+            # Update skill stats before cast
+            self.skill_e.update_stats(self.skill_levels['e'])
+            self.skill_e.damage_multiplier = SKILL_DAMAGE_GROWTH ** self.skill_levels['e'] # Sync multiplier clearly
             self.skill_e.cast(world, factory, renderer)
             if self.sound_manager:
                 self.sound_manager.play_sound("player_e1")
@@ -638,6 +651,58 @@ class Player:
         self.stamina = min(self.stamina + Reward_Kill_Stamina, self.max_stamina)
 
     def die(self): self.state = 'dead'; self.frame_index = 0
+
+    # --- UPGRADE METHODS ---
+    def get_skill_cooldown(self, skill_key):
+        """Calculate cooldown based on level"""
+        base_cd = 0
+        if skill_key == 'q': base_cd = SKILL_Q_COOLDOWN
+        elif skill_key == 'w': base_cd = SKILL_W_COOLDOWN
+        elif skill_key == 'e': base_cd = SKILL_E_COOLDOWN
+        
+        level = self.skill_levels.get(skill_key, 0)
+        current_cd = base_cd
+        
+        # New Logic: Reduce by max(25% of current, 0.2s) per level
+        from settings import SKILL_CD_REDUCE_RATE, SKILL_CD_REDUCE_FLAT_MIN, FPS
+        
+        for _ in range(level):
+            reduction = max(current_cd * SKILL_CD_REDUCE_RATE, SKILL_CD_REDUCE_FLAT_MIN * FPS)
+            current_cd -= reduction
+            
+        return max(0.0, current_cd)
+
+    def get_skill_damage_scale(self, skill_key):
+        """Return damage multiplier for a skill"""
+        level = self.skill_levels.get(skill_key, 0)
+        return SKILL_DAMAGE_GROWTH ** level
+
+    def upgrade_skill(self, skill_key):
+        """Upgrade a skill if affordable"""
+        if skill_key not in self.skill_levels: return False
+        
+        current_lvl = self.skill_levels[skill_key]
+        if current_lvl >= SKILL_MAX_LEVEL:
+            print(f"[Upgrade] Skill {skill_key.upper()} is max level!")
+            return False
+            
+        next_lvl = current_lvl + 1
+        cost = SKILL_UPGRADE_COSTS.get(next_lvl, 999)
+        
+        if self.gold >= cost:
+            self.gold -= cost
+            self.skill_levels[skill_key] = next_lvl
+            
+            # Update Skill Object Logic
+            if skill_key == 'q': self.skill_q.update_stats(next_lvl)
+            elif skill_key == 'w': self.skill_w.update_stats(next_lvl)
+            elif skill_key == 'e': self.skill_e.update_stats(next_lvl)
+            
+            print(f"[Upgrade] Upgraded {skill_key.upper()} to Level {next_lvl} for {cost} Gold.")
+            return True
+        else:
+            print(f"[Upgrade] Not enough gold! Need {cost}, have {self.gold}.")
+            return False
 
     def collect_item(self, item_type):
         category = ITEM_REGISTRY.get(item_type)

@@ -316,7 +316,10 @@ class SkillBarHUD:
             sdl2.SDL_RenderDrawRect(self.renderer, bg_rect)
             
             # Level dots
-            self._draw_level_indicator(icon_x, icon_y + self.icon_size - 6, self.skill_levels.get(skill, 1))
+            # Map 'Q' -> 'q', etc.
+            p_skill_key = skill.lower()
+            level = self.player.skill_levels.get(p_skill_key, 0)
+            self._draw_level_indicator(icon_x, icon_y + self.icon_size - 6, level)
 
     def _get_cooldown_remaining(self, skill):
         skill_map = {'Q': 'skill_q', 'W': 'skill_w', 'E': 'skill_e', 'A': 'attack', 'S': 'block'}

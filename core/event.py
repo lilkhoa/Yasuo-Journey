@@ -18,7 +18,17 @@ def handle_input(event, player, world, factory, renderer, active_tornadoes, acti
         if keys[sdl2.SDL_SCANCODE_RIGHT]: dash_dir = 1
         elif keys[sdl2.SDL_SCANCODE_LEFT]: dash_dir = -1
         
+        # Kiểm tra Modifier (Ctrl)
+        is_ctrl = (event.key.keysym.mod & sdl2.KMOD_CTRL)
+
         # Hành động Player
+        if is_ctrl:
+            # Upgrade Skills
+            if key == sdl2.SDLK_q: player.upgrade_skill('q')
+            elif key == sdl2.SDLK_w: player.upgrade_skill('w')
+            elif key == sdl2.SDLK_e: player.upgrade_skill('e')
+            return True # Tiêu thụ sự kiện nếu upgrade
+            
         if key == sdl2.SDLK_SPACE:
             player.jump()
         elif key == sdl2.SDLK_q: 

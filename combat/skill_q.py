@@ -12,7 +12,7 @@ def load_tornado_assets(factory, asset_dir):
     return sprites
 
 class TornadoObject:
-    def __init__(self, world, sprites_list, x, y, direction, max_dist, max_hits):
+    def __init__(self, world, sprites_list, x, y, direction, max_dist, max_hits, damage_multiplier=1.0):
         self.entity = sdl2.ext.Entity(world)
         self.sprites = sprites_list if isinstance(sprites_list, list) else [sprites_list]
         self.entity.sprite = self.sprites[0]
@@ -25,7 +25,7 @@ class TornadoObject:
         self.max_hits = max_hits
         self.hit_count = 0
         self.active = True
-        self.damage_base = DAMAGE_SKILL_Q
+        self.damage_base = DAMAGE_SKILL_Q * damage_multiplier
         self.decay_rate = 0.8 
         self.anim_frame = 0
         self.anim_timer = 0
@@ -56,7 +56,7 @@ class SkillQ(Skill):
         start_y = self.owner.sprite.y + 15
         
         tornado = TornadoObject(world, sprites_to_use, start_x, start_y, 
-                                direction, max_dist=700, max_hits=99) # Tăng max_hits để lốc xuyên táo
+                                direction, max_dist=700, max_hits=99, damage_multiplier=self.damage_multiplier) # Tăng max_hits để lốc xuyên táo
         return tornado
 
 def update_q_logic(tornado_obj, enemies, dt):
