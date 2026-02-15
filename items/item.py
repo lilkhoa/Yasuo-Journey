@@ -130,8 +130,8 @@ class DroppedItem:
                 text = f"F: {self.item_name}"
 
             # Draw small black background
-            player_cx = player.x + player.width//2
-            text_bg_y = player.y + 10
+            player_cx = player.x + player.width//2 - camera.camera.x
+            text_bg_y = player.y + 10 - camera.camera.y
 
             # sdl2.SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255)
             # sdl2. SDL_RenderFillRect(renderer, SDL_Rect(text_bg_x, text_bg_y, 50, 25))
