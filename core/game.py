@@ -8,7 +8,7 @@ from settings import *
 from world.map import GameMap
 from world.interactable import Box
 from world.decoration import Decoration
-from world.item import DroppedItem
+from items.item import DroppedItem, ItemType, ItemCategory, ITEM_REGISTRY
 from world.interactable import Barrel, Chest, BARREL_RENDER_WIDTH, BARREL_RENDER_HEIGHT
 from world.matrix_map import TERRAIN_MAP, DECO_MAP, INTERACT_MAP, NPC_MAP
 from sdl2 import SDL_Rect, SDL_RenderCopy
@@ -27,7 +27,6 @@ from ui.hud import SkillBarHUD
 from ui.item_notification import ItemNotification, ItemNotificationSystem
 
 # --- IMPORT ITEM & MENU ---
-from items.item import ItemManager, ItemType
 from ui.menu import GameMenu, MenuState
 
 # Sound manager
@@ -133,21 +132,33 @@ def run():
         thornmail_texture = thornmail_sprite.texture
         hourglass_sprite = factory.from_image("assets/Map/LOL_Equipment/64x64_Zhonyas_Hourglass.png")
         hourglass_texture = hourglass_sprite.texture
-        
-        common_drop_table = {
-            "coin": ("Coin", 32, 32, coin_texture),
-            "tear": ("Tear of the Goddess", 32, 32, tear_texture),
-            "heart": ("Health Potion", 32, 32, health_texture),
-            "greaves": ("Berserker's Greaves", 32, 32, greaves_texture),
-            "bloodthirster": ("Bloodthirster", 32, 32, bloodthirster_texture),
-            "infinity_edge": ("Infinity Edge", 32, 32, infinity_edge_texture),
-            "thornmail": ("Thornmail", 32, 32, thornmail_texture),
-            "hourglass": ("Zhonya's Hourglass", 32, 32, hourglass_texture),
-        }
-
+    
     except Exception as e:
         print(f"Load sprite error: {e}")
         return
+
+    common_drop_table = {
+        ItemType.COIN: ("Coin", 32, 32, coin_texture),
+        ItemType.TEAR: ("Tear of the Goddess", 32, 32, tear_texture),
+        ItemType.HEALTH_POTION: ("Health Potion", 32, 32, health_texture),
+        ItemType.GREAVES: ("Berserker's Greaves", 32, 32, greaves_texture),
+        ItemType.BLOODTHIRSTER: ("Bloodthirster", 32, 32, bloodthirster_texture),
+        ItemType.INFINITY_EDGE: ("Infinity Edge", 32, 32, infinity_edge_texture),
+        ItemType.THORNMAIL: ("Thornmail", 32, 32, thornmail_texture),
+        ItemType.HOURGLASS: ("Zhonya's Hourglass", 32, 32, hourglass_texture),
+    }
+
+    icon_map = {
+        ItemType.COIN: coin_texture,
+        'COIN_ICON': coin_texture, 
+        ItemType.HEALTH_POTION: health_texture,
+        ItemType.TEAR: tear_texture,
+        ItemType.GREAVES: greaves_texture,
+        ItemType.BLOODTHIRSTER: bloodthirster_texture,
+        ItemType.INFINITY_EDGE: infinity_edge_texture,
+        ItemType.THORNMAIL: thornmail_texture,
+        ItemType.HOURGLASS: hourglass_texture,
+    }
 
     # --- INIT GAME WORLD ---
     my_map = GameMap(TERRAIN_MAP, DECO_MAP)
@@ -163,9 +174,8 @@ def run():
     text_renderer = TextRenderer(renderer.sdlrenderer, "assets/fonts/arial.ttf", size=10)
     notif_system = ItemNotificationSystem(text_renderer)    
 
-    item_manager = ItemManager(renderer, text_renderer)
 
-    # [REMOVED] Code spawn item test đã được xóa tại đây
+    collect_timer = COLLECT_INTERVAL
 
     for y, row in enumerate(INTERACT_MAP):
         for x, char in enumerate(row):
@@ -187,16 +197,16 @@ def run():
     projectile_manager = ProjectileManager(renderer.sdlrenderer)
     npc_manager = NPCManager(software_factory, None, renderer.sdlrenderer, projectile_manager, sound_manager)
     boss_manager = BossManager(software_factory, None, renderer.sdlrenderer, projectile_manager, sound_manager, camera)
-    hud = SkillBarHUD(renderer.sdlrenderer, player)
+    hud = SkillBarHUD(renderer.sdlrenderer, player, icon_map)
     
     def drop_coin_on_death(entity, num_coins=1):
-        coin_name, coin_w, coin_h, coin_tex = common_drop_table["coin"]
+        coin_name, coin_w, coin_h, coin_tex = common_drop_table[ItemType.COIN]
         ex, ey, ew, eh = entity.get_bounds()
         for i in range(num_coins):
             offset_x = (i - num_coins//2) * 20 if num_coins > 1 else 0
             coin_item = DroppedItem(
                 ex + ew/2 + offset_x, ey + eh/2, coin_tex, coin_w, coin_h,
-                text_renderer, "coin", coin_name
+                text_renderer, ItemType.COIN, coin_name
             )
             dropped_items.append(coin_item)
         sound_manager.play_sound("item_pop")
@@ -273,16 +283,36 @@ def run():
                     mod = event.key.keysym.mod
                     
                     if key == sdl2.SDLK_f:
-                        for chest in chests: chest.interact()
-                        for item in dropped_items: item.interact(notif_system, player)
-                        item_manager.handle_interact_key(player)
+                        for chest in chests: 
+                            if collect_timer <= 0: 
+                                if chest.interact():
+                                    collect_timer = COLLECT_INTERVAL
+                                    break
+                        
+                        for item in dropped_items: 
+                            if collect_timer <= 0:
+                                if item.interact(notif_system, player):
+                                    collect_timer = COLLECT_INTERVAL
+                                    if sound_manager:
+                                        sound_manager.play_sound("item_pickup")
+                                    break
                     
                     # [MASTERY TRIGGER] Ctrl + 6
                     if key == sdl2.SDLK_6 and (mod & sdl2.KMOD_CTRL):
                         player.trigger_mastery()
 
+                    # PHÍM 1, 2, 3: Dùng Consumable
+                    elif key == sdl2.SDLK_1:
+                        if not player.use_consumable(0): print("Slot 1 Empty")
+                    elif key == sdl2.SDLK_2:
+                        player.use_consumable(1)
+                    elif key == sdl2.SDLK_3:
+                        player.use_consumable(2)
+
                 if not handle_input(event, player, world, software_factory, renderer, active_tornadoes, active_walls, npc_manager):
                     running = False
+            
+            collect_timer -= dt
         
         # 3. UPDATE
         if game_menu.state == MenuState.GAME_PLAYING:
@@ -302,7 +332,6 @@ def run():
             for item in dropped_items: item.update(dt, my_map, player)
             dropped_items = [item for item in dropped_items if not item.is_collected]
 
-            item_manager.update(dt, player)
             notif_system.update()
 
             player_rect = SDL_Rect(int(player.entity.sprite.x), int(player.entity.sprite.y), 128, 128)
@@ -465,7 +494,6 @@ def run():
             for chest in chests: chest.render(sdl_renderer, camera, player)
             for item in dropped_items: item.render(sdl_renderer, camera, player)
             
-            item_manager.render(camera.camera.x, camera.camera.y, player)
             notif_system.render(sdl_renderer)
 
             npc_manager.render_all(camera.camera.x, camera.camera.y)

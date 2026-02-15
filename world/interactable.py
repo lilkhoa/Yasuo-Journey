@@ -10,7 +10,7 @@ from core.camera import Camera
 from entities.player import Player
 
 from .map import GameMap
-from .item import DroppedItem
+from items.item import DroppedItem
 
 BOX_PUSH_THRESHOLD = 0.2  # Time (second) which the player need to hold before pushing
 BOX_PUSH_SPEED_RATIO = 0.7 # Speed of Player while pushing the box (reduce 30% to normal)
@@ -463,7 +463,7 @@ class Chest:
             Called when Player press F
         """
         if not self.can_interact:
-            return
+            return False
         
         if self.state == "CLOSED":
             # start opening chest
@@ -477,6 +477,8 @@ class Chest:
                 self.chest_sound_channel = sound_manager.play_sound("chest_open")
                 self.chest_sound_timer = 3.0  # Stop after 3 seconds
             print("Chest opening!")
+
+            return True
         
     
     def render(self, renderer, camera: Camera, player: Player):
