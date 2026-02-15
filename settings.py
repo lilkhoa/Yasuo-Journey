@@ -15,7 +15,7 @@ TILE_SIZE = TILE_SIZE_RAW * SCALE_FACTOR # this is the standard unit we use to d
 SOLID_TILES = ['(', '-', ')', '[', '=', ']', '0', '1', '2', '3', '4', '5', '6', '7', '8']
 
 # Game settings
-GAME_TITLE = "Yasuo Game"
+GAME_TITLE = "Yasuo's Journey"
 
 # Asset paths
 ASSETS_PATH = "assets"
@@ -23,6 +23,10 @@ NPC_PATH = "assets/NPC"
 PLAYER_PATH = "assets/Player"
 MAP_PATH = "assets/Map"
 SKILLS_PATH = "assets/Skills"
+
+# Sound settings
+MUSIC_VOLUME = 50
+SFX_VOLUME = 50
 
 
 # NPC Settings

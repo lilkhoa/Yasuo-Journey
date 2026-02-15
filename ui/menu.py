@@ -2,6 +2,7 @@ import sdl2
 import sdl2.ext
 import os
 import ctypes
+import settings
 
 # Màu sắc
 WHITE = (255, 255, 255)
@@ -33,7 +34,6 @@ class GameMenu:
             self.menu_font = sdl2.ext.FontManager(font_path, size=20, color=WHITE)
             self.info_font = sdl2.ext.FontManager(font_path, size=16, color=WHITE)
         except:
-            print("[MENU] Warning: Font not found, using default.")
             self.title_font = None
             self.menu_font = None
             self.info_font = None
@@ -47,8 +47,8 @@ class GameMenu:
         
         # Option Data
         self.option_items = ["Music Volume", "SFX Volume", "Back"]
-        self.music_volume = 50 # 0 - 100
-        self.sfx_volume = 50   # 0 - 100
+        self.music_volume = settings.MUSIC_VOLUME # 0 - 100
+        self.sfx_volume = settings.SFX_VOLUME   # 0 - 100
 
         # About Data (Hướng dẫn chơi)
         self.controls_text = [
@@ -57,7 +57,7 @@ class GameMenu:
             ("Space", "Jump"),
             ("A", "Attack"),
             ("Q, W, E", "Skills"),
-            ("Ctrl + 6", "m gà vcl"),
+            ("Ctrl + 6", "Show Mastery"),
             ("F", "Interact (Pick up / Chest)"),
             ("Esc", "Pause / Back")
         ]
@@ -115,6 +115,9 @@ class GameMenu:
             self.prefix_w = 32
             self.prefix_h = 32
 
+    def get_volume(self):
+        return self.music_volume, self.sfx_volume
+
     def handle_input(self, events):
         action = None
         
@@ -171,17 +174,21 @@ class GameMenu:
                     elif key == sdl2.SDLK_LEFT:
                         if self.selected_index == 0: # Music
                             self.music_volume = max(0, self.music_volume - 10)
+                            settings.MUSIC_VOLUME = self.music_volume
                             return "UPDATE_VOLUME"
                         elif self.selected_index == 1: # SFX
                             self.sfx_volume = max(0, self.sfx_volume - 10)
+                            settings.SFX_VOLUME = self.sfx_volume
                             return "UPDATE_VOLUME"
                             
                     elif key == sdl2.SDLK_RIGHT:
                         if self.selected_index == 0: # Music
                             self.music_volume = min(100, self.music_volume + 10)
+                            settings.MUSIC_VOLUME = self.music_volume
                             return "UPDATE_VOLUME"
                         elif self.selected_index == 1: # SFX
                             self.sfx_volume = min(100, self.sfx_volume + 10)
+                            settings.SFX_VOLUME = self.sfx_volume
                             return "UPDATE_VOLUME"
 
                     elif key == sdl2.SDLK_RETURN or key == sdl2.SDLK_KP_ENTER or key == sdl2.SDLK_ESCAPE:
@@ -388,26 +395,19 @@ class GameMenu:
                 
                 # Draw volume bar more to the right with more space
                 volume = self.music_volume if i == 0 else self.sfx_volume
-                self._draw_volume_bar(self.width // 2 + 20, label_y + 5, 180, 25, volume, color)
+                self._draw_volume_bar(self.width // 2 + 20, label_y, 180, 25, volume, color)
 
     def _render_controls(self):
         """Vẽ bảng hướng dẫn phím - improved layout"""
         self._draw_centered_text("CONTROLS", -200, self.title_font, YELLOW)
         
-        start_y = self.height // 2 - 150
+        start_y = self.height // 2 - 120
         line_height = 40
-        
-        # Draw header with more spacing
-        self._draw_text_at("KEY", self.width // 2 - 250, start_y - 50, self.menu_font, GRAY)
-        self._draw_text_at("ACTION", self.width // 2 + 80, start_y - 50, self.menu_font, GRAY)
         
         for i, (key, action) in enumerate(self.controls_text):
             y = start_y + (i * line_height)
             self._draw_text_at(key, self.width // 2 - 250, y, self.info_font, YELLOW)
             self._draw_text_at(action, self.width // 2 + 80, y, self.info_font, WHITE)
-            
-        # Footer
-        self._draw_centered_text("Press Enter or ESC to Return", 280, self.info_font, GRAY)
 
     def _draw_volume_bar(self, x, y, w, h, percent, color):
         """Vẽ thanh volume đơn giản"""

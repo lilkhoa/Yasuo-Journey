@@ -269,7 +269,14 @@ def run():
         menu_action = game_menu.handle_input(events)
         if menu_action == "QUIT_GAME": running = False
         elif menu_action == "START_GAME": pass
-        elif menu_action == "UPDATE_VOLUME": pass
+        elif menu_action == "UPDATE_VOLUME":
+            # Apply volume changes to sound manager
+            # Convert 0-100 scale to 0-128 scale for SDL_mixer
+            music_volume = int((game_menu.get_volume()[0] / 100.0) * 128)
+            sfx_volume = int((game_menu.get_volume()[1] / 100.0) * 128)
+            sound_manager.set_music_volume(music_volume)
+            sound_manager.set_master_volume(sfx_volume)
+
 
         # 2. GAME INPUT
         for event in events:
@@ -536,6 +543,5 @@ def run():
     hud.cleanup()
     npc_manager.cleanup()
     projectile_manager.cleanup()
-    game_menu.cleanup()
     sound_manager.cleanup()
     sdl2.ext.quit()
