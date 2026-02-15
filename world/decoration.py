@@ -17,8 +17,8 @@ SHOP_TOTAL_FRAMES = 6   # number of sprite in the sheet
 SHOP_ANIM_SPEED = 150   # change frame speed (ms). frame / 1000 (ms)=> 150 ms / frame
 
 FENCE_SCALE = 3
-GRASS_SCALE = 4
-LAMP_SCALE = 4
+GRASS_SCALE = 6
+LAMP_SCALE = 3
 ROCK_SCALE = 4
 SIGN_SCALE = 4
 SHOP_SCALE = 4
