@@ -251,7 +251,7 @@ class Player:
         
         # --- UPGRADE SYSTEM ---
         self.gold = 10 # Starting gold for testing (can be 0)
-        self.skill_levels = {'q': 0, 'w': 0, 'e': 0} # 0 = Base Level
+        self.skill_levels = {'q': 0, 'w': 0, 'e': 0, 'a': 0} # 0 = Base Level
         self.consumables = [] # List of item types (max 3)
         self.equipment = []   # List of item types (max 5)
         
@@ -348,7 +348,10 @@ class Player:
             elif item == ItemType.INFINITY_EDGE: equipment_bonus += 50
             
         total_base = self.base_attack_damage + equipment_bonus
-        self.attack_damage = int(total_base * multiplier)
+        
+        # Apply Skill 'A' Growth
+        scale_a = self.get_skill_damage_scale('a')
+        self.attack_damage = int(total_base * multiplier * scale_a)
 
     def update(self, dt, world, factory, renderer, active_list_q, active_list_w, game_map=None, boxes=None):
         # [NEW] Update Mastery
@@ -611,7 +614,8 @@ class Player:
         if self.state in ['idle', 'run', 'walk'] and not self.is_blocking:
             if self.cooldowns.is_ready("attack"):
                 self.state = 'attacking'; self.frame_index = 0
-                self.cooldowns.start_cooldown("attack", ATTACK_COOLDOWN)
+                cd = self.get_skill_cooldown('a')
+                self.cooldowns.start_cooldown("attack", cd)
 
     def set_blocking(self, blocking):
         if blocking and self.stamina > 0: self.is_blocking = True; self.state = 'idle'
@@ -659,6 +663,7 @@ class Player:
         if skill_key == 'q': base_cd = SKILL_Q_COOLDOWN
         elif skill_key == 'w': base_cd = SKILL_W_COOLDOWN
         elif skill_key == 'e': base_cd = SKILL_E_COOLDOWN
+        elif skill_key == 'a': base_cd = ATTACK_COOLDOWN
         
         level = self.skill_levels.get(skill_key, 0)
         current_cd = base_cd
@@ -697,12 +702,26 @@ class Player:
             if skill_key == 'q': self.skill_q.update_stats(next_lvl)
             elif skill_key == 'w': self.skill_w.update_stats(next_lvl)
             elif skill_key == 'e': self.skill_e.update_stats(next_lvl)
+            elif skill_key == 'a': self.update_stats() # Recalculate AD
             
             print(f"[Upgrade] Upgraded {skill_key.upper()} to Level {next_lvl} for {cost} Gold.")
             return True
         else:
             print(f"[Upgrade] Not enough gold! Need {cost}, have {self.gold}.")
             return False
+
+    def can_upgrade_skill(self, skill_key):
+        """Check if a skill can be upgraded (for UI)"""
+        if skill_key not in self.skill_levels: return False
+        
+        current_lvl = self.skill_levels[skill_key]
+        if current_lvl >= SKILL_MAX_LEVEL:
+            return False
+            
+        next_lvl = current_lvl + 1
+        cost = SKILL_UPGRADE_COSTS.get(next_lvl, 999)
+        
+        return self.gold >= cost
 
     def collect_item(self, item_type):
         category = ITEM_REGISTRY.get(item_type)

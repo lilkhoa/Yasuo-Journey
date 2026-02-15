@@ -27,6 +27,7 @@ def handle_input(event, player, world, factory, renderer, active_tornadoes, acti
             if key == sdl2.SDLK_q: player.upgrade_skill('q')
             elif key == sdl2.SDLK_w: player.upgrade_skill('w')
             elif key == sdl2.SDLK_e: player.upgrade_skill('e')
+            elif key == sdl2.SDLK_a: player.upgrade_skill('a')
             return True # Tiêu thụ sự kiện nếu upgrade
             
         if key == sdl2.SDLK_SPACE:

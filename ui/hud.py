@@ -321,6 +321,26 @@ class SkillBarHUD:
             level = self.player.skill_levels.get(p_skill_key, 0)
             self._draw_level_indicator(icon_x, icon_y + self.icon_size - 6, level)
 
+            # UPGRADE INDICATOR (+)
+            if self.player.can_upgrade_skill(p_skill_key):
+                # Draw Plus Sign at top-right
+                plus_color = sdl2.ext.Color(255, 215, 0) # Gold
+                plus_size = 14
+                px = icon_x + self.icon_size - plus_size - 2
+                py = icon_y + 2
+                
+                # Horizontal bar
+                r1 = sdl2.SDL_Rect(px, py + plus_size//2 - 2, plus_size, 4)
+                sdl2.SDL_SetRenderDrawColor(self.renderer, 255, 215, 0, 255)
+                sdl2.SDL_RenderFillRect(self.renderer, r1)
+                
+                # Vertical bar
+                r2 = sdl2.SDL_Rect(px + plus_size//2 - 2, py, 4, plus_size)
+                sdl2.SDL_RenderFillRect(self.renderer, r2)
+                
+                # Optional: Text hint "Ctrl+Key" could be added but might clutter
+
+
     def _get_cooldown_remaining(self, skill):
         skill_map = {'Q': 'skill_q', 'W': 'skill_w', 'E': 'skill_e', 'A': 'attack', 'S': 'block'}
         name = skill_map.get(skill, skill.lower())
