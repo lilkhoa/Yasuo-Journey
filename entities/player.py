@@ -643,7 +643,7 @@ class Player:
                 self.sound_manager.play_sound("player_hit")
             if self.hit_count >= PLAYER_HITS_TO_STAGGER and self.state != 'dead':
                 if self.sound_manager:
-                    self.sound_manager.play_sound("player_hurt")
+                    self.sound_manager.play_sound("player_hurt", duration=1000)
                 self.state = 'hurt'; self.hurt_timer = 0; self.hit_count = 0
 
     def on_hit_enemy(self, damage):

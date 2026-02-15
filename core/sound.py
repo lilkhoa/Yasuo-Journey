@@ -80,7 +80,7 @@ class SoundManager:
         except Exception as e:
             return False
     
-    def play_sound(self, sound_id, loops=0, channel=-1):
+    def play_sound(self, sound_id, loops=0, channel=-1, duration=-1):
         """
         Play a loaded sound effect.
         
@@ -98,7 +98,10 @@ class SoundManager:
         if sound_id not in self.sounds or self.sounds[sound_id] is None:
             return -1
         
-        channel_num = sdl2.sdlmixer.Mix_PlayChannel(channel, self.sounds[sound_id], loops)        
+        if duration > 0:
+            channel_num = sdl2.sdlmixer.Mix_PlayChannelTimed(channel, self.sounds[sound_id], loops, ticks=duration)
+        else:
+            channel_num = sdl2.sdlmixer.Mix_PlayChannel(channel, self.sounds[sound_id], loops)
         return channel_num
     
     def get_sound(self, sound_id):
