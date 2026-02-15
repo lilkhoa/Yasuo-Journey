@@ -20,12 +20,13 @@ class SkillBarHUD:
     Renders the skill bar HUD at the bottom of the screen.
     """
     
-    def __init__(self, renderer, player):
+    def __init__(self, renderer, player, icon_map=None):
         """
         Initialize the HUD.
         """
         self.renderer = renderer
         self.player = player
+        self.icon_map = icon_map if icon_map else {}    # Dict: ItemType -> Texture
         
         # --- SKILL ICONS CONFIG ---
         self.icon_size = 48
@@ -61,7 +62,7 @@ class SkillBarHUD:
         self.bar_x = self.skill_bar_x + self.padding_x
         
         # --- STATS PANEL CONFIG (3x3 Layout) ---
-        self.stats_panel_width = 240      # Adjusted for 3 columns (approx 75-80px each)
+        self.stats_panel_width = 300      # Adjusted for 3 columns (approx 75-80px each)
         self.stats_panel_height = 90      # 3 rows
         self.stats_panel_x = 20
         # Align bottom margin with skill bar (margin bottom 5)
@@ -86,6 +87,15 @@ class SkillBarHUD:
         self.COLOR_STAMINA = (220, 180, 50) # Yellow/Gold
         self.COLOR_BG = (20, 20, 30)        # Dark background
         self.COLOR_BORDER = (80, 80, 100)   # Border
+
+        # --- INVENTORY CONFIG ---
+        # Vị trí: Trên Stats Panel (Stats Panel ở góc trái dưới)
+        # Stats panel y ~= WINDOW_HEIGHT - 95
+        # Inventory sẽ nằm trên đó khoảng 120px
+        self.inv_x = 20
+        self.inv_y = 20
+        self.slot_size = 32
+        self.slot_spacing = 4
         
     def _load_textures(self):
         """Load skill and stat icon textures."""
@@ -132,6 +142,7 @@ class SkillBarHUD:
         """Render the complete HUD."""
         self._render_skill_bar()
         self._render_stats_panel()
+        self._render_inventory()
     
     def _render_skill_bar(self):
         """Render the centralized skill bar (Background + Icons + Resource Bars)."""
@@ -329,6 +340,81 @@ class SkillBarHUD:
             r = sdl2.SDL_Rect(start_x + i*(dot_size+spacing), y, dot_size, dot_size)
             sdl2.SDL_RenderFillRect(self.renderer, r)
 
+    def _render_inventory(self):
+        # 1. Coin Row
+        x, y = self.inv_x, self.inv_y
+        coin_tex = self.icon_map.get("COIN_ICON")
+        if coin_tex:
+            dst = sdl2.SDL_Rect(x, y, 24, 24)
+            sdl2.SDL_RenderCopy(self.renderer, coin_tex, None, dst)
+        
+        # Draw Amount
+        if self.font_manager:
+            txt_surf = self.font_manager.render(f"{self.player.gold}")
+            txt_tex = sdl2.SDL_CreateTextureFromSurface(self.renderer, txt_surf)
+
+            dst = sdl2.SDL_Rect(x + 30, y + 5, txt_surf.w, txt_surf.h)
+            sdl2.SDL_RenderCopy(self.renderer, txt_tex, None, dst)
+
+            sdl2.SDL_FreeSurface(txt_surf)
+            sdl2.SDL_DestroyTexture(txt_tex)
+
+        # 2. Consumable Row (3 slots)
+        x = 3 * WINDOW_WIDTH // 4
+        y = WINDOW_HEIGHT - int(1.2 * WINDOW_HEIGHT//10)
+        for i in range(3):
+            sx = x + i * (self.slot_size + self.slot_spacing)
+            slot_rect = sdl2.SDL_Rect(sx, y, self.slot_size, self.slot_size)
+            
+            # Background
+            sdl2.SDL_SetRenderDrawColor(self.renderer, 40, 40, 40, 200)
+            sdl2.SDL_RenderFillRect(self.renderer, slot_rect)
+            
+            # Border
+            sdl2.SDL_SetRenderDrawColor(self.renderer, 150, 150, 150, 255)
+            sdl2.SDL_RenderDrawRect(self.renderer, slot_rect)
+            
+            # Item Icon
+            if i < len(self.player.consumables):
+                item_type = self.player.consumables[i]
+                tex = self.icon_map.get(item_type)
+                if tex:
+                    sdl2.SDL_RenderCopy(self.renderer, tex, None, slot_rect)
+            
+            # Key Number (1, 2, 3)
+            # Draw Amount
+            if self.font_manager:
+                txt_surf = self.font_manager.render(f"{i+1}")
+                txt_tex = sdl2.SDL_CreateTextureFromSurface(self.renderer, txt_surf)
+
+                dst = sdl2.SDL_Rect(    # render at left-bottom corner
+                    sx, 
+                    y + self.slot_size - 5, 
+                    9, 
+                    9)
+                sdl2.SDL_RenderCopy(self.renderer, txt_tex, None, dst)
+
+                sdl2.SDL_FreeSurface(txt_surf)
+                sdl2.SDL_DestroyTexture(txt_tex)
+
+        # 3. Equipment Row (5 Slots)
+        y += self.slot_size + 10
+        for i in range(5):
+            sx = x + i * (self.slot_size + self.slot_spacing)
+            slot_rect = sdl2.SDL_Rect(sx, y, self.slot_size, self.slot_size)
+            
+            sdl2.SDL_SetRenderDrawColor(self.renderer, 40, 40, 40, 200)
+            sdl2.SDL_RenderFillRect(self.renderer, slot_rect)
+            
+            sdl2.SDL_SetRenderDrawColor(self.renderer, 255, 215, 0, 255) # Gold border for equipment
+            sdl2.SDL_RenderDrawRect(self.renderer, slot_rect)
+            
+            if i < len(self.player.equipment):
+                item_type = self.player.equipment[i]
+                tex = self.icon_map.get(item_type)
+                if tex:
+                    sdl2.SDL_RenderCopy(self.renderer, tex, None, slot_rect)
+        
     def cleanup(self):
         for t in self.skill_icons.values():
             if t: sdl2.SDL_DestroyTexture(t)
