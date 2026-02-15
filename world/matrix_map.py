@@ -26,7 +26,7 @@ INTERACT_MAP = [
     "                                                  ", 
     "                                                  ", 
     "   C                                              ", 
-    "                     bb             C             ", 
+    "                   BBBBB            C             ", 
     "        b                                         ",
     "                                                  ", 
     "                           bb                     ", 
