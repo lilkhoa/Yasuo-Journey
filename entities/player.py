@@ -4,6 +4,7 @@ import sdl2.sdlmixer
 import os
 import sys
 import ctypes
+import copy
 
 # [CHECK] Import OpenCV
 try:
@@ -243,6 +244,7 @@ class Player:
         self.anim_speed = 0.10
         self.hurt_timer = 0
         self.hit_count = 0
+        self.dead_animation_complete = False
         
         self.cooldowns = CooldownManager()
         self.skill_q = SkillQ(self)
@@ -499,6 +501,7 @@ class Player:
                 elif self.state == 'attacking': self.state = 'idle'
                 elif self.state == 'dead': 
                     self.frame_index = len(frames) - 1
+                    self.dead_animation_complete = True
                     return
                 self.frame_index = 0
 
@@ -796,3 +799,64 @@ class Player:
 
         # Cap stats if needed
         self.stamina = min(self.stamina, self.max_stamina)
+
+    def get_save_data(self):
+        """
+            Wrap all current stats of player
+        """
+        return {
+            # 1. Vị trí (Sẽ bị ghi đè bởi vị trí Checkpoint)
+            'x': self.x, 
+            'y': self.y,
+            
+            # 2. Chỉ số sinh tồn
+            'hp': self.hp,
+            'max_hp': self.max_hp,
+            'stamina': self.stamina,
+            'max_stamina': self.max_stamina,
+            
+            # 3. Tài sản & Túi đồ (Phải dùng copy để tránh lỗi tham chiếu)
+            'gold': self.gold,
+            'consumables': copy.deepcopy(self.consumables),
+            'equipment': copy.deepcopy(self.equipment),
+            
+            # 4. Chỉ số chiến đấu (đã cộng dồn từ đồ)
+            'attack_damage': self.attack_damage,
+            'armor': self.armor,
+            'move_speed_bonus': self.move_speed_bonus,
+            'lifesteal_ratio': self.lifesteal_ratio
+        }
+    
+    def load_save_data(self, data, spawn_x, spawn_y):
+        """Khôi phục trạng thái nhân vật từ dữ liệu đã lưu"""
+        if not data: return
+
+        # 1. Khôi phục vị trí (Tại tượng)
+        self.entity.sprite.x = spawn_x
+        self.entity.sprite.y = spawn_y
+        self.x = spawn_x
+        self.y = spawn_y
+        
+        # 2. Khôi phục chỉ số
+        self.hp = data['hp']
+        self.max_hp = data['max_hp']
+        self.stamina = data['stamina']
+        self.max_stamina = data['max_stamina']
+        
+        # 3. Khôi phục túi đồ
+        self.gold = data['gold']
+        self.consumables = copy.deepcopy(data['consumables'])
+        self.equipment = copy.deepcopy(data['equipment'])
+        
+        # 4. Khôi phục chỉ số chiến đấu
+        self.attack_damage = data['attack_damage']
+        self.armor = data['armor']
+        self.move_speed_bonus = data['move_speed_bonus']
+        self.lifesteal_ratio = data['lifesteal_ratio']
+        
+        # Reset các trạng thái
+        self.state = 'idle'
+        self.is_blocking = False
+        self.dead_animation_complete = False
+        self.vel_y = 0
+        print(f"[SYSTEM] Player respawned at Checkpoint with {self.hp} HP")
