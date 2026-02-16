@@ -245,27 +245,32 @@ def run():
             )
             dropped_items.append(coin_item)
         sound_manager.play_sound("item_pop")
+    
+    def spawn_all_npcs_and_bosses():
+        """Spawn all NPCs and bosses from NPC_MAP."""
+        for y, row in enumerate(NPC_MAP):
+            for x, char in enumerate(row):
+                if char == ' ': continue
+                world_x, grid_y_pos = x * TILE_SIZE, y * TILE_SIZE
+                if char == 'G':
+                    npc = npc_manager.spawn_ghost(world_x, grid_y_pos)
+                    npc.set_player(player); npc.on_death_callback = lambda n: drop_coin_on_death(n, 1)
+                    make_npc_compatible(npc)
+                elif char == 'S':
+                    npc = npc_manager.spawn_shooter(world_x, grid_y_pos)
+                    npc.set_player(player); npc.on_death_callback = lambda n: drop_coin_on_death(n, 1)
+                    make_npc_compatible(npc)
+                elif char == 'O':
+                    npc = npc_manager.spawn_onre(world_x, grid_y_pos)
+                    npc.set_player(player); npc.on_death_callback = lambda n: drop_coin_on_death(n, 1)
+                    make_npc_compatible(npc)
+                elif char == 'B':
+                    boss = boss_manager.spawn_boss(world_x, grid_y_pos - 200)
+                    boss.set_player(player); boss.minion_death_callback = lambda m: drop_coin_on_death(m, 1)
+                    make_npc_compatible(boss)
 
-    for y, row in enumerate(NPC_MAP):
-        for x, char in enumerate(row):
-            if char == ' ': continue
-            world_x, grid_y_pos = x * TILE_SIZE, y * TILE_SIZE
-            if char == 'G':
-                npc = npc_manager.spawn_ghost(world_x, grid_y_pos)
-                npc.set_player(player); npc.on_death_callback = lambda n: drop_coin_on_death(n, 1)
-                make_npc_compatible(npc)
-            elif char == 'S':
-                npc = npc_manager.spawn_shooter(world_x, grid_y_pos)
-                npc.set_player(player); npc.on_death_callback = lambda n: drop_coin_on_death(n, 1)
-                make_npc_compatible(npc)
-            elif char == 'O':
-                npc = npc_manager.spawn_onre(world_x, grid_y_pos)
-                npc.set_player(player); npc.on_death_callback = lambda n: drop_coin_on_death(n, 1)
-                make_npc_compatible(npc)
-            elif char == 'B':
-                boss = boss_manager.spawn_boss(world_x, grid_y_pos - 200)
-                boss.set_player(player); boss.minion_death_callback = lambda m: drop_coin_on_death(m, 1)
-                make_npc_compatible(boss)
+    # Initial spawn of all NPCs and bosses
+    spawn_all_npcs_and_bosses()
 
     active_tornadoes = []
     active_walls = []
@@ -309,7 +314,57 @@ def run():
         # 1. MENU INPUT
         menu_action = game_menu.handle_input(events)
         if menu_action == "QUIT_GAME": running = False
-        elif menu_action == "START_GAME": pass
+        elif menu_action == "START_GAME":
+            # Reset player state
+            player.hp = player.max_hp
+            player.stamina = player.max_stamina
+            player.state = 'idle'
+            player.prev_state = 'idle'
+            player.entity.sprite.position = (100, 350)
+            player.is_blocking = False
+            player.invincible = False
+            player.exhausted = False
+            player.frame_index = 0
+            player.anim_timer = 0
+            player.hurt_timer = 0
+            player.hit_count = 0
+            player.dead_animation_complete = False
+            player.flash_timer = 0
+            player.color_mod = (255, 255, 255)
+            player.is_jumping = False
+            player.jump_count = 0
+            player.is_running = False
+            player.vel_y = 0
+            player.buffs = {}
+            player.cooldowns.reset()
+            player.walk_sound_channel = -1
+            player.run_sound_channel = -1
+            # Reset player inventory and skills
+            player.gold = 0
+            player.consumables = []
+            player.equipment = []
+            player.skill_levels = {'q': 0, 'w': 0, 'e': 0, 'a': 0}
+            # Respawn all NPCs and bosses for new game
+            npc_manager.cleanup()
+            boss_manager.cleanup()
+            projectile_manager.clear_all()
+            # Clear dropped items and active skills
+            dropped_items.clear()
+            for t in active_tornadoes: t.delete()
+            active_tornadoes.clear()
+            for w in active_walls: w.delete()
+            active_walls.clear()
+            spawn_all_npcs_and_bosses()
+            # Reset interactable objects
+            for barrel in barrels: barrel.reset()
+            for chest in chests: chest.reset()
+            # Reset game state
+            kill_count = 0
+            boss_encountered = False
+            game_over = False
+            game_over_sound_played = False
+            victory = False
+            victory_sound_played = False
         elif menu_action == "UPDATE_VOLUME":
             music_volume = int((game_menu.get_volume()[0] / 100.0) * 128)
             sfx_volume = int((game_menu.get_volume()[1] / 100.0) * 128)
@@ -318,13 +373,60 @@ def run():
         elif menu_action == "BACK_TO_MAIN":
             # Stop all sound effects when returning to menu from pause
             sound_manager.stop_all_sounds()
-            # Reset player sound channels
+            # Reset player state
+            player.hp = player.max_hp
+            player.stamina = player.max_stamina
+            player.state = 'idle'
+            player.prev_state = 'idle'
+            player.entity.sprite.position = (100, 350)
+            player.is_blocking = False
+            player.invincible = False
+            player.exhausted = False
+            player.frame_index = 0
+            player.anim_timer = 0
+            player.hurt_timer = 0
+            player.hit_count = 0
+            player.dead_animation_complete = False
+            player.flash_timer = 0
+            player.color_mod = (255, 255, 255)
+            player.is_jumping = False
+            player.jump_count = 0
+            player.is_running = False
+            player.vel_y = 0
+            player.buffs = {}
+            player.cooldowns.reset()
             player.walk_sound_channel = -1
             player.run_sound_channel = -1
-            # Switch back to normal music if boss music was playing
-            if boss_music_playing:
-                sound_manager.switch_to_normal_music(fade_out_ms=1000, fade_in_ms=1000)
-                boss_music_playing = False
+            # Reset player inventory and skills
+            player.gold = 0
+            player.consumables = []
+            player.equipment = []
+            player.skill_levels = {'q': 0, 'w': 0, 'e': 0, 'a': 0}
+            # Clear NPCs and bosses
+            npc_manager.cleanup()
+            boss_manager.cleanup()
+            projectile_manager.clear_all()
+            # Clear dropped items and active skills
+            dropped_items.clear()
+            for t in active_tornadoes: t.delete()
+            active_tornadoes.clear()
+            for w in active_walls: w.delete()
+            active_walls.clear()
+            # Reset interactable objects
+            for barrel in barrels: barrel.reset()
+            for chest in chests: chest.reset()
+            # Reset game state
+            kill_count = 0
+            boss_encountered = False
+            game_over = False
+            game_over_sound_played = False
+            victory = False
+            victory_sound_played = False
+            # Respawn all NPCs and bosses
+            spawn_all_npcs_and_bosses()
+            # Restart background music when returning to main menu
+            sound_manager.switch_to_normal_music(fade_out_ms=500, fade_in_ms=1000)
+            boss_music_playing = False
 
 
         # 2. GAME INPUT
@@ -410,15 +512,36 @@ def run():
                 # Stop all sound effects (footsteps, etc.)
                 sound_manager.stop_all_sounds()
                 
-                # Reset game state
+                # Reset player state
                 player.hp = player.max_hp
                 player.stamina = player.max_stamina
                 player.state = 'idle'
+                player.prev_state = 'idle'
                 player.entity.sprite.position = (100, 350)
                 player.is_blocking = False
                 player.invincible = False
+                player.exhausted = False
+                player.frame_index = 0
+                player.anim_timer = 0
+                player.hurt_timer = 0
+                player.hit_count = 0
+                player.dead_animation_complete = False
+                player.flash_timer = 0
+                player.color_mod = (255, 255, 255)
+                player.is_jumping = False
+                player.jump_count = 0
+                player.is_running = False
+                player.vel_y = 0
+                player.buffs = {}
+                player.cooldowns.reset()
                 player.walk_sound_channel = -1
                 player.run_sound_channel = -1
+                # Reset player inventory and skills
+                player.gold = 0
+                player.consumables = []
+                player.equipment = []
+                player.skill_levels = {'q': 0, 'w': 0, 'e': 0, 'a': 0}
+                # Reset game state flags
                 game_over = False
                 game_over_sound_played = False
                 victory = False
@@ -426,11 +549,27 @@ def run():
                 victory_timer = 0
                 game_over_timer = 0
                 boss_encountered = False
+                kill_count = 0
                 
-                # Switch back to normal music
-                if boss_music_playing:
-                    sound_manager.switch_to_normal_music(fade_out_ms=1000, fade_in_ms=1000)
-                    boss_music_playing = False
+                # Clear NPCs and bosses when returning to menu
+                npc_manager.cleanup()
+                boss_manager.cleanup()
+                projectile_manager.clear_all()
+                # Clear dropped items and active skills
+                dropped_items.clear()
+                for t in active_tornadoes: t.delete()
+                active_tornadoes.clear()
+                for w in active_walls: w.delete()
+                active_walls.clear()
+                # Reset interactable objects
+                for barrel in barrels: barrel.reset()
+                for chest in chests: chest.reset()
+                # Respawn all NPCs and bosses
+                spawn_all_npcs_and_bosses()
+                
+                # Restart background music when returning to main menu
+                sound_manager.switch_to_normal_music(fade_out_ms=500, fade_in_ms=1000)
+                boss_music_playing = False
         
         # 3. UPDATE
         if game_menu.state == MenuState.GAME_PLAYING:
@@ -486,6 +625,7 @@ def run():
                 victory = True
                 victory_timer = victory_text_duration
                 if not victory_sound_played:
+                    sound_manager.stop_music(fade_out_ms=500)  # Stop background music
                     sound_manager.play_sound("victory")
                     victory_sound_played = True
             if victory_timer > 0:
@@ -582,6 +722,7 @@ def run():
                 if player.state == 'dead':
                     game_over = True; game_over_timer = 3.0
                     if not game_over_sound_played:
+                        sound_manager.stop_music(fade_out_ms=500)  # Stop background music
                         sound_manager.play_sound("game_over"); game_over_sound_played = True
 
                 
@@ -640,6 +781,39 @@ def run():
             boss_manager.render_all(camera.camera.x, camera.camera.y)
             projectile_manager.render_all(camera.camera.x, camera.camera.y)
             
+            # Debug: Draw NPC collision boxes
+            if DEBUG_COLLISION_BOXES:
+                sdl2.SDL_SetRenderDrawBlendMode(sdl_renderer, sdl2.SDL_BLENDMODE_BLEND)
+                
+                # Draw regular NPC collision boxes (green)
+                for npc in npc_manager.npcs:
+                    nx, ny, nw, nh = npc.get_bounds()
+                    npc_rect = sdl2.SDL_Rect(int(nx - camera.camera.x), int(ny - camera.camera.y), int(nw), int(nh))
+                    sdl2.SDL_SetRenderDrawColor(sdl_renderer, 0, 255, 0, 100)  # Green, semi-transparent
+                    sdl2.SDL_RenderFillRect(sdl_renderer, npc_rect)
+                    sdl2.SDL_SetRenderDrawColor(sdl_renderer, 0, 255, 0, 255)  # Bright green border
+                    sdl2.SDL_RenderDrawRect(sdl_renderer, npc_rect)
+                
+                # Draw boss collision boxes (red)
+                for boss in boss_manager.bosses:
+                    bx, by, bw, bh = boss.get_bounds()
+                    boss_rect = sdl2.SDL_Rect(int(bx - camera.camera.x), int(by - camera.camera.y), int(bw), int(bh))
+                    sdl2.SDL_SetRenderDrawColor(sdl_renderer, 255, 0, 0, 100)  # Red, semi-transparent
+                    sdl2.SDL_RenderFillRect(sdl_renderer, boss_rect)
+                    sdl2.SDL_SetRenderDrawColor(sdl_renderer, 255, 0, 0, 255)  # Bright red border
+                    sdl2.SDL_RenderDrawRect(sdl_renderer, boss_rect)
+                    
+                    # Draw boss minion collision boxes (orange)
+                    for minion in boss.minions:
+                        mx, my, mw, mh = minion.get_bounds()
+                        minion_rect = sdl2.SDL_Rect(int(mx - camera.camera.x), int(my - camera.camera.y), int(mw), int(mh))
+                        sdl2.SDL_SetRenderDrawColor(sdl_renderer, 255, 165, 0, 100)  # Orange, semi-transparent
+                        sdl2.SDL_RenderFillRect(sdl_renderer, minion_rect)
+                        sdl2.SDL_SetRenderDrawColor(sdl_renderer, 255, 165, 0, 255)  # Bright orange border
+                        sdl2.SDL_RenderDrawRect(sdl_renderer, minion_rect)
+                
+                sdl2.SDL_SetRenderDrawBlendMode(sdl_renderer, sdl2.SDL_BLENDMODE_NONE)
+            
             # Render Player
             p_dst = SDL_Rect(int(player.entity.sprite.x - camera.camera.x), int(player.entity.sprite.y - camera.camera.y), 128, 128)
             p_tex = sdl2.SDL_CreateTextureFromSurface(sdl_renderer, player.entity.sprite.surface)
@@ -651,6 +825,19 @@ def run():
             
             # [MASTERY RENDER]
             player.render(sdl_renderer, camera.camera.x, camera.camera.y)
+            
+            # Debug: Draw attack hitbox
+            if DEBUG_COLLISION_BOXES and player.state == 'attacking':
+                bx, by, bw, bh = player.get_hitbox().x, player.get_hitbox().y, player.get_hitbox().w, player.get_hitbox().h
+                ar = 50
+                atk_x = int(bx + bw if player.facing_right else bx - ar)
+                atk_rect = sdl2.SDL_Rect(int(atk_x - camera.camera.x), int(by - camera.camera.y), ar, bh)
+                sdl2.SDL_SetRenderDrawBlendMode(sdl_renderer, sdl2.SDL_BLENDMODE_BLEND)
+                sdl2.SDL_SetRenderDrawColor(sdl_renderer, 0, 100, 255, 128)  # Blue, semi-transparent
+                sdl2.SDL_RenderFillRect(sdl_renderer, atk_rect)
+                sdl2.SDL_SetRenderDrawColor(sdl_renderer, 0, 150, 255, 255)  # Brighter blue border
+                sdl2.SDL_RenderDrawRect(sdl_renderer, atk_rect)
+                sdl2.SDL_SetRenderDrawBlendMode(sdl_renderer, sdl2.SDL_BLENDMODE_NONE)
             
             hud.render()
 

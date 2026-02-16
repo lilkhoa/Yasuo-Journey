@@ -26,3 +26,7 @@ class CooldownManager:
                 self.cooldowns[skill] -= dt
                 if self.cooldowns[skill] < 0:
                     self.cooldowns[skill] = 0
+    
+    def reset(self):
+        """Reset all cooldowns to 0 (ready state)"""
+        self.cooldowns.clear()
