@@ -129,6 +129,12 @@ class Boss:
         self.width = 256
         self.height = 256
         
+        # Collision box offsets for pixel-perfect collision (to account for empty space in sprite)
+        self.collision_offset_x = 60
+        self.collision_offset_y = 40
+        self.collision_width = 136
+        self.collision_height = 176
+        
         # Combat stats from settings
         self.health = BOSS_HEALTH
         self.max_health = BOSS_HEALTH
@@ -692,9 +698,9 @@ class Boss:
         Meteor skill is NOT included in random selection - it's HP threshold-based only.
         """
         skills = [
-            # SkillType.CIRCULAR_SHOOTING,
+            SkillType.CIRCULAR_SHOOTING,
             SkillType.KAMEHAMEHA,
-            # SkillType.SUMMON_MINIONS
+            SkillType.SUMMON_MINIONS
         ]
         
         chosen_skill = random.choice(skills)
@@ -1165,12 +1171,17 @@ class Boss:
     
     def get_bounds(self):
         """
-        Get bounding box for collision detection.
+        Get bounding box for collision detection with pixel-perfect offsets.
         
         Returns:
             tuple: (x, y, width, height)
         """
-        return (self.x, self.y, self.width, self.height)
+        return (
+            self.x + self.collision_offset_x,
+            self.y + self.collision_offset_y,
+            self.collision_width,
+            self.collision_height
+        )
     
     def is_alive(self):
         """Check if boss is still alive."""

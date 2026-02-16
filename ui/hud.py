@@ -63,8 +63,8 @@ class SkillBarHUD:
         self.bar_x = self.skill_bar_x + self.padding_x
         
         # --- STATS PANEL CONFIG (3x3 Layout) ---
-        self.stats_panel_width = 300      # Adjusted for 3 columns (approx 75-80px each)
-        self.stats_panel_height = 90      # 3 rows
+        self.stats_panel_width = 250      # Adjusted for 3 columns (approx 75-80px each)
+        self.stats_panel_height = 60      # 3 rows
         self.stats_panel_x = 20
         # Align bottom margin with skill bar (margin bottom 5)
         self.stats_panel_y = WINDOW_HEIGHT - self.stats_panel_height - 5
@@ -201,18 +201,15 @@ class SkillBarHUD:
         stats_data = [
             # Col 1: Offensive
             (col1_x, start_y, 'AD', f"{getattr(self.player, 'attack_damage', 0)}"),
-            (col1_x, start_y + line_h, 'AttackSpeed', f"{getattr(self.player, 'attack_speed', 1.0):.1f}"),
-            (col1_x, start_y + line_h*2, 'Crit', f"{getattr(self.player, 'crit_chance', 0)}%"),
+            (col1_x, start_y + line_h, 'Crit', f"{getattr(self.player, 'crit_chance', 0)}%"),
             
             # Col 2: Utility / Combat
-            (col2_x, start_y, 'LifeSteal', f"{int(getattr(self.player, 'lifesteal_ratio', 0) * 100)}%"),
-            (col2_x, start_y + line_h, 'Range', f"{getattr(self.player, 'attack_range', 0)}"),
-            (col2_x, start_y + line_h*2, 'Speed', f"{int(getattr(self.player, 'move_speed', 0))}"),
+            (col2_x, start_y, 'Range', f"{getattr(self.player, 'attack_range', 0)}"),
+            (col2_x, start_y + line_h, 'Speed', f"{int(getattr(self.player, 'move_speed', 0))}"),
             
             # Col 3: Defensive / Resource
             (col3_x, start_y, 'Armor', f"{getattr(self.player, 'armor', 0)}"),
-            (col3_x, start_y + line_h, 'Regen', f"{getattr(self.player, 'hp_regen', 0):.1f}"),
-            (col3_x, start_y + line_h*2, 'Mana', f"{int(self.player.max_stamina)}"),
+            (col3_x, start_y + line_h, 'LifeSteal', f"{int(getattr(self.player, 'lifesteal_ratio', 0) * 100)}%"),
         ]
         
         for x, y, icon_key, text in stats_data:
