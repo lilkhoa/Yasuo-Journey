@@ -640,35 +640,6 @@ def run():
             boss_manager.render_all(camera.camera.x, camera.camera.y)
             projectile_manager.render_all(camera.camera.x, camera.camera.y)
             
-            # Debug: Draw collision boxes
-            if DEBUG_COLLISION_BOXES:
-                # Draw boss collision boxes (with offsets for pixel-perfect collision)
-                for boss in boss_manager.bosses:
-                    if boss.is_alive():
-                        bx, by, bw, bh = boss.get_bounds()
-                        boss_rect = sdl2.SDL_Rect(
-                            int(bx - camera.camera.x),
-                            int(by - camera.camera.y),
-                            int(bw),
-                            int(bh)
-                        )
-                        sdl2.SDL_SetRenderDrawColor(sdl_renderer, 255, 0, 0, 255)  # Red
-                        sdl2.SDL_RenderDrawRect(sdl_renderer, boss_rect)
-                
-                # Draw skill Q tornado collision boxes
-                for t in active_tornadoes:
-                    if t.active:
-                        t_width = t.sprite.size[0]
-                        t_height = t.sprite.size[1]
-                        tornado_rect = sdl2.SDL_Rect(
-                            int(t.sprite.x + 20 - camera.camera.x),
-                            int(t.sprite.y + 20 - camera.camera.y),
-                            int(t_width - 40),
-                            int(t_height - 20)
-                        )
-                        sdl2.SDL_SetRenderDrawColor(sdl_renderer, 0, 255, 0, 255)  # Green
-                        sdl2.SDL_RenderDrawRect(sdl_renderer, tornado_rect)
-            
             # Render Player
             p_dst = SDL_Rect(int(player.entity.sprite.x - camera.camera.x), int(player.entity.sprite.y - camera.camera.y), 128, 128)
             p_tex = sdl2.SDL_CreateTextureFromSurface(sdl_renderer, player.entity.sprite.surface)

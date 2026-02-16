@@ -449,7 +449,7 @@ class Boss:
         
         # Boss only uses skills when visible on screen
         if self.skill_cooldown >= self.skill_cooldown_max and not self.is_attacking and self.is_on_screen():
-            if random.random() < 0.9: 
+            if random.random() < 0.2: 
                 self._choose_random_skill()
                 return
         
@@ -698,9 +698,9 @@ class Boss:
         Meteor skill is NOT included in random selection - it's HP threshold-based only.
         """
         skills = [
-            # SkillType.CIRCULAR_SHOOTING,
+            SkillType.CIRCULAR_SHOOTING,
             SkillType.KAMEHAMEHA,
-            # SkillType.SUMMON_MINIONS
+            SkillType.SUMMON_MINIONS
         ]
         
         chosen_skill = random.choice(skills)

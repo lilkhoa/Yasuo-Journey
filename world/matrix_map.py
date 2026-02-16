@@ -41,6 +41,6 @@ NPC_MAP = [
     "                  S  S                                      GG        OO                                             ",
     "          O                    OO       O             G                    GG        G          GG                   ",
     "                                               O      SS                                      SO  SO                 ",
-    "                                                                                                                   B ", 
+    "                                                                                                             B       ", 
     "                                                                                                                     ",
 ]
