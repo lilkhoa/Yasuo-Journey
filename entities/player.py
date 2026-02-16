@@ -860,3 +860,58 @@ class Player:
         self.dead_animation_complete = False
         self.vel_y = 0
         print(f"[SYSTEM] Player respawned at Checkpoint with {self.hp} HP")
+
+    def respawn_penalty(self, spawn_x, spawn_y):
+        """
+            Respawn at the latest checkpoint with the penalty
+            - lose 30% gold
+            - lose of equipments and consumables
+        """
+        print(f"[SYSTEM] Respawning at Checkpoint ({spawn_x}, {spawn_y})...")
+
+        # 1. Reset position and the live state
+        self.entity.sprite.x = spawn_x
+        self.entity.sprite.y = spawn_y
+        self.ground_y = spawn_y
+        self.vel_y = 0
+
+        self.hp = self.max_hp
+        self.stamina = self.max_stamina
+        self.state = 'idle'
+        self.dead_animation_complete = False
+        self.is_blocking = False
+        self.invincible = False
+        self.color_mod = (255, 255, 255)
+
+        # 2. Resolved penalty
+        old_gold = self.gold
+        self.gold = int(old_gold * 0.7)
+
+        self.consumables = []
+        self.equipment = []
+
+        self.recalculate_stats()
+
+        print(f"[PENALTY] Gold: {old_gold} -> {self.gold}. Inventory Cleared.")
+    
+    def reset_to_default(self, start_x, start_y):
+        """
+            Reset all to the initial state
+        """
+        self.entity.sprite.x = start_x
+        self.entity.sprite.y = start_y
+        self.vel_y = 0
+
+        self.hp = self.max_hp
+        self.stamina = self.max_stamina
+
+        # reset all
+        self.gold = int(self.gold * 0.5) # penalty 50% of gold
+        self.consumables = []
+        self.equipment = []
+        self.recalculate_stats()
+
+        self.state = 'idle'
+        self.dead_animation_complete = False
+        self.is_blocking = False
+        self.color_mod = (255, 255, 255)
