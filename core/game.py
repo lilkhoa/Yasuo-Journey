@@ -344,6 +344,16 @@ def run():
             player.consumables = []
             player.equipment = []
             player.skill_levels = {'q': 0, 'w': 0, 'e': 0, 'a': 0}
+            # Reset player stats to base values
+            player.attack_damage = player.base_attack_damage
+            player.move_speed_bonus = 0
+            player.lifesteal_ratio = player.base_lifesteal
+            player.damage_reduction = 0.0
+            player.armor = player.base_armor
+            player.crit_chance = 0
+            player.attack_range = 150
+            player.attack_speed = 1.0
+            player.hp_regen = PLAYER_HEALTH_REGEN
             # Respawn all NPCs and bosses for new game
             npc_manager.cleanup()
             boss_manager.cleanup()
@@ -402,6 +412,16 @@ def run():
             player.consumables = []
             player.equipment = []
             player.skill_levels = {'q': 0, 'w': 0, 'e': 0, 'a': 0}
+            # Reset player stats to base values
+            player.attack_damage = player.base_attack_damage
+            player.move_speed_bonus = 0
+            player.lifesteal_ratio = player.base_lifesteal
+            player.damage_reduction = 0.0
+            player.armor = player.base_armor
+            player.crit_chance = 0
+            player.attack_range = 150
+            player.attack_speed = 1.0
+            player.hp_regen = PLAYER_HEALTH_REGEN
             # Clear NPCs and bosses
             npc_manager.cleanup()
             boss_manager.cleanup()
@@ -541,6 +561,16 @@ def run():
                 player.consumables = []
                 player.equipment = []
                 player.skill_levels = {'q': 0, 'w': 0, 'e': 0, 'a': 0}
+                # Reset player stats to base values
+                player.attack_damage = player.base_attack_damage
+                player.move_speed_bonus = 0
+                player.lifesteal_ratio = player.base_lifesteal
+                player.damage_reduction = 0.0
+                player.armor = player.base_armor
+                player.crit_chance = 0
+                player.attack_range = 150
+                player.attack_speed = 1.0
+                player.hp_regen = PLAYER_HEALTH_REGEN
                 # Reset game state flags
                 game_over = False
                 game_over_sound_played = False
