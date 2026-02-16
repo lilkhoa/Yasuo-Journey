@@ -263,7 +263,7 @@ def run():
                 npc.set_player(player); npc.on_death_callback = lambda n: drop_coin_on_death(n, 1)
                 make_npc_compatible(npc)
             elif char == 'B':
-                boss = boss_manager.spawn_boss(world_x, grid_y_pos - 400)
+                boss = boss_manager.spawn_boss(world_x, grid_y_pos - 200)
                 boss.set_player(player); boss.minion_death_callback = lambda m: drop_coin_on_death(m, 1)
                 make_npc_compatible(boss)
 

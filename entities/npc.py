@@ -880,7 +880,7 @@ class Shooter(NPC):
             patrol_radius=NPC_SHOOTER_PATROL_RADIUS,
             attack_cooldown_max=NPC_SHOOTER_ATTACK_COOLDOWN
         )
-        
+        self.is_flying = True
         # Set projectile manager for firing projectiles
         self.projectile_manager = projectile_manager
         
