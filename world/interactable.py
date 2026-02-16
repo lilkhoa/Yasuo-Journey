@@ -86,10 +86,11 @@ class Box:
         sdl2.SDL_RenderCopy(renderer, self.texture, self.src_rect, dst_rect)
         
 
-    def push(self, dx, dt, game_map: GameMap):
+    def push(self, dx, dt, game_map: GameMap, boxes=None):
         """
             Called from the Player when horizontal collision
             dx: the amount of distance which the Player has made
+            boxes: list of other interactable objects to check collision against
         """
         self.is_being_pushed = True
 
@@ -124,8 +125,16 @@ class Box:
 
         can_move = True
         for tile in nearby_tiles:
-            for tile in nearby_tiles:
-                if sdl2.SDL_HasIntersection(future_rect, tile):
+            if sdl2.SDL_HasIntersection(future_rect, tile):
+                can_move = False
+                break
+        
+        # [NEW] Check collision with other boxes/barrels
+        if can_move and boxes:
+            for other in boxes:
+                if other is self: continue
+                # Basic AABB check
+                if sdl2.SDL_HasIntersection(future_rect, other.rect):
                     can_move = False
                     break
                     
@@ -242,7 +251,7 @@ class Barrel:
 
         self.is_being_pushed = False
 
-    def push(self, dx, dt, game_map):
+    def push(self, dx, dt, game_map, boxes=None):
         """
             Called from the Player when horizontal collision
         """
@@ -281,6 +290,15 @@ class Barrel:
             if sdl2.SDL_HasIntersection(future_rect, tile):
                 can_move = False
                 break
+
+        # [NEW] Check collision with other boxes/barrels
+        if can_move and boxes:
+            for other in boxes:
+                if other is self: continue
+                # Basic AABB check
+                if sdl2.SDL_HasIntersection(future_rect, other.rect):
+                    can_move = False
+                    break
                     
         if can_move: 
             self.x = next_x
