@@ -642,7 +642,7 @@ def run():
             
             # Debug: Draw collision boxes
             if DEBUG_COLLISION_BOXES:
-                # Draw boss collision boxes
+                # Draw boss collision boxes (with offsets for pixel-perfect collision)
                 for boss in boss_manager.bosses:
                     if boss.is_alive():
                         bx, by, bw, bh = boss.get_bounds()

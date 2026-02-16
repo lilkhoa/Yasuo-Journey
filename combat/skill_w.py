@@ -126,13 +126,16 @@ def update_w_logic(wall_obj, enemies=None, projectiles=None, dt=0.016):
 
         # 2. Xử lý Đạn (Projectiles) -> Biến mất khi chạm tường
         if projectiles:
-            for p in projectiles:
+            for p in projectiles[:]:
                 if not p.active: continue
                 
                 # Bỏ qua đạn của Player (nếu muốn bắn xuyên qua tường của mình)
                 # Giả sử thuộc tính owner của đạn Player được gán là string hoặc object Player
                 # Nếu không cần phân biệt thì bỏ qua dòng if này
                 if hasattr(p, 'owner') and p.owner == 'player': 
+                    continue
+                
+                if p.__class__.__name__ == 'BossKamehamehaProjectile':
                     continue
 
                 # Lấy hitbox đạn
