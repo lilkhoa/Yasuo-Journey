@@ -358,6 +358,15 @@ class Barrel:
                 sound_manager.play_sound("item_pop")
 
         print("Barrel broken!")
+    
+    def reset(self):
+        """Reset barrel to initial unbroken state"""
+        self.is_broken = False
+        self.health = 3
+        self.is_fading = False
+        self.alpha = 255.0
+        self.shake_timer = 0
+        self.invulnerable_timer = 0
 
 class Chest:
     def __init__(self, world_x, grid_y_pos, sprite_sheet, item_data, text_renderer):
@@ -479,7 +488,20 @@ class Chest:
             print("Chest opening!")
 
             return True
-        
+    
+    def reset(self):
+        """Reset chest to initial closed state"""
+        self.state = "CLOSED"
+        self.current_frame = 0
+        self.anim_timer = 0
+        self.has_spawned_items = False
+        self.can_interact = False
+        # Stop any playing chest sound
+        if self.chest_sound_channel != -1:
+            import sdl2.sdlmixer
+            sdl2.sdlmixer.Mix_HaltChannel(self.chest_sound_channel)
+            self.chest_sound_channel = -1
+        self.chest_sound_timer = 0.0
     
     def render(self, renderer, camera: Camera, player: Player):
         # 1. Calculate Source Rect (Cut frame from sprite sheet)

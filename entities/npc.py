@@ -114,6 +114,11 @@ class NPC:
         self.spawn_y = y
         self.width = 96
         self.height = 96
+
+        self.collision_offset_x = 40
+        self.collision_offset_y = 0
+        self.collision_width = 30
+        self.collision_height = 96
         
         # Combat stats
         self.health = health
@@ -664,7 +669,7 @@ class NPC:
         Returns:
             tuple: (x, y, width, height)
         """
-        return (self.x, self.y, self.width, self.height)
+        return (self.x + self.collision_offset_x, self.y + self.collision_offset_y, self.collision_width, self.collision_height)
     
     def is_alive(self):
         """Check if NPC is still alive."""
