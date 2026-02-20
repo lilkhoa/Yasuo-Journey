@@ -149,9 +149,14 @@ class DroppedItem:
     def interact(self, notification_system: ItemNotificationSystem, player):
         # collecting item
         if not self.is_collected:
-        
-            dist = abs(self.x + self.width/2 - (player.x + player.width/2))
-            if dist < self.interact_range:
+            center_x = self.x + self.width/2
+            center_y = self.y + self.height/2
+            player_cx = player.x + player.width/2
+            player_cy = player.y + player.height/2
+
+            dist = (center_x - player_cx)**2 + (center_y - player_cy)**2
+            # dist = abs(self.x + self.width/2 - (player.x + player.width/2))
+            if dist <= self.interact_range**2:
                 self.is_collected = True
                 notification_system.add_notification(self.item_name, self.texture)
                 player.collect_item(self.item_type)
