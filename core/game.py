@@ -607,38 +607,98 @@ def run():
                     boss_music_playing = False
 
                 else:
-                    # GAME OVER case: Respawn logic
-                    # do not change the menu_state to MAIN_MENU
-                    # do not reset NPC/Boss (if you want)?
-
+                    # GAME OVER case
                     if last_checkpoint_data:
                         # CASE 1: has checkpoint -> respawn at the statue + penalty
                         player.respawn_penalty(last_checkpoint_pos[0], last_checkpoint_pos[1])
+                        
+                        # Reset game state flags
+                        game_over = False
+                        game_over_sound_played = False
+                        victory = False
+                        victory_sound_played = False
+                        victory_timer = 0
+                        game_over_timer = 0
+                        
+                        # Logic: Switch music if boss music was playing
+                        if boss_music_playing:
+                            sound_manager.switch_to_normal_music(fade_out_ms=500, fade_in_ms=1000)
+                            boss_music_playing = False
 
                     else:
-                        # CASE 2: does not have checkpoint -> reset to the intial state
-                        player.reset_to_default(default_spawn_pos[0], default_spawn_pos[1])
-                    
-                        # Nếu reset về đầu game, bạn CÓ THỂ muốn reset cả quái vật/boss cho công bằng
-                        # Nếu muốn reset quái, bỏ comment mấy dòng dưới:
-                        # npc_manager.cleanup()
-                        # boss_manager.cleanup()
-                        # spawn_all_npcs_and_bosses()
-
-                    # Reset game state flags
-                    game_over = False
-                    game_over_sound_played = False
-                    victory = False
-                    victory_sound_played = False
-                    victory_timer = 0
-                    game_over_timer = 0
-                    boss_encountered = False
-                    kill_count = 0
-
-                    # sound_manager.switch_to_normal_music(fade_out_ms=500, fade_in_ms=1000)
-                    
-                    # Logic MỚI: Chỉ chuyển nhạc nếu trước đó đang đánh Boss (nhạc Boss)
-                    if boss_music_playing:
+                        # CASE 2: No checkpoint -> Return to main menu
+                        game_menu.state = MenuState.MAIN_MENU
+                        game_menu.selected_index = 0
+                        
+                        # Stop all sound effects
+                        sound_manager.stop_all_sounds()
+                        
+                        # Reset player state
+                        player.hp = player.max_hp
+                        player.stamina = player.max_stamina
+                        player.state = 'idle'
+                        player.prev_state = 'idle'
+                        player.entity.sprite.position = (100, 350)
+                        player.is_blocking = False
+                        player.invincible = False
+                        player.exhausted = False
+                        player.frame_index = 0
+                        player.anim_timer = 0
+                        player.hurt_timer = 0
+                        player.hit_count = 0
+                        player.dead_animation_complete = False
+                        player.flash_timer = 0
+                        player.color_mod = (255, 255, 255)
+                        player.is_jumping = False
+                        player.jump_count = 0
+                        player.is_running = False
+                        player.vel_y = 0
+                        player.buffs = {}
+                        player.cooldowns.reset()
+                        player.walk_sound_channel = -1
+                        player.run_sound_channel = -1
+                        # Reset player inventory and skills
+                        player.gold = 0
+                        player.consumables = []
+                        player.equipment = []
+                        player.skill_levels = {'q': 0, 'w': 0, 'e': 0, 'a': 0}
+                        # Reset player stats to base values
+                        player.attack_damage = player.base_attack_damage
+                        player.move_speed_bonus = 0
+                        player.lifesteal_ratio = player.base_lifesteal
+                        player.damage_reduction = 0.0
+                        player.armor = player.base_armor
+                        player.crit_chance = 0
+                        player.attack_range = 150
+                        player.attack_speed = 1.0
+                        player.hp_regen = PLAYER_HEALTH_REGEN
+                        # Reset game state flags
+                        game_over = False
+                        game_over_sound_played = False
+                        victory = False
+                        victory_sound_played = False
+                        victory_timer = 0
+                        game_over_timer = 0
+                        boss_encountered = False
+                        kill_count = 0
+                        
+                        # Clear NPCs and bosses
+                        npc_manager.cleanup()
+                        boss_manager.cleanup()
+                        projectile_manager.clear_all()
+                        # Clear dropped items and active skills
+                        dropped_items.clear()
+                        for t in active_tornadoes: t.delete()
+                        active_tornadoes.clear()
+                        for w in active_walls: w.delete()
+                        active_walls.clear()
+                        # Reset interactable objects
+                        for barrel in barrels: barrel.reset()
+                        for chest in chests: chest.reset()
+                        # Respawn all NPCs and bosses
+                        spawn_all_npcs_and_bosses()
+                        
+                        # Restart background music
                         sound_manager.switch_to_normal_music(fade_out_ms=500, fade_in_ms=1000)
                         boss_music_playing = False
         # 3. UPDATE
@@ -789,30 +849,21 @@ def run():
                         attr_name = f'_attack_hit_{id(enemy)}'
                         if hasattr(player, attr_name): delattr(player, attr_name)
 
-                if player.state == 'dead':
-                    game_over = True; game_over_timer = 3.0
-                    if not game_over_sound_played:
-                        # sound_manager.stop_music(fade_out_ms=500)  # Stop background music
-                        sound_manager.play_sound("game_over"); game_over_sound_played = True
-
-                
                 if player.state == 'dead' and player.dead_animation_complete:
-                    # revive immediately to test
                     if last_checkpoint_data and last_checkpoint_pos:
-                        # CASE 1: Có Checkpoint -> Load lại trạng thái cũ
+                        # CASE 1: Has Checkpoint -> Respawn at checkpoint
                         spawn_x, spawn_y = last_checkpoint_pos
                         player.load_save_data(last_checkpoint_data, spawn_x, spawn_y)
+                        game_over = False
+                        game_over_sound_played = False
+                        game_over_timer = 0
                     
                     else:
-                        # CASE 2: Không có Checkpoint -> Reset về đầu map
-                        print("[SYSTEM] No checkpoint. Restarting level...")
-                        # Reset thủ công hoặc load lại scene
-                        player.hp = player.max_hp
-                        player.entity.sprite.x = 100
-                        player.entity.sprite.y = 350
-                        player.state = 'idle'
-                        player.is_blocking = False
-                        player.dead_animation_complete = False
+                        # CASE 2: No Checkpoint -> Game Over, return to main menu
+                        game_over = True; game_over_timer = 3.0
+                        if not game_over_sound_played:
+                            sound_manager.stop_music(fade_out_ms=500)
+                            sound_manager.play_sound("game_over"); game_over_sound_played = True
 
             else:
                 game_over_timer -= dt
