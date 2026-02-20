@@ -793,8 +793,12 @@ def run():
                     if projectile.check_collision(player):
                         player.take_damage(projectile.damage); projectile.on_hit()
                 
-                # NPC Melee Hit
+                # NPC Melee Hit (only for melee NPCs, not ranged NPCs like Ghost/Shooter)
                 for npc in alive_npcs:
+                    # Skip ranged NPCs that use projectiles (Ghost, Shooter)
+                    if hasattr(npc, 'projectile_manager') and npc.projectile_manager is not None:
+                        continue
+                    
                     if hasattr(npc, 'is_attacking') and npc.is_attacking:
                         nx, ny, nw, nh = npc.get_bounds()
                         ar = getattr(npc, 'attack_range', 50)
