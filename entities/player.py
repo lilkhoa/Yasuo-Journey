@@ -786,12 +786,13 @@ class Player:
 
     def recalculate_stats(self):
         # Reset to base
-        self.attack_damage = self.base_attack_damage
         self.move_speed_bonus = 0
         self.lifesteal_ratio = self.base_lifesteal
         self.damage_reduction = 0.0
         self.armor = self.base_armor
         self.max_stamina = PLAYER_MAX_STAMINA # Reset stamina max
+        
+        equipment_bonus = 0
         
         # Apply all items in queue
         for item in self.equipment:
@@ -801,7 +802,7 @@ class Player:
                 self.lifesteal_ratio += 0.10
                 self.attack_damage += 10
             elif item == ItemType.INFINITY_EDGE:
-                self.attack_damage += 50
+                equipment_bonus += 50
             elif item == ItemType.THORNMAIL:
                 self.armor += 10 # +10 Armor flat
                 # Max HP logic is tricky if we remove item (hp > new max_hp). 
@@ -810,6 +811,8 @@ class Player:
 
         # Cap stats if needed
         self.stamina = min(self.stamina, self.max_stamina)
+
+        self.update_stats()
 
     def get_save_data(self):
         """
