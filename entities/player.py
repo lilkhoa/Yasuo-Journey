@@ -399,6 +399,11 @@ class Player:
             if self.vel_y > MAX_FALL_SPEED: self.vel_y = MAX_FALL_SPEED
         if self.vel_y != 0:
             self.entity.sprite.y += int(self.vel_y)
+        
+        # Death boundary check: falling into pit
+        if self.entity.sprite.y > 700 and self.state != 'dead':
+            self.die()
+            return
 
         # Map collision Y
         on_ground = False
@@ -445,7 +450,6 @@ class Player:
                 self.sound_manager.play_sound("player_land")
         self.was_on_ground = on_ground
         if self.is_jumping and self.vel_y == 0: self.vel_y = self.gravity
-        if self.entity.sprite.y > 1000: self.die()
 
         # Timers
         if self.state == 'hurt':
@@ -834,8 +838,8 @@ class Player:
         # 1. Khôi phục vị trí (Tại tượng)
         self.entity.sprite.x = spawn_x
         self.entity.sprite.y = spawn_y
-        self.x = spawn_x
-        self.y = spawn_y
+        self.ground_y = spawn_y
+        self.vel_y = 0
         
         # 2. Khôi phục chỉ số
         self.hp = data['hp']
@@ -858,7 +862,6 @@ class Player:
         self.state = 'idle'
         self.is_blocking = False
         self.dead_animation_complete = False
-        self.vel_y = 0
         print(f"[SYSTEM] Player respawned at Checkpoint with {self.hp} HP")
 
     def respawn_penalty(self, spawn_x, spawn_y):

@@ -850,20 +850,13 @@ def run():
                         if hasattr(player, attr_name): delattr(player, attr_name)
 
                 if player.state == 'dead' and player.dead_animation_complete:
-                    if last_checkpoint_data and last_checkpoint_pos:
-                        # CASE 1: Has Checkpoint -> Respawn at checkpoint
-                        spawn_x, spawn_y = last_checkpoint_pos
-                        player.load_save_data(last_checkpoint_data, spawn_x, spawn_y)
-                        game_over = False
-                        game_over_sound_played = False
-                        game_over_timer = 0
-                    
-                    else:
-                        # CASE 2: No Checkpoint -> Game Over, return to main menu
-                        game_over = True; game_over_timer = 3.0
-                        if not game_over_sound_played:
-                            sound_manager.stop_music(fade_out_ms=500)
-                            sound_manager.play_sound("game_over"); game_over_sound_played = True
+                    # Always trigger game over screen first
+                    game_over = True
+                    game_over_timer = 3.0
+                    if not game_over_sound_played:
+                        sound_manager.stop_music(fade_out_ms=500)
+                        sound_manager.play_sound("game_over")
+                        game_over_sound_played = True
 
             else:
                 game_over_timer -= dt
