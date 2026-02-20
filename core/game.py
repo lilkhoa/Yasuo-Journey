@@ -463,12 +463,7 @@ def run():
                     mod = event.key.keysym.mod
                     
                     if key == sdl2.SDLK_f:
-                        for chest in chests: 
-                            if collect_timer <= 0: 
-                                if chest.interact():
-                                    collect_timer = COLLECT_INTERVAL
-                                    break
-                        
+                        # Get items before opening chest
                         for item in dropped_items: 
                             if collect_timer <= 0:
                                 if item.interact(notif_system, player):
@@ -477,6 +472,12 @@ def run():
                                         sound_manager.play_sound("item_pickup")
                                     break
 
+                        for chest in chests: 
+                            if collect_timer <= 0: 
+                                if chest.interact():
+                                    collect_timer = COLLECT_INTERVAL
+                                    break
+                        
                         for statue in checkpoints:
                             if collect_timer <= 0:
                                 saved_data = statue.interact(player)
