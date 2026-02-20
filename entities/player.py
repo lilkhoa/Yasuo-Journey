@@ -376,11 +376,18 @@ class Player:
 
             if boxes:
                 player_rect = self.get_hitbox()
-                future = sdl2.SDL_Rect(player_rect.x + int(dx), player_rect.y, player_rect.w, player_rect.h)
+                # use actual_dx instead of int(dx) to ensure synchronize moving direction
+                future = sdl2.SDL_Rect(player_rect.x + actual_dx, player_rect.y, player_rect.w, player_rect.h)
                 for box in boxes:
-                    if sdl2.SDL_HasIntersection(future, box.rect) and not self.is_jumping:
-                        moved, box_dx = box.push(dx, dt, game_map, boxes)
-                        actual_dx = int(box_dx) if moved else 0
+                    if sdl2.SDL_HasIntersection(future, box.rect):
+                        if not self.is_jumping:
+                            # 1. Stand on the ground -> trying to push the box
+                            moved, box_dx = box.push(dx, dt, game_map, boxes)
+                            actual_dx = int(box_dx) if moved else 0
+                        else:
+                            # 2. is jumping -> Barrel, Box lock, do not allowed to go through
+                            actual_dx = 0
+
                         break
             self.entity.sprite.x += actual_dx
 
@@ -410,7 +417,7 @@ class Player:
         if game_map:
             hitbox = self.get_hitbox()
             tiles = game_map.get_tile_rects_around(hitbox.x, hitbox.y, hitbox.w, hitbox.h)
-            feet_rect = sdl2.SDL_Rect(hitbox.x + 10, hitbox.y + hitbox.h, hitbox.w - 20, 4)
+            feet_rect = sdl2.SDL_Rect(hitbox.x + hitbox.w//2 - 20, hitbox.y + hitbox.h, 40, 5)
             
             for tile in tiles:
                 if sdl2.SDL_HasIntersection(hitbox, tile):
