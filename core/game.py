@@ -608,6 +608,7 @@ def run():
                     boss_music_playing = False
 
                 else:
+                    sound_manager.set_music_volume(128)
                     # GAME OVER case
                     if last_checkpoint_data:
                         # CASE 1: has checkpoint -> respawn at the statue + penalty
@@ -855,7 +856,7 @@ def run():
                     game_over = True
                     game_over_timer = 3.0
                     if not game_over_sound_played:
-                        sound_manager.stop_music(fade_out_ms=500)
+                        sound_manager.set_music_volume(int(0.3 * 128))
                         sound_manager.play_sound("game_over")
                         game_over_sound_played = True
 
