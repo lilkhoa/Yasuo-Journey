@@ -19,6 +19,8 @@ class Box:
     def __init__(self, x, y, texture):
         self.x = x
         self.y = y
+        self.initial_x = x  # Store initial position for reset
+        self.initial_y = y
         self.width = int(TILE_SIZE)
         self.height = int(TILE_SIZE)
         
@@ -85,6 +87,15 @@ class Box:
         # Render (src_rect is the full texture because we have cut the image while loading)
         sdl2.SDL_RenderCopy(renderer, self.texture, self.src_rect, dst_rect)
         
+
+    def reset(self):
+        """Reset box to initial position and state"""
+        self.x = self.initial_x
+        self.y = self.initial_y
+        self.vel_y = 0
+        self.is_falling = True
+        self.push_timer = 0
+        self.is_being_pushed = False
 
     def push(self, dx, dt, game_map: GameMap, boxes=None):
         """
@@ -157,6 +168,8 @@ class Barrel:
         """
         self.x = x
         self.y = y
+        self.initial_x = x  # Store initial position for reset
+        self.initial_y = y
         self.width = BARREL_RENDER_WIDTH
         self.height = BARREL_RENDER_HEIGHT 
 
@@ -378,7 +391,13 @@ class Barrel:
         print("Barrel broken!")
     
     def reset(self):
-        """Reset barrel to initial unbroken state"""
+        """Reset barrel to initial position and unbroken state"""
+        self.x = self.initial_x
+        self.y = self.initial_y
+        self.vel_y = 0
+        self.is_falling = True
+        self.push_timer = 0
+        self.is_being_pushed = False
         self.is_broken = False
         self.health = 3
         self.is_fading = False

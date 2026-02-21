@@ -368,6 +368,7 @@ def run():
             active_walls.clear()
             spawn_all_npcs_and_bosses()
             # Reset interactable objects
+            for box in boxes: box.reset()
             for barrel in barrels: barrel.reset()
             for chest in chests: chest.reset()
             # Reset game state
@@ -435,6 +436,7 @@ def run():
             for w in active_walls: w.delete()
             active_walls.clear()
             # Reset interactable objects
+            for box in boxes: box.reset()
             for barrel in barrels: barrel.reset()
             for chest in chests: chest.reset()
             # Reset game state
@@ -598,6 +600,7 @@ def run():
                     for w in active_walls: w.delete()
                     active_walls.clear()
                     # Reset interactable objects
+                    for box in boxes: box.reset()
                     for barrel in barrels: barrel.reset()
                     for chest in chests: chest.reset()
                     # Respawn all NPCs and bosses
@@ -695,6 +698,7 @@ def run():
                         for w in active_walls: w.delete()
                         active_walls.clear()
                         # Reset interactable objects
+                        for box in boxes: box.reset()
                         for barrel in barrels: barrel.reset()
                         for chest in chests: chest.reset()
                         # Respawn all NPCs and bosses
