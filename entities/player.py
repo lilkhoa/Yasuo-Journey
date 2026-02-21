@@ -354,6 +354,20 @@ class Player:
         # Apply Skill 'A' Growth
         scale_a = self.get_skill_damage_scale('a')
         self.attack_damage = int(total_base * multiplier * scale_a)
+        
+        # Update skill damage multipliers to reflect new AD
+        self._update_skill_damage_multipliers()
+    
+    def _update_skill_damage_multipliers(self):
+        """Recalculate skill damage multipliers based on current AD""" 
+        from settings import SKILL_DAMAGE_GROWTH, SKILL_AD_RATIO
+        
+        # Update each skill's damage multiplier
+        for skill_key, skill in [('q', self.skill_q), ('w', self.skill_w), ('e', self.skill_e)]:
+            level = self.skill_levels.get(skill_key, 0)
+            level_scaling = SKILL_DAMAGE_GROWTH ** level
+            ad_scaling = (self.attack_damage / self.base_attack_damage) * SKILL_AD_RATIO
+            skill.damage_multiplier = level_scaling * ad_scaling
 
     def update(self, dt, world, factory, renderer, active_list_q, active_list_w, game_map=None, boxes=None):
         # [NEW] Update Mastery
@@ -804,9 +818,7 @@ class Player:
             elif item == ItemType.INFINITY_EDGE:
                 equipment_bonus += 50
             elif item == ItemType.THORNMAIL:
-                self.armor += 10 # +10 Armor flat
-                # Max HP logic is tricky if we remove item (hp > new max_hp). 
-                # For simplicity, Thornmail gives damage reduction here or just Armor
+                self.armor += 10
                 self.damage_reduction += 0.05 
 
         # Cap stats if needed

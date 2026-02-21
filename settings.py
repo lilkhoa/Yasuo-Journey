@@ -58,7 +58,7 @@ NPC_ONRE_PATROL_RADIUS = 140
 NPC_ONRE_ATTACK_COOLDOWN = 40
 
 # Boss Settings
-BOSS_HEALTH = 3000
+BOSS_HEALTH = 30000
 BOSS_SPEED = 10
 
 BOSS_MELEE_DAMAGE = 75
@@ -146,6 +146,7 @@ SKILL_E_COST = 15
 SKILL_MAX_LEVEL = 3
 SKILL_UPGRADE_COSTS = {1: 1, 2: 2, 3: 3} # Cost to reach Level: Coin Amount
 SKILL_DAMAGE_GROWTH = 1.2        # +20% damage per level
+SKILL_AD_RATIO = 1.0             # Skill damage scales 100% with player AD
 SKILL_CD_REDUCE_RATE = 0.25      # Giảm 25% cooldown hiện tại
 SKILL_CD_REDUCE_FLAT_MIN = 0.2   # Giảm tối thiểu 0.2s
 PLAYER_HURT_DURATION = 0.5 # Thời gian hiệu ứng Hurt
