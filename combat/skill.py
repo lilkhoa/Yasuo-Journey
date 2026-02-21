@@ -12,15 +12,21 @@ class Skill:
         self.damage_multiplier = 1.0
 
     def update_stats(self, level):
-        """Update stats based on level"""
+        """Update stats based on level and player's attack damage"""
         if level > self.level:
-            # Calculate new stats
-            # Cooldown usually handled by Player CooldownManager for Q/W/E
-            # But internal CD needs update too
-            from settings import SKILL_CD_REDUCE_RATE, SKILL_CD_REDUCE_FLAT_MIN, SKILL_DAMAGE_GROWTH
+            from settings import SKILL_CD_REDUCE_RATE, SKILL_CD_REDUCE_FLAT_MIN, SKILL_DAMAGE_GROWTH, SKILL_AD_RATIO
             
-            # Growth formula: Base * (Growth ^ Level)
-            self.damage_multiplier = SKILL_DAMAGE_GROWTH ** level
+            # Level scaling: Base * (Growth ^ Level)
+            level_scaling = SKILL_DAMAGE_GROWTH ** level
+            
+            # AD scaling: player's current AD relative to base AD
+            if hasattr(self.owner, 'attack_damage') and hasattr(self.owner, 'base_attack_damage'):
+                ad_scaling = (self.owner.attack_damage / self.owner.base_attack_damage) * SKILL_AD_RATIO
+            else:
+                ad_scaling = 1.0
+            
+            # Combined damage multiplier: level scaling * AD scaling
+            self.damage_multiplier = level_scaling * ad_scaling
             
             # Cooldown formula: Iterative reduction
             current_cd = self.base_cooldown
@@ -31,7 +37,7 @@ class Skill:
             self.cooldown_time = max(0.1, current_cd) # Keep 0.1s minimum for internal logic
             
             self.level = level
-            print(f"Skill upgraded to Level {level}. Dmg Mul: {self.damage_multiplier:.2f}, CD: {self.cooldown_time:.2f}s")
+            print(f"Skill upgraded to Level {level}. Dmg Mul: {self.damage_multiplier:.2f} (Level: {level_scaling:.2f} × AD: {ad_scaling:.2f}), CD: {self.cooldown_time:.2f}s")
     
     def is_ready(self):
         return (time.time() - self.last_cast_time) >= self.cooldown_time
