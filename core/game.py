@@ -77,7 +77,7 @@ def draw_bg(renderer, texture, camera_x, speed_factor):
 
 def run():
     sdl2.ext.init()
-    window = sdl2.ext.Window("Project Game Demo", size=(WINDOW_WIDTH, WINDOW_HEIGHT))
+    window = sdl2.ext.Window("Yasuo's Journey", size=(WINDOW_WIDTH, WINDOW_HEIGHT))
     window.show()
     renderer = sdl2.ext.Renderer(window, flags=sdl2.SDL_RENDERER_PRESENTVSYNC)
     factory = sdl2.ext.SpriteFactory(sdl2.ext.TEXTURE, renderer=renderer)
