@@ -178,3 +178,10 @@ BOX_HEIGHT = 44
 
 # OPEN_COLLECTING_INTERVAL
 COLLECT_INTERVAL = 0.05
+
+# ── Multiplayer Network Settings ────────────────────────────────────────────
+NETWORK_HOST        = "0.0.0.0"   # Server bind address
+NETWORK_PORT        = 5555        # TCP port
+NETWORK_TICK_RATE   = 20          # World-state broadcast rate (packets/sec)
+NETWORK_INTERP_DELAY = 0.10       # Interpolation buffer depth (seconds)
+NETWORK_RECV_BUFFER = 4096        # Socket receive buffer hint

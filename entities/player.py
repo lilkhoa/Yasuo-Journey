@@ -826,6 +826,42 @@ class Player:
 
         self.update_stats()
 
+    # ── Multiplayer network helpers ─────────────────────────────────────────
+
+    def get_network_state(self) -> dict:
+        """
+        Return a snapshot dict suitable for a PLAYER_STATE packet.
+        Called every frame by the network layer.
+        """
+        import time as _time
+        return {
+            'x':           self.x,
+            'y':           self.y,
+            'vel_y':       self.vel_y,
+            'facing_right': self.facing_right,
+            'state':       self.state,
+            'hp':          self.hp,
+            'stamina':     self.stamina,
+            'frame_index': self.frame_index,
+            'ts':          _time.monotonic(),
+        }
+
+    def apply_network_state(self, data: dict):
+        """
+        Apply a PLAYER_STATE packet received by the server (from the remote client)
+        so the server-side entity list stays authoritative.
+        Only updates position/hp/state; does NOT drive animations.
+        """
+        if not data:
+            return
+        self.entity.sprite.x = int(data.get('x', self.x))
+        self.entity.sprite.y = int(data.get('y', self.y))
+        self.vel_y           = data.get('vel_y', self.vel_y)
+        self.facing_right    = data.get('facing_right', self.facing_right)
+        self.state           = data.get('state', self.state)
+        self.hp              = data.get('hp', self.hp)
+        self.stamina         = data.get('stamina', self.stamina)
+
     def get_save_data(self):
         """
             Wrap all current stats of player
