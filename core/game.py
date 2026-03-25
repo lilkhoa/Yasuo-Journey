@@ -1,5 +1,6 @@
 import sys
 import os
+import time
 sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
 import sdl2
 import sdl2.ext
@@ -32,6 +33,12 @@ from ui.menu import GameMenu, MenuState
 
 # Sound manager
 from core.sound import get_sound_manager
+
+# --- MULTIPLAYER NETWORKING ---
+from network import packet as net_pkt
+from network.server import GameServer
+from network.client import GameClient
+from network.remote_player import RemotePlayer
 
 # --- HELPER CLASSES ---
 class SpriteWrapper:
@@ -75,7 +82,14 @@ def draw_bg(renderer, texture, camera_x, speed_factor):
         dst_rect2 = SDL_Rect(int(-relative_x + bg_width), 0, WINDOW_WIDTH, WINDOW_HEIGHT)
         SDL_RenderCopy(renderer, texture, src_rect, dst_rect2)
 
-def run():
+def run(net_mode: str = "solo", host_ip: str = "127.0.0.1", ext_seed: int = 0):
+    """
+    net_mode : 'solo'   – single-player (default)
+               'host'   – start server + local client
+               'client' – remote client only
+    host_ip  : IP of the server (used in 'client' mode only)
+    ext_seed : seed provided by server handshake (client only)
+    """
     sdl2.ext.init()
     window = sdl2.ext.Window("Project Game Demo", size=(WINDOW_WIDTH, WINDOW_HEIGHT))
     window.show()
@@ -171,6 +185,38 @@ def run():
         ItemType.HOURGLASS: hourglass_texture,
     }
 
+    # --- MULTIPLAYER: SERVER / CLIENT SETUP ---
+    game_server:  GameServer | None  = None
+    game_client:  GameClient | None  = None
+    remote_player: RemotePlayer | None = None
+    is_host   = (net_mode == "host")
+    is_client = (net_mode == "client")
+    is_multi  = net_mode in ("host", "client")
+
+    if is_host:
+        game_server = GameServer(NETWORK_HOST, NETWORK_PORT)
+        game_server.start()
+        # Host also runs a local client so both sides share the same code path
+        game_client = GameClient("127.0.0.1", NETWORK_PORT)
+        connected = game_client.connect(timeout=10.0)
+        if not connected:
+            print("[Host] Could not connect local client to server!")
+        spawn_seed = game_server.seed
+    elif is_client:
+        game_client = GameClient(host_ip, NETWORK_PORT)
+        connected = game_client.connect(timeout=10.0)
+        if not connected:
+            print("[Client] Could not connect to server.")
+            sdl2.ext.quit()
+            return
+        spawn_seed = game_client.seed
+    else:
+        spawn_seed = 0   # Single-player; seed unused
+
+    # Tick counter for throttled world-state broadcasts
+    _net_tick = 0
+    _net_broadcast_every = max(1, FPS // NETWORK_TICK_RATE)
+
     # --- INIT GAME WORLD ---
     my_map = GameMap(TERRAIN_MAP, DECO_MAP)
     deco_mgr = Decoration(renderer)
@@ -221,7 +267,11 @@ def run():
 
     # --- INIT PLAYER ---
     player = Player(world, software_factory, 100, 350, sound_manager, renderer_ptr=renderer.sdlrenderer)
-    
+
+    # --- MULTIPLAYER: Remote Player ---
+    if is_multi:
+        remote_player = RemotePlayer(world, software_factory, renderer_ptr=renderer.sdlrenderer)
+
     projectile_manager = ProjectileManager(renderer.sdlrenderer)
     npc_manager = NPCManager(software_factory, None, renderer.sdlrenderer, projectile_manager, sound_manager)
     boss_manager = BossManager(software_factory, None, renderer.sdlrenderer, projectile_manager, sound_manager, camera)
@@ -711,9 +761,97 @@ def run():
             player.set_blocking(keys[sdl2.SDLK_s])
             player.handle_movement(keys)
             player.update(dt, world, software_factory, None, active_tornadoes, active_walls, game_map=my_map, boxes=all_obstacles)
-            
+
             if player.entity.sprite.x < 0: player.entity.sprite.x = 0
             if player.entity.sprite.x > my_map.width_pixel - 128: player.entity.sprite.x = my_map.width_pixel - 128
+
+            # --- MULTIPLAYER: network tick ---
+            _net_tick += 1
+            if is_multi and game_client and game_client.is_connected():
+                # 1. Send local player state every frame
+                local_state = player.get_network_state()
+                local_state['player_id'] = 0 if is_host else game_client.player_id
+                state_pkt = net_pkt.make_player_state(
+                    player_id=local_state['player_id'],
+                    x=local_state['x'], y=local_state['y'],
+                    vel_y=local_state['vel_y'],
+                    facing_right=local_state['facing_right'],
+                    state=local_state['state'],
+                    hp=local_state['hp'],
+                    stamina=local_state['stamina'],
+                    frame_index=local_state['frame_index'],
+                    timestamp=local_state['ts'],
+                )
+                game_client.send_player_state(state_pkt)
+
+                # 2. Host broadcasts world state at controlled tick rate
+                if is_host and game_server and (_net_tick % _net_broadcast_every == 0):
+                    # Build entity snapshot
+                    entity_list = []
+                    for n in npc_manager.npcs:
+                        nx, ny, nw, nh = n.get_bounds()
+                        entity_list.append({
+                            'etype': 'npc', 'eid': id(n),
+                            'x': n.x, 'y': n.y,
+                            'hp': getattr(n, 'health', 0),
+                            'state': getattr(n, 'state', 'idle'),
+                            'direction': getattr(n, 'direction', 1),
+                        })
+                    for b in boss_manager.bosses:
+                        entity_list.append({
+                            'etype': 'boss', 'eid': id(b),
+                            'x': b.x, 'y': b.y,
+                            'hp': getattr(b, 'health', 0),
+                            'state': getattr(b, 'state', 'idle'),
+                            'direction': b.direction.value if hasattr(b.direction, 'value') else int(b.direction),
+                        })
+                    game_server.push_world_state(
+                        net_pkt.make_entity_state(entity_list),
+                        net_pkt.make_projectile_state([
+                            {'pid': id(p), 'x': p.x, 'y': p.y,
+                             'vx': getattr(p, 'vx', 0), 'vy': getattr(p, 'vy', 0),
+                             'active': p.active}
+                            for p in projectile_manager.projectiles
+                        ])
+                    )
+                    # Also relay local player state to client via server broadcast
+                    game_server.push_local_player_state(state_pkt)
+
+                # 3. Receive remote player state (both host and client)
+                remote_raw = game_client.get_remote_player_state()
+                if remote_player and remote_raw:
+                    remote_player.apply_network_state(remote_raw)
+                    remote_player.update(dt)
+
+                # 4. Host: apply client events (skill / hit)
+                if is_host and game_server:
+                    for ev in game_server.pop_events():
+                        if ev.get('type') == net_pkt.HIT_EVENT:
+                            target_id = ev.get('target_id')
+                            damage    = ev.get('damage', 0)
+                            # Find matching entity by id() and apply damage
+                            for n in npc_manager.npcs:
+                                if id(n) == target_id and n.is_alive():
+                                    n.take_damage(damage)
+                                    break
+                            for b in boss_manager.bosses:
+                                if id(b) == target_id:
+                                    b.take_damage(damage)
+                                    break
+
+                # 5. Client: apply game events from server
+                if not is_host:
+                    for gev in game_client.pop_game_events():
+                        ev_name = gev.get('event')
+                        if ev_name == 'game_over':
+                            game_over = True
+                            game_over_timer = 3.0
+                        elif ev_name == 'victory':
+                            victory = True
+                            victory_timer = victory_text_duration
+            elif is_multi and remote_player:
+                # Still update remote player animation even if disconnected
+                remote_player.update(dt)
 
             for box in boxes: box.update(dt, my_map)
             for barrel in barrels: barrel.update(dt, my_map)
@@ -727,7 +865,7 @@ def run():
 
             player_rect = SDL_Rect(int(player.entity.sprite.x), int(player.entity.sprite.y), 128, 128)
             camera.update(player_rect, my_map.width_pixel)
-            
+
             # Combat Logic
             alive_npcs = [n for n in npc_manager.npcs if n.is_alive()]
             alive_bosses = boss_manager.get_alive_bosses()
@@ -934,15 +1072,19 @@ def run():
                 
                 sdl2.SDL_SetRenderDrawBlendMode(sdl_renderer, sdl2.SDL_BLENDMODE_NONE)
             
-            # Render Player
+            # Render Remote Player (draw behind local player)
+            if remote_player:
+                remote_player.render(sdl_renderer, camera.camera.x, camera.camera.y)
+
+            # Render Local Player
             p_dst = SDL_Rect(int(player.entity.sprite.x - camera.camera.x), int(player.entity.sprite.y - camera.camera.y), 128, 128)
             p_tex = sdl2.SDL_CreateTextureFromSurface(sdl_renderer, player.entity.sprite.surface)
-            r, g, b = player.color_mod 
+            r, g, b = player.color_mod
             if player.flash_timer > 0: r, g, b = (255, 100, 100)
             sdl2.SDL_SetTextureColorMod(p_tex, int(r), int(g), int(b))
             sdl2.SDL_RenderCopy(sdl_renderer, p_tex, None, p_dst)
             sdl2.SDL_DestroyTexture(p_tex)
-            
+
             # [MASTERY RENDER]
             player.render(sdl_renderer, camera.camera.x, camera.camera.y)
             
@@ -993,4 +1135,9 @@ def run():
     npc_manager.cleanup()
     projectile_manager.cleanup()
     sound_manager.cleanup()
+    # Shutdown network
+    if game_client:
+        game_client.stop()
+    if game_server:
+        game_server.stop()
     sdl2.ext.quit()
