@@ -787,31 +787,37 @@ def run(net_mode: str = "solo", host_ip: str = "127.0.0.1", ext_seed: int = 0):
                 # 2. Host broadcasts world state at controlled tick rate
                 if is_host and game_server and (_net_tick % _net_broadcast_every == 0):
                     # Build entity snapshot
+                    # Helper: convert any Enum to its name string, leave others unchanged
+                    def _safe_str(v):
+                        return v.name if hasattr(v, 'name') and hasattr(v, 'value') else str(v)
+                    def _safe_dir(v):
+                        return v.value if hasattr(v, 'value') else int(v)
+
                     entity_list = []
                     for n in npc_manager.npcs:
-                        nx, ny, nw, nh = n.get_bounds()
                         entity_list.append({
                             'etype': 'npc', 'eid': id(n),
-                            'x': n.x, 'y': n.y,
-                            'hp': getattr(n, 'health', 0),
-                            'state': getattr(n, 'state', 'idle'),
-                            'direction': getattr(n, 'direction', 1),
+                            'x': float(n.x), 'y': float(n.y),
+                            'hp': float(getattr(n, 'health', 0)),
+                            'state': _safe_str(getattr(n, 'state', 'IDLE')),
+                            'direction': _safe_dir(getattr(n, 'direction', 1)),
                         })
                     for b in boss_manager.bosses:
                         entity_list.append({
                             'etype': 'boss', 'eid': id(b),
-                            'x': b.x, 'y': b.y,
-                            'hp': getattr(b, 'health', 0),
-                            'state': getattr(b, 'state', 'idle'),
-                            'direction': b.direction.value if hasattr(b.direction, 'value') else int(b.direction),
+                            'x': float(b.x), 'y': float(b.y),
+                            'hp': float(getattr(b, 'health', 0)),
+                            'state': _safe_str(getattr(b, 'state', 'idle')),
+                            'direction': _safe_dir(b.direction),
                         })
                     game_server.push_world_state(
                         net_pkt.make_entity_state(entity_list),
                         net_pkt.make_projectile_state([
-                            {'pid': id(p), 'x': p.x, 'y': p.y,
-                             'vx': getattr(p, 'vx', 0), 'vy': getattr(p, 'vy', 0),
-                             'active': p.active}
-                            for p in projectile_manager.projectiles
+                            {'pid': id(proj), 'x': float(proj.x), 'y': float(proj.y),
+                             'vx': float(getattr(proj, 'vx', 0)),
+                             'vy': float(getattr(proj, 'vy', 0)),
+                             'active': bool(proj.active)}
+                            for proj in projectile_manager.projectiles
                         ])
                     )
                     # Also relay local player state to client via server broadcast
