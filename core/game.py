@@ -196,11 +196,8 @@ def run(net_mode: str = "solo", host_ip: str = "127.0.0.1", ext_seed: int = 0):
     if is_host:
         game_server = GameServer(NETWORK_HOST, NETWORK_PORT)
         game_server.start()
-        # Host also runs a local client so both sides share the same code path
-        game_client = GameClient("127.0.0.1", NETWORK_PORT)
-        connected = game_client.connect(timeout=10.0)
-        if not connected:
-            print("[Host] Could not connect local client to server!")
+        # Host communicates directly via game_server (no loopback self-connection).
+        # The single accept slot is reserved for the remote guest client.
         spawn_seed = game_server.seed
     elif is_client:
         game_client = GameClient(host_ip, NETWORK_PORT)
@@ -771,12 +768,19 @@ def run(net_mode: str = "solo", host_ip: str = "127.0.0.1", ext_seed: int = 0):
 
             # --- MULTIPLAYER: network tick ---
             _net_tick += 1
-            if is_multi and game_client and game_client.is_connected():
-                # 1. Send local player state every frame
+
+            # Helper: Enum → string / int
+            def _safe_str(v):
+                return v.name if hasattr(v, 'name') and hasattr(v, 'value') else str(v)
+            def _safe_dir(v):
+                return v.value if hasattr(v, 'value') else int(v)
+
+            if is_host and game_server and game_server.is_connected():
+                # ── HOST PATH: communicate via game_server directly ──────────
+                # 1. Build & relay local (host) player state to remote client
                 local_state = player.get_network_state()
-                local_state['player_id'] = 0 if is_host else game_client.player_id
                 state_pkt = net_pkt.make_player_state(
-                    player_id=local_state['player_id'],
+                    player_id=0,
                     x=local_state['x'], y=local_state['y'],
                     vel_y=local_state['vel_y'],
                     facing_right=local_state['facing_right'],
@@ -786,17 +790,10 @@ def run(net_mode: str = "solo", host_ip: str = "127.0.0.1", ext_seed: int = 0):
                     frame_index=local_state['frame_index'],
                     timestamp=local_state['ts'],
                 )
-                game_client.send_player_state(state_pkt)
+                game_server.push_local_player_state(state_pkt)
 
-                # 2. Host broadcasts world state at controlled tick rate
-                if is_host and game_server and (_net_tick % _net_broadcast_every == 0):
-                    # Build entity snapshot
-                    # Helper: convert any Enum to its name string, leave others unchanged
-                    def _safe_str(v):
-                        return v.name if hasattr(v, 'name') and hasattr(v, 'value') else str(v)
-                    def _safe_dir(v):
-                        return v.value if hasattr(v, 'value') else int(v)
-
+                # 2. Broadcast world state at controlled tick rate
+                if _net_tick % _net_broadcast_every == 0:
                     entity_list = []
                     for n in npc_manager.npcs:
                         entity_list.append({
@@ -824,41 +821,60 @@ def run(net_mode: str = "solo", host_ip: str = "127.0.0.1", ext_seed: int = 0):
                             for proj in projectile_manager.projectiles
                         ])
                     )
-                    # Also relay local player state to client via server broadcast
-                    game_server.push_local_player_state(state_pkt)
 
-                # 3. Receive remote player state (both host and client)
+                # 3. Receive remote (guest) player state from server
+                remote_raw = game_server.get_remote_state()
+                if remote_player and remote_raw:
+                    remote_player.apply_network_state(remote_raw)
+                    remote_player.update(dt)
+
+                # 4. Apply hit/skill events sent by the client
+                for ev in game_server.pop_events():
+                    if ev.get('type') == net_pkt.HIT_EVENT:
+                        target_id = ev.get('target_id')
+                        damage    = ev.get('damage', 0)
+                        for n in npc_manager.npcs:
+                            if id(n) == target_id and n.is_alive():
+                                n.take_damage(damage)
+                                break
+                        for b in boss_manager.bosses:
+                            if id(b) == target_id:
+                                b.take_damage(damage)
+                                break
+
+            elif is_client and game_client and game_client.is_connected():
+                # ── CLIENT PATH: communicate via game_client ─────────────────
+                # 1. Send local (guest) player state to server
+                local_state = player.get_network_state()
+                state_pkt = net_pkt.make_player_state(
+                    player_id=game_client.player_id,
+                    x=local_state['x'], y=local_state['y'],
+                    vel_y=local_state['vel_y'],
+                    facing_right=local_state['facing_right'],
+                    state=local_state['state'],
+                    hp=local_state['hp'],
+                    stamina=local_state['stamina'],
+                    frame_index=local_state['frame_index'],
+                    timestamp=local_state['ts'],
+                )
+                game_client.send_player_state(state_pkt)
+
+                # 2. Receive remote (host) player state
                 remote_raw = game_client.get_remote_player_state()
                 if remote_player and remote_raw:
                     remote_player.apply_network_state(remote_raw)
                     remote_player.update(dt)
 
-                # 4. Host: apply client events (skill / hit)
-                if is_host and game_server:
-                    for ev in game_server.pop_events():
-                        if ev.get('type') == net_pkt.HIT_EVENT:
-                            target_id = ev.get('target_id')
-                            damage    = ev.get('damage', 0)
-                            # Find matching entity by id() and apply damage
-                            for n in npc_manager.npcs:
-                                if id(n) == target_id and n.is_alive():
-                                    n.take_damage(damage)
-                                    break
-                            for b in boss_manager.bosses:
-                                if id(b) == target_id:
-                                    b.take_damage(damage)
-                                    break
+                # 3. Apply game events from server
+                for gev in game_client.pop_game_events():
+                    ev_name = gev.get('event')
+                    if ev_name == 'game_over':
+                        game_over = True
+                        game_over_timer = 3.0
+                    elif ev_name == 'victory':
+                        victory = True
+                        victory_timer = victory_text_duration
 
-                # 5. Client: apply game events from server
-                if not is_host:
-                    for gev in game_client.pop_game_events():
-                        ev_name = gev.get('event')
-                        if ev_name == 'game_over':
-                            game_over = True
-                            game_over_timer = 3.0
-                        elif ev_name == 'victory':
-                            victory = True
-                            victory_timer = victory_text_duration
             elif is_multi and remote_player:
                 # Still update remote player animation even if disconnected
                 remote_player.update(dt)
