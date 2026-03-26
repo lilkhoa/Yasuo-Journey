@@ -297,6 +297,7 @@ def run(net_mode: str = "solo", host_ip: str = "127.0.0.1", ext_seed: int = 0):
     
     def spawn_all_npcs_and_bosses():
         """Spawn all NPCs and bosses from NPC_MAP."""
+        _next_net_id = 1
         for y, row in enumerate(NPC_MAP):
             for x, char in enumerate(row):
                 if char == ' ': continue
@@ -304,18 +305,22 @@ def run(net_mode: str = "solo", host_ip: str = "127.0.0.1", ext_seed: int = 0):
                 if char == 'G':
                     npc = npc_manager.spawn_ghost(world_x, grid_y_pos)
                     npc.set_player(player); npc.on_death_callback = lambda n: drop_coin_on_death(n, 1)
+                    npc.net_id = _next_net_id; _next_net_id += 1
                     make_npc_compatible(npc)
                 elif char == 'S':
                     npc = npc_manager.spawn_shooter(world_x, grid_y_pos)
                     npc.set_player(player); npc.on_death_callback = lambda n: drop_coin_on_death(n, 1)
+                    npc.net_id = _next_net_id; _next_net_id += 1
                     make_npc_compatible(npc)
                 elif char == 'O':
                     npc = npc_manager.spawn_onre(world_x, grid_y_pos)
                     npc.set_player(player); npc.on_death_callback = lambda n: drop_coin_on_death(n, 1)
+                    npc.net_id = _next_net_id; _next_net_id += 1
                     make_npc_compatible(npc)
                 elif char == 'B':
                     boss = boss_manager.spawn_boss(world_x, grid_y_pos - 200)
                     boss.set_player(player); boss.minion_death_callback = lambda m: drop_coin_on_death(m, 1)
+                    boss.net_id = _next_net_id; _next_net_id += 1
                     make_npc_compatible(boss)
 
     # Initial spawn of all NPCs and bosses
@@ -797,7 +802,7 @@ def run(net_mode: str = "solo", host_ip: str = "127.0.0.1", ext_seed: int = 0):
                     entity_list = []
                     for n in npc_manager.npcs:
                         entity_list.append({
-                            'etype': 'npc', 'eid': id(n),
+                            'etype': 'npc', 'eid': getattr(n, 'net_id', id(n)),
                             'x': float(n.x), 'y': float(n.y),
                             'hp': float(getattr(n, 'health', 0)),
                             'state': _safe_str(getattr(n, 'state', 'IDLE')),
@@ -805,7 +810,7 @@ def run(net_mode: str = "solo", host_ip: str = "127.0.0.1", ext_seed: int = 0):
                         })
                     for b in boss_manager.bosses:
                         entity_list.append({
-                            'etype': 'boss', 'eid': id(b),
+                            'etype': 'boss', 'eid': getattr(b, 'net_id', id(b)),
                             'x': float(b.x), 'y': float(b.y),
                             'hp': float(getattr(b, 'health', 0)),
                             'state': _safe_str(getattr(b, 'state', 'idle')),
@@ -834,11 +839,11 @@ def run(net_mode: str = "solo", host_ip: str = "127.0.0.1", ext_seed: int = 0):
                         target_id = ev.get('target_id')
                         damage    = ev.get('damage', 0)
                         for n in npc_manager.npcs:
-                            if id(n) == target_id and n.is_alive():
+                            if getattr(n, 'net_id', id(n)) == target_id and n.is_alive():
                                 n.take_damage(damage)
                                 break
                         for b in boss_manager.bosses:
-                            if id(b) == target_id:
+                            if getattr(b, 'net_id', id(b)) == target_id:
                                 b.take_damage(damage)
                                 break
 
@@ -874,6 +879,31 @@ def run(net_mode: str = "solo", host_ip: str = "127.0.0.1", ext_seed: int = 0):
                     elif ev_name == 'victory':
                         victory = True
                         victory_timer = victory_text_duration
+
+                # 4. Sync Entity State from server
+                for e_state in game_client.get_entity_state():
+                    target_id = e_state.get('eid')
+                    hp = e_state.get('hp', 0)
+                    for n in npc_manager.npcs:
+                        if getattr(n, 'net_id', id(n)) == target_id:
+                            # Force sync state
+                            if n.health > 0 and hp <= 0:
+                                n.take_damage(n.health) # This triggers death safely locally
+                            else:
+                                n.health = hp
+                            
+                            n.x = e_state.get('x', n.x)
+                            n.y = e_state.get('y', n.y)
+                            break
+                    for b in boss_manager.bosses:
+                        if getattr(b, 'net_id', id(b)) == target_id:
+                            if getattr(b, 'health', 0) > 0 and hp <= 0:
+                                b.take_damage(getattr(b, 'health', 0))
+                            elif hasattr(b, 'health'):
+                                b.health = hp
+                            b.x = e_state.get('x', b.x)
+                            b.y = e_state.get('y', b.y)
+                            break
 
             elif is_multi and remote_player:
                 # Still update remote player animation even if disconnected
@@ -934,15 +964,17 @@ def run(net_mode: str = "solo", host_ip: str = "127.0.0.1", ext_seed: int = 0):
             
             all_combat_targets = alive_npcs + alive_bosses + all_minions
             
+            network_ctx = (is_multi, is_host, game_client)
+            
             for t in active_tornadoes[:]:
-                update_q_logic(t, all_combat_targets, dt)
+                update_q_logic(t, all_combat_targets, dt, network_ctx)
                 if not t.active: t.delete(); active_tornadoes.remove(t)
             
             for w in active_walls[:]:
-                update_w_logic(w, all_combat_targets, projectile_manager.projectiles, dt)
+                update_w_logic(w, all_combat_targets, projectile_manager.projectiles, dt, network_ctx)
                 if not w.active: w.delete(); active_walls.remove(w)
                     
-            player.skill_e.update_dash(dt, all_combat_targets, all_obstacles, my_map)
+            player.skill_e.update_dash(dt, all_combat_targets, all_obstacles, my_map, network_ctx)
             if player.skill_e.is_dashing: player.state = 'dashing_e'
             elif player.state == 'dashing_e' and not player.skill_e.is_dashing: player.state = 'idle'
 
@@ -1003,12 +1035,24 @@ def run(net_mode: str = "solo", host_ip: str = "127.0.0.1", ext_seed: int = 0):
                         ex, ey, ew, eh = enemy.get_bounds()
                         enemy_rect = sdl2.SDL_Rect(int(ex), int(ey), int(ew), int(eh))
                         if sdl2.SDL_HasIntersection(atk_rect, enemy_rect):
-                            attr_name = f'_attack_hit_{id(enemy)}'
+                            target_net_id = getattr(enemy, 'net_id', id(enemy))
+                            attr_name = f'_attack_hit_{target_net_id}'
                             if not getattr(player, attr_name, False):
                                 setattr(player, attr_name, True)
-                                enemy.take_damage(player.attack_damage); player.on_hit_enemy(player.attack_damage)
-                                if not player._attack_hit_anything:
+                                
+                                # Send HIT_EVENT to server if in multi-player
+                                if is_multi and game_client and game_client.is_connected():
+                                    etype = 'boss' if enemy in alive_bosses else 'npc'
+                                    game_client.send_hit_event(etype, target_net_id, player.attack_damage)
                                     sound_manager.play_sound("player_auto_npc"); player._attack_hit_anything = True
+                                else:
+                                    # Local offline logic
+                                    enemy.take_damage(player.attack_damage)
+                                    if not player._attack_hit_anything:
+                                        sound_manager.play_sound("player_auto_npc"); player._attack_hit_anything = True
+                                        
+                                player.on_hit_enemy(player.attack_damage)
+                                
                                 if (hasattr(enemy, 'is_alive') and not enemy.is_alive()) or (hasattr(enemy, 'health') and enemy.health <= 0):
                                     kill_count += 1; player.on_kill_enemy()
                 else:
@@ -1016,7 +1060,8 @@ def run(net_mode: str = "solo", host_ip: str = "127.0.0.1", ext_seed: int = 0):
                         if not player._attack_hit_anything: sound_manager.play_sound("player_auto_miss")
                         delattr(player, '_attack_hit_anything')
                     for enemy in all_combat_targets:
-                        attr_name = f'_attack_hit_{id(enemy)}'
+                        target_net_id = getattr(enemy, 'net_id', id(enemy))
+                        attr_name = f'_attack_hit_{target_net_id}'
                         if hasattr(player, attr_name): delattr(player, attr_name)
 
                 if player.state == 'dead' and player.dead_animation_complete:
