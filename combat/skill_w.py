@@ -77,7 +77,7 @@ class SkillW(Skill):
         return wall
 
 # --- HÀM UPDATE LOGIC CHÍNH ---
-def update_w_logic(wall_obj, enemies=None, projectiles=None, dt=0.016):
+def update_w_logic(wall_obj, enemies=None, projectiles=None, dt=0.016, network_ctx=None):
     """
     Xử lý logic cho Cột Lửa:
     1. Animation
@@ -159,10 +159,21 @@ def update_w_logic(wall_obj, enemies=None, projectiles=None, dt=0.016):
 
                 if sdl2.SDL_HasIntersection(wall_rect, enemy_rect):
                     # Gây dame theo thời gian (DoT)
-                    enemy_id = id(enemy)
-                    last_hit = wall_obj.hit_timers.get(enemy_id, 0)
+                    target_net_id = getattr(enemy, 'net_id', id(enemy))
+                    last_hit = wall_obj.hit_timers.get(target_net_id, 0)
                     
                     if current_time - last_hit >= wall_obj.damage_interval:
-                        if hasattr(enemy, 'take_damage'):
-                            enemy.take_damage(wall_obj.damage)
-                            wall_obj.hit_timers[enemy_id] = current_time
+                        if network_ctx:
+                            is_multi, is_host, game_client = network_ctx
+                            if is_multi and game_client and game_client.is_connected():
+                                etype = 'boss' if enemy.__class__.__name__ == 'Boss' else 'npc'
+                                game_client.send_hit_event(etype, target_net_id, wall_obj.damage)
+                                wall_obj.hit_timers[target_net_id] = current_time
+                            else:
+                                if hasattr(enemy, 'take_damage'):
+                                    enemy.take_damage(wall_obj.damage)
+                                    wall_obj.hit_timers[target_net_id] = current_time
+                        else:
+                            if hasattr(enemy, 'take_damage'):
+                                enemy.take_damage(wall_obj.damage)
+                                wall_obj.hit_timers[target_net_id] = current_time

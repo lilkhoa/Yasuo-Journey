@@ -23,11 +23,12 @@ class SkillE(Skill):
         self.hit_list = [] # Reset danh sách trúng
         return self 
 
-    def update_dash(self, dt, enemies, boxes=None, game_map=None):
+    def update_dash(self, dt, enemies, boxes=None, game_map=None, network_ctx=None):
         """
         enemies: List NPC/Boss/Minions
         boxes: List Box objects
         game_map: GameMap object
+        network_ctx: Tuple (is_multi, is_host, game_client)
         """
         if not self.is_dashing:
             return
@@ -92,9 +93,19 @@ class SkillE(Skill):
                 print(f"E Slash Hit! Gây {damage} damage.")
                 
                 # --- QUAN TRỌNG: GÂY DAMAGE THẬT SỰ ---
-                damage = self.base_damage * self.damage_multiplier
-                if hasattr(target, 'take_damage'):
-                    target.take_damage(damage)
+                target_net_id = getattr(target, 'net_id', id(target))
+                
+                if network_ctx:
+                    is_multi, is_host, game_client = network_ctx
+                    if is_multi and game_client and game_client.is_connected():
+                        etype = 'boss' if target.__class__.__name__ == 'Boss' else 'npc'
+                        game_client.send_hit_event(etype, target_net_id, damage)
+                    else:
+                        if hasattr(target, 'take_damage'):
+                            target.take_damage(damage)
+                else:
+                    if hasattr(target, 'take_damage'):
+                        target.take_damage(damage)
                 
                 # Thêm vào danh sách đã đánh trúng (để không hit 1 quái nhiều lần trong 1 lần lướt)
                 self.hit_list.append(target)

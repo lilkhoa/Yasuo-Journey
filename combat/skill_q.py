@@ -59,7 +59,7 @@ class SkillQ(Skill):
                                 direction, max_dist=700, max_hits=99, damage_multiplier=self.damage_multiplier) # Tăng max_hits để lốc xuyên táo
         return tornado
 
-def update_q_logic(tornado_obj, enemies, dt):
+def update_q_logic(tornado_obj, enemies, dt, network_ctx=None):
     """
     enemies: List NPC/Boss/Minions
     """
@@ -115,10 +115,10 @@ def update_q_logic(tornado_obj, enemies, dt):
 
         # Check va chạm
         if sdl2.SDL_HasIntersection(tornado_rect, target_rect):
-            target_id = id(target)
+            target_net_id = getattr(target, 'net_id', id(target))
             
             # Nếu mục tiêu chưa bị hit hoặc đã hết cooldown hit
-            if target_id not in tornado_obj.hit_records:
+            if target_net_id not in tornado_obj.hit_records:
                 
                 # Tính damage (giảm dần theo số lần hit của lốc)
                 current_dmg = tornado_obj.damage_base # Bạn có thể thêm decay_rate nếu muốn damage giảm dần
@@ -126,15 +126,24 @@ def update_q_logic(tornado_obj, enemies, dt):
                 print(f"Q Tornado Hit! Dmg: {current_dmg}")
                 
                 # --- QUAN TRỌNG: GÂY DAMAGE ---
-                if hasattr(target, 'take_damage'):
-                    target.take_damage(current_dmg)
+                if network_ctx:
+                    is_multi, is_host, game_client = network_ctx
+                    if is_multi and game_client and game_client.is_connected():
+                        etype = 'boss' if target.__class__.__name__ == 'Boss' else 'npc'
+                        game_client.send_hit_event(etype, target_net_id, current_dmg)
+                    else:
+                        if hasattr(target, 'take_damage'):
+                            target.take_damage(current_dmg)
+                else:
+                    if hasattr(target, 'take_damage'):
+                        target.take_damage(current_dmg)
                 
-                # Hiệu ứng hất tung (Knockup)
+                # Hiệu ứng hất tung (Knockup) - Client có thể dự đoán local
                 if hasattr(target, 'apply_knockup'):
                     target.apply_knockup(-12)
                 elif hasattr(target, 'velocity_y'): # Fallback
                     target.velocity_y = -10
                     
                 # Ghi lại hit
-                tornado_obj.hit_records[target_id] = tornado_obj.hit_cooldown
+                tornado_obj.hit_records[target_net_id] = tornado_obj.hit_cooldown
                 tornado_obj.hit_count += 1
