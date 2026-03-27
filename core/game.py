@@ -189,26 +189,10 @@ def run(net_mode: str = "solo", host_ip: str = "127.0.0.1", ext_seed: int = 0):
     game_server:  GameServer | None  = None
     game_client:  GameClient | None  = None
     remote_player: RemotePlayer | None = None
-    is_host   = (net_mode == "host")
-    is_client = (net_mode == "client")
-    is_multi  = net_mode in ("host", "client")
-
-    if is_host:
-        game_server = GameServer(NETWORK_HOST, NETWORK_PORT)
-        game_server.start()
-        # Host communicates directly via game_server (no loopback self-connection).
-        # The single accept slot is reserved for the remote guest client.
-        spawn_seed = game_server.seed
-    elif is_client:
-        game_client = GameClient(host_ip, NETWORK_PORT)
-        connected = game_client.connect(timeout=10.0)
-        if not connected:
-            print("[Client] Could not connect to server.")
-            sdl2.ext.quit()
-            return
-        spawn_seed = game_client.seed
-    else:
-        spawn_seed = 0   # Single-player; seed unused
+    is_host   = False
+    is_client = False
+    is_multi  = False
+    spawn_seed = 0
 
     # Tick counter for throttled world-state broadcasts
     _net_tick = 0
@@ -265,9 +249,8 @@ def run(net_mode: str = "solo", host_ip: str = "127.0.0.1", ext_seed: int = 0):
     # --- INIT PLAYER ---
     player = Player(world, software_factory, 100, 350, sound_manager, renderer_ptr=renderer.sdlrenderer)
 
-    # --- MULTIPLAYER: Remote Player ---
-    if is_multi:
-        remote_player = RemotePlayer(world, software_factory, renderer_ptr=renderer.sdlrenderer)
+    # Remote player placeholder (initialized on demand)
+    remote_player = None
 
     projectile_manager = ProjectileManager(renderer.sdlrenderer)
     npc_manager = NPCManager(software_factory, None, renderer.sdlrenderer, projectile_manager, sound_manager)
@@ -367,7 +350,74 @@ def run(net_mode: str = "solo", host_ip: str = "127.0.0.1", ext_seed: int = 0):
         
         # 1. MENU INPUT
         menu_action = game_menu.handle_input(events)
+
+        # Handle state polling
+        if game_menu.state == MenuState.HOST_LOBBY:
+            if is_host and game_server:
+                game_menu.lobby_client_ready = game_server.client_ready
+                game_menu.lobby_host_ready = game_server.host_ready
+                game_server.push_lobby_state()
+            elif is_client and game_client:
+                game_menu.lobby_client_ready = game_client.lobby_client_ready
+                game_menu.lobby_host_ready = game_client.lobby_host_ready
+                if game_client.lobby_game_starting:
+                    game_menu.state = MenuState.GAME_PLAYING
+                    menu_action = "START_GAME"
+
         if menu_action == "QUIT_GAME": running = False
+        elif menu_action == "START_HOST":
+            import socket
+            is_host = True
+            is_multi = True
+            if game_server is None:
+                game_server = GameServer(NETWORK_HOST, NETWORK_PORT)
+                game_server.start()
+            game_menu.host_ip = socket.gethostbyname(socket.gethostname())
+            if remote_player is None:
+                remote_player = RemotePlayer(world, software_factory, renderer_ptr=renderer.sdlrenderer)
+            
+        elif menu_action == "START_JOIN":
+            is_client = True
+            is_multi = True
+            import network.packet
+            conn_ip = network.packet.decode_ip(game_menu.join_ip.strip())
+            if game_client is None:
+                game_client = GameClient(conn_ip, NETWORK_PORT)
+                connected = game_client.connect(timeout=5.0)
+                if not connected:
+                    game_menu.state = MenuState.JOIN_LOBBY
+                    game_menu.join_ip = ""
+                    game_menu.lobby_status_msg = "Connection Failed!"
+                    is_client = False
+                    is_multi = False
+                else:
+                    if remote_player is None:
+                        remote_player = RemotePlayer(world, software_factory, renderer_ptr=renderer.sdlrenderer)
+
+        elif menu_action == "LOBBY_ACTION":
+            if is_host and game_server:
+                if not game_server.host_ready:
+                    game_server.host_ready = True
+                elif game_server.client_ready:
+                    game_server.game_starting = True
+                    game_server.push_lobby_state()
+                    game_menu.state = MenuState.GAME_PLAYING
+                    menu_action = "START_GAME"
+            elif is_client and game_client:
+                game_client.send_lobby_ready(not game_menu.lobby_client_ready)
+                game_menu.lobby_client_ready = not game_menu.lobby_client_ready
+
+        elif menu_action == "CANCEL_LOBBY":
+            if game_server:
+                game_server.stop()
+                game_server = None
+            if game_client:
+                game_client.stop()
+                game_client = None
+            is_host = False
+            is_client = False
+            is_multi = False
+
         elif menu_action == "START_GAME":
             # Reset player state
             player.hp = player.max_hp
@@ -430,6 +480,19 @@ def run(net_mode: str = "solo", host_ip: str = "127.0.0.1", ext_seed: int = 0):
             game_over_sound_played = False
             victory = False
             victory_sound_played = False
+
+        elif menu_action == "PAUSE_GAME":
+            if is_host and game_server:
+                game_server.push_game_event(net_pkt.make_game_pause())
+            elif is_client and game_client:
+                game_client.send_game_pause()
+
+        elif menu_action == "RESUME_GAME":
+            if is_host and game_server:
+                game_server.push_game_event(net_pkt.make_game_resume())
+            elif is_client and game_client:
+                game_client.send_game_resume()
+                
         elif menu_action == "UPDATE_VOLUME":
             music_volume = int((game_menu.get_volume()[0] / 100.0) * 128)
             sfx_volume = int((game_menu.get_volume()[1] / 100.0) * 128)
@@ -835,7 +898,8 @@ def run(net_mode: str = "solo", host_ip: str = "127.0.0.1", ext_seed: int = 0):
 
                 # 4. Apply hit/skill events sent by the client
                 for ev in game_server.pop_events():
-                    if ev.get('type') == net_pkt.HIT_EVENT:
+                    t = ev.get('type')
+                    if t == net_pkt.HIT_EVENT:
                         target_id = ev.get('target_id')
                         damage    = ev.get('damage', 0)
                         for n in npc_manager.npcs:
@@ -846,6 +910,22 @@ def run(net_mode: str = "solo", host_ip: str = "127.0.0.1", ext_seed: int = 0):
                             if getattr(b, 'net_id', id(b)) == target_id:
                                 b.take_damage(damage)
                                 break
+                    elif t == net_pkt.GAME_PAUSE:
+                        if game_menu.state == MenuState.GAME_PLAYING:
+                            game_menu.state = MenuState.PAUSE
+                    elif t == net_pkt.GAME_RESUME:
+                        if game_menu.state == MenuState.PAUSE:
+                            game_menu.state = MenuState.GAME_PLAYING
+
+            elif is_host and game_server and not game_server.is_connected() and game_menu.state == MenuState.GAME_PLAYING:
+                print("[Server] Client disconnected! Returning to menu.")
+                game_server.stop()
+                game_server = None
+                is_host = False
+                is_multi = False
+                game_menu.state = MenuState.MAIN_MENU
+                game_menu.selected_index = 0
+                menu_action = "BACK_TO_MAIN"
 
             elif is_client and game_client and game_client.is_connected():
                 # ── CLIENT PATH: communicate via game_client ─────────────────
@@ -872,13 +952,21 @@ def run(net_mode: str = "solo", host_ip: str = "127.0.0.1", ext_seed: int = 0):
 
                 # 3. Apply game events from server
                 for gev in game_client.pop_game_events():
-                    ev_name = gev.get('event')
-                    if ev_name == 'game_over':
-                        game_over = True
-                        game_over_timer = 3.0
-                    elif ev_name == 'victory':
-                        victory = True
-                        victory_timer = victory_text_duration
+                    t = gev.get('type')
+                    if t == net_pkt.GAME_EVENT:
+                        ev_name = gev.get('event')
+                        if ev_name == 'game_over':
+                            game_over = True
+                            game_over_timer = 3.0
+                        elif ev_name == 'victory':
+                            victory = True
+                            victory_timer = victory_text_duration
+                    elif t == net_pkt.GAME_PAUSE:
+                        if game_menu.state == MenuState.GAME_PLAYING:
+                            game_menu.state = MenuState.PAUSE
+                    elif t == net_pkt.GAME_RESUME:
+                        if game_menu.state == MenuState.PAUSE:
+                            game_menu.state = MenuState.GAME_PLAYING
 
                 # 4. Sync Entity State from server
                 for e_state in game_client.get_entity_state():
@@ -904,6 +992,16 @@ def run(net_mode: str = "solo", host_ip: str = "127.0.0.1", ext_seed: int = 0):
                             b.x = e_state.get('x', b.x)
                             b.y = e_state.get('y', b.y)
                             break
+
+            elif is_client and game_client and not game_client.is_connected() and game_menu.state == MenuState.GAME_PLAYING:
+                print("[Client] Disconnected from server! Returning to menu.")
+                game_client.stop()
+                game_client = None
+                is_client = False
+                is_multi = False
+                game_menu.state = MenuState.MAIN_MENU
+                game_menu.selected_index = 0
+                menu_action = "BACK_TO_MAIN"
 
             elif is_multi and remote_player:
                 # Still update remote player animation even if disconnected

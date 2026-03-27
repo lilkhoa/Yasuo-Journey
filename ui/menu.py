@@ -18,6 +18,9 @@ class MenuState:
     ABOUT = 2
     GAME_PLAYING = 3
     PAUSE = 4
+    MULTIPLAYER = 5
+    HOST_LOBBY = 6
+    JOIN_LOBBY = 7
 
 class GameMenu:
     def __init__(self, renderer, window_width, window_height):
@@ -42,8 +45,17 @@ class GameMenu:
         self.selected_index = 0
         
         # --- DATA MENU ---
-        self.main_options = ["NEW GAME", "OPTION", "ABOUT", "EXIT"]
+        self.main_options = ["SINGLEPLAYER", "MULTIPLAYER", "OPTION", "ABOUT", "EXIT"]
         self.pause_options = ["Resume", "Exit to Main Menu"]
+        self.multiplayer_options = ["Host Game", "Join Game", "Back"]
+
+        # Multiplayer Data
+        self.join_ip = ""
+        self.host_ip = "127.0.0.1" # Will be updated dynamically by game.py
+        self.lobby_status_msg = ""
+        self.lobby_host_ready = False
+        self.lobby_client_ready = False
+        self.is_host = False
         
         # Option Data
         self.option_items = ["Music Volume", "SFX Volume", "Back"]
@@ -133,9 +145,12 @@ class GameMenu:
                         self.selected_index = (self.selected_index + 1) % len(self.main_options)
                     elif key == sdl2.SDLK_RETURN or key == sdl2.SDLK_KP_ENTER:
                         choice = self.main_options[self.selected_index]
-                        if choice == "NEW GAME":
+                        if choice == "SINGLEPLAYER":
                             self.state = MenuState.GAME_PLAYING
                             return "START_GAME"
+                        elif choice == "MULTIPLAYER":
+                            self.state = MenuState.MULTIPLAYER
+                            self.selected_index = 0
                         elif choice == "OPTION":
                             self.state = MenuState.OPTION
                             self.selected_index = 0
@@ -143,6 +158,53 @@ class GameMenu:
                             self.state = MenuState.ABOUT
                         elif choice == "EXIT":
                             return "QUIT_GAME"
+
+                # --- MULTIPLAYER MENU ---
+                elif self.state == MenuState.MULTIPLAYER:
+                    if key == sdl2.SDLK_UP:
+                        self.selected_index = (self.selected_index - 1) % len(self.multiplayer_options)
+                    elif key == sdl2.SDLK_DOWN:
+                        self.selected_index = (self.selected_index + 1) % len(self.multiplayer_options)
+                    elif key == sdl2.SDLK_RETURN or key == sdl2.SDLK_KP_ENTER:
+                        choice = self.multiplayer_options[self.selected_index]
+                        if choice == "Host Game":
+                            self.state = MenuState.HOST_LOBBY
+                            self.is_host = True
+                            return "START_HOST"
+                        elif choice == "Join Game":
+                            self.state = MenuState.JOIN_LOBBY
+                            self.is_host = False
+                            self.join_ip = ""
+                            sdl2.SDL_StartTextInput()
+                        elif choice == "Back":
+                            self.state = MenuState.MAIN_MENU
+                            self.selected_index = 1
+                    elif key == sdl2.SDLK_ESCAPE:
+                        self.state = MenuState.MAIN_MENU
+                        self.selected_index = 1
+
+                # --- JOIN LOBBY ---
+                elif self.state == MenuState.JOIN_LOBBY:
+                    if key == sdl2.SDLK_BACKSPACE:
+                        self.join_ip = self.join_ip[:-1]
+                    elif key == sdl2.SDLK_RETURN or key == sdl2.SDLK_KP_ENTER:
+                        if self.join_ip:
+                            sdl2.SDL_StopTextInput()
+                            self.state = MenuState.HOST_LOBBY
+                            return "START_JOIN"
+                    elif key == sdl2.SDLK_ESCAPE:
+                        sdl2.SDL_StopTextInput()
+                        self.state = MenuState.MULTIPLAYER
+                        self.selected_index = 1
+
+                # --- HOST LOBBY ---
+                elif self.state == MenuState.HOST_LOBBY:
+                    if key == sdl2.SDLK_ESCAPE:
+                        self.state = MenuState.MULTIPLAYER
+                        self.selected_index = 0
+                        return "CANCEL_LOBBY"
+                    elif key == sdl2.SDLK_RETURN or key == sdl2.SDLK_KP_ENTER:
+                        return "LOBBY_ACTION"
 
                 # --- PAUSE MENU ---
                 elif self.state == MenuState.PAUSE:
@@ -209,6 +271,11 @@ class GameMenu:
                         self.state = MenuState.PAUSE
                         self.selected_index = 0
                         return "PAUSE_GAME"
+
+            elif event.type == sdl2.SDL_TEXTINPUT and self.state == MenuState.JOIN_LOBBY:
+                text = event.text.text.decode('utf-8')
+                if len(self.join_ip) < 15:
+                    self.join_ip += text
         
         return action
     
@@ -239,6 +306,12 @@ class GameMenu:
             self._render_options()
         elif self.state == MenuState.ABOUT:
             self._render_controls()
+        elif self.state == MenuState.MULTIPLAYER:
+            self._render_list("MULTIPLAYER", self.multiplayer_options)
+        elif self.state == MenuState.JOIN_LOBBY:
+            self._render_join_lobby()
+        elif self.state == MenuState.HOST_LOBBY:
+            self._render_host_lobby()
     
     def _draw_background(self):
         """Draw scrolling parallax background"""
@@ -285,8 +358,8 @@ class GameMenu:
             sdl2.SDL_RenderCopy(self.renderer, self.placeholder_texture, None, placeholder_rect)
             
             # Draw menu options on the cloth
-            start_y = placeholder_y + 50
-            line_height = 60
+            start_y = placeholder_y + 40
+            line_height = 50
             
             for i, option in enumerate(self.main_options):
                 color = YELLOW if i == self.selected_index else (220, 200, 170)
@@ -408,6 +481,57 @@ class GameMenu:
             y = start_y + (i * line_height)
             self._draw_text_at(key, self.width // 2 - 250, y, self.info_font, YELLOW)
             self._draw_text_at(action, self.width // 2 + 80, y, self.info_font, WHITE)
+
+    def _render_join_lobby(self):
+        self._draw_centered_text("JOIN GAME", -200, self.title_font, YELLOW)
+        self._draw_centered_text("Enter Host IP or Room ID:", -50, self.menu_font, YELLOW)
+        
+        # Draw text box
+        box_w, box_h = 300, 40
+        box_x = (self.width - box_w) // 2
+        box_y = self.height // 2 + 10
+        rect = sdl2.SDL_Rect(box_x, box_y, box_w, box_h)
+        sdl2.SDL_SetRenderDrawBlendMode(self.renderer, sdl2.SDL_BLENDMODE_BLEND)
+        sdl2.SDL_SetRenderDrawColor(self.renderer, 50, 50, 50, 200)
+        sdl2.SDL_RenderFillRect(self.renderer, rect)
+        sdl2.SDL_SetRenderDrawColor(self.renderer, 255, 255, 0, 255) # Yellow border
+        sdl2.SDL_RenderDrawRect(self.renderer, rect)
+        sdl2.SDL_SetRenderDrawBlendMode(self.renderer, sdl2.SDL_BLENDMODE_NONE)
+        
+        # Draw IP text
+        display_text = self.join_ip + "_"
+        self._draw_centered_text(display_text, 20, self.menu_font, YELLOW)
+        
+        self._draw_centered_text("[Enter] to Connect   [Esc] to Cancel", 100, self.info_font, YELLOW)
+
+    def _render_host_lobby(self):
+        title = "HOST LOBBY" if self.is_host else "GAME LOBBY"
+        self._draw_centered_text(title, -200, self.title_font, YELLOW)
+        
+        if self.is_host:
+            import network.packet
+            room_id = network.packet.encode_ip(self.host_ip)
+            self._draw_centered_text(f"IP: {self.host_ip}  |  Room ID: {room_id}", -120, self.menu_font, YELLOW)
+            if not self.lobby_client_ready and not self.lobby_host_ready:
+                self._draw_centered_text("Waiting for Player 2 to join...", -70, self.menu_font, YELLOW)
+        else:
+            self._draw_centered_text(f"Connected to {self.host_ip}", -120, self.menu_font, YELLOW)
+            
+        # Draw players status
+        self._draw_text_at("Player 1 (Host):", self.width // 2 - 200, self.height // 2 - 20, self.menu_font, YELLOW)
+        h_status = "READY" if self.lobby_host_ready else "Not Ready"
+        h_color = GREEN if self.lobby_host_ready else YELLOW
+        self._draw_text_at(h_status, self.width // 2 + 150, self.height // 2 - 20, self.menu_font, h_color)
+        
+        self._draw_text_at("Player 2 (Guest):", self.width // 2 - 200, self.height // 2 + 30, self.menu_font, YELLOW)
+        c_status = "READY" if self.lobby_client_ready else "Not Ready"
+        c_color = GREEN if self.lobby_client_ready else YELLOW
+        self._draw_text_at(c_status, self.width // 2 + 150, self.height // 2 + 30, self.menu_font, c_color)
+
+        if self.lobby_status_msg:
+            self._draw_centered_text(self.lobby_status_msg, 100, self.info_font, YELLOW)
+
+        self._draw_centered_text("[Enter] Toggle Ready / Start   [Esc] Leave", 150, self.info_font, YELLOW)
 
     def _draw_volume_bar(self, x, y, w, h, percent, color):
         """Vẽ thanh volume đơn giản"""

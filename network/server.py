@@ -46,6 +46,11 @@ class GameServer:
         self._remote_state: dict = {}          # protected by _state_lock
         self._state_lock = threading.Lock()
 
+        # Lobby state
+        self.host_ready = False
+        self.client_ready = False
+        self.game_starting = False
+
         # latest skill/hit events queued by the client (consumed by game loop)
         self._event_queue: queue.Queue = queue.Queue(maxsize=128)
 
@@ -97,8 +102,12 @@ class GameServer:
         self._enqueue(projectile_pkt)
 
     def push_game_event(self, event_pkt: dict):
-        """Broadcast a game-level event (kill, victory, etc.) to the client."""
+        """Broadcast a game-level event (kill, victory, pause, etc.) to the client."""
         self._enqueue(event_pkt)
+
+    def push_lobby_state(self):
+        """Push the current lobby state to the client."""
+        self._enqueue(pkt.make_lobby_state(self.host_ready, self.client_ready, self.game_starting))
 
     def stop(self):
         self._running = False
@@ -165,7 +174,9 @@ class GameServer:
             if t == pkt.PLAYER_STATE:
                 with self._state_lock:
                     self._remote_state = p
-            elif t in (pkt.SKILL_EVENT, pkt.HIT_EVENT):
+            elif t == pkt.LOBBY_STATE:
+                self.client_ready = p.get("client_ready", False)
+            elif t in (pkt.SKILL_EVENT, pkt.HIT_EVENT, pkt.GAME_PAUSE, pkt.GAME_RESUME, pkt.GAME_OVER):
                 try:
                     self._event_queue.put_nowait(p)
                 except queue.Full:
