@@ -16,6 +16,35 @@ Packet types (field "type"):
 
 import json
 import struct
+import socket
+
+def encode_ip(ip: str) -> str:
+    """Encode an IPv4 address to a short alphanumeric Room ID (Base36)."""
+    try:
+        packed = socket.inet_aton(ip)
+        num = struct.unpack("!I", packed)[0]
+        chars = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+        res = ""
+        while num > 0:
+            num, rem = divmod(num, 36)
+            res = chars[rem] + res
+        return res if res else "0"
+    except Exception:
+        return "ERROR"
+
+def decode_ip(room_id: str) -> str:
+    """Decode a Room ID back to an IPv4 address. Returns original string if invalid."""
+    try:
+        room_id = room_id.upper()
+        if "." in room_id: return room_id
+        num = 0
+        chars = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+        for char in room_id:
+            num = num * 36 + chars.index(char)
+        packed = struct.pack("!I", num)
+        return socket.inet_ntoa(packed)
+    except Exception:
+        return room_id
 
 # ── Packet type constants ────────────────────────────────────────────────────
 HANDSHAKE        = "HANDSHAKE"
@@ -25,6 +54,9 @@ HIT_EVENT        = "HIT_EVENT"
 ENTITY_STATE     = "ENTITY_STATE"
 PROJECTILE_STATE = "PROJECTILE_STATE"
 GAME_EVENT       = "GAME_EVENT"
+LOBBY_STATE      = "LOBBY_STATE"
+GAME_PAUSE       = "GAME_PAUSE"
+GAME_RESUME      = "GAME_RESUME"
 
 # ── Serialisation helpers ────────────────────────────────────────────────────
 
@@ -151,3 +183,21 @@ def make_game_event(event: str, **kwargs) -> dict:
     pkt = {"type": GAME_EVENT, "event": event}
     pkt.update(kwargs)
     return pkt
+
+
+def make_lobby_state(host_ready: bool, client_ready: bool, game_starting: bool) -> dict:
+    return {
+        "type": LOBBY_STATE,
+        "host_ready": host_ready,
+        "client_ready": client_ready,
+        "game_starting": game_starting
+    }
+
+
+def make_game_pause() -> dict:
+    return {"type": GAME_PAUSE}
+
+
+def make_game_resume() -> dict:
+    return {"type": GAME_RESUME}
+

@@ -39,6 +39,11 @@ class GameClient:
         self._projectile_state: list     = []
         self._pending_game_events: list  = []
 
+        # Lobby state from server
+        self.lobby_host_ready = False
+        self.lobby_client_ready = False
+        self.lobby_game_starting = False
+
         self._state_lock  = threading.Lock()
         self._events_lock = threading.Lock()
 
@@ -112,6 +117,16 @@ class GameClient:
         ev = pkt.make_hit_event(self.player_id, target_type, target_id, damage)
         self._enqueue(ev)
 
+    def send_lobby_ready(self, ready: bool):
+        """Send the client's lobby ready state to the server."""
+        self._enqueue(pkt.make_lobby_state(False, ready, False))
+
+    def send_game_pause(self):
+        self._enqueue(pkt.make_game_pause())
+
+    def send_game_resume(self):
+        self._enqueue(pkt.make_game_resume())
+
     # ── Inbound helpers (game loop ← server) ─────────────────────────────
 
     def get_remote_player_state(self) -> dict:
@@ -166,7 +181,12 @@ class GameClient:
                 with self._state_lock:
                     self._projectile_state = p.get("projectiles", [])
 
-            elif t == pkt.GAME_EVENT:
+            elif t == pkt.LOBBY_STATE:
+                self.lobby_host_ready = p.get("host_ready", False)
+                self.lobby_client_ready = p.get("client_ready", False)
+                self.lobby_game_starting = p.get("game_starting", False)
+
+            elif t in (pkt.GAME_EVENT, pkt.GAME_PAUSE, pkt.GAME_RESUME, pkt.GAME_OVER):
                 with self._events_lock:
                     self._pending_game_events.append(p)
 
