@@ -130,6 +130,9 @@ DAMAGE_SKILL_E = 25
 DAMAGE_SKILL_Q = 50
 DAMAGE_SKILL_W = 25
 
+# Player 2 (New Character) Damage Settings
+DAMAGE_SKILL_Q_2 = 45  # Laser beam damage (slightly lower than tornado)
+
 # Block Settings [MỚI]
 BLOCK_DAMAGE_REDUCTION = 0.9
 BLOCK_STAMINA_COST_PER_HIT = 20
