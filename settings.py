@@ -124,11 +124,33 @@ SKILL_Q_COOLDOWN = 240
 SKILL_W_COOLDOWN = 300
 SKILL_E_COOLDOWN = 100
 
+# Player 2 E Skill (Arrow Rain) Settings
+SKILL_E_2_COOLDOWN = 12.0            # E skill cooldown (seconds)
+SKILL_E_2_COST = 40                  # E skill stamina cost
+SKILL_E_2_WIDTH = 350                # Arrow rain area width (pixels)
+SKILL_E_2_HEIGHT = 400               # Arrow rain area height (pixels)
+SKILL_E_2_DURATION = 2.5             # Arrow rain duration (seconds)
+SKILL_E_2_SNARE_DURATION = 1.5       # Root duration for enemies hit (seconds)
+SKILL_E_2_CAST_RANGE = 200           # Distance from player to spawn AoE center
+
 # Damage Settings [MỚI]
 PLAYER_ATTACK_DAMAGE = 25
 DAMAGE_SKILL_E = 25
 DAMAGE_SKILL_Q = 50
 DAMAGE_SKILL_W = 25
+
+# Player 2 (New Character) Damage Settings
+DAMAGE_SKILL_Q_2 = 45  # Laser beam damage (slightly lower than tornado)
+
+# Player 2 W Skill Settings
+SKILL_W_BUFF_DURATION = 5.0        # Duration of W buff in seconds
+DAMAGE_W_POISON = 35               # Poison projectile base damage
+POISON_TICK_RATE = 0.5             # Damage application frequency (seconds)
+POISON_DURATION = 3.0              # Duration of poison effect on target
+DAMAGE_W_PLANT = 25                # Plant/root projectile damage
+W_PLANT_SNARE_DURATION = 1.5       # Root duration in seconds
+HEAL_W_DUST = 50                   # Healing amount from dust projectile
+W_PROJECTILE_SPEED = 8             # Base projectile speed (pixels per frame)
 
 # Block Settings [MỚI]
 BLOCK_DAMAGE_REDUCTION = 0.9

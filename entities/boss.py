@@ -236,6 +236,12 @@ class Boss:
         self.sound_manager = sound_manager
         self.camera = camera
         
+        # Network ID for multiplayer
+        self.net_id = None
+        
+        # Crowd Control - Snare/Root effect (Player2 E skill)
+        self.snare_timer = 0  # Root duration countdown (seconds)
+        
         # Summoned minions
         self.minions = []
         self.minion_textures_preloaded = None
@@ -374,6 +380,16 @@ class Boss:
         Args:
             delta_time: Time elapsed since last update
         """
+        # Handle snare (root) effect - prevent movement while snared
+        if self.snare_timer > 0:
+            self.snare_timer -= delta_time
+            self.velocity_x = 0  # Stop horizontal movement
+            # Note: Can still animate, still can attack if player is in range
+            self._update_animation()
+            self.x += self.velocity_x  # Apply (zero) velocity
+            self.y += self.velocity_y  # Gravity still applies
+            return
+        
         # Handle death state
         if self.state == BossState.DYING:
             self._update_animation()

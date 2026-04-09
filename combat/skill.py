@@ -37,7 +37,7 @@ class Skill:
             self.cooldown_time = max(0.1, current_cd) # Keep 0.1s minimum for internal logic
             
             self.level = level
-            print(f"Skill upgraded to Level {level}. Dmg Mul: {self.damage_multiplier:.2f} (Level: {level_scaling:.2f} × AD: {ad_scaling:.2f}), CD: {self.cooldown_time:.2f}s")
+            print(f"Skill upgraded to Level {level}. Dmg Mul: {self.damage_multiplier:.2f} (Level: {level_scaling:.2f} x AD: {ad_scaling:.2f}), CD: {self.cooldown_time:.2f}s")
     
     def is_ready(self):
         return (time.time() - self.last_cast_time) >= self.cooldown_time
