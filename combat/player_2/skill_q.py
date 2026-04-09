@@ -21,7 +21,7 @@ def load_laser_cast_animation(factory, skill_asset_dir):
         prefix="sp_atk_",
         count=17,
         target_size=(150, 150),
-        zero_pad=True
+        zero_pad=False
     )
     return sprites
 
@@ -38,7 +38,7 @@ def load_laser_projectile_frames(factory, projectile_asset_dir):
         prefix="beam_extension_effect_",
         count=5,
         target_size=(800, 80),
-        zero_pad=True
+        zero_pad=False
     )
     return sprites
 
