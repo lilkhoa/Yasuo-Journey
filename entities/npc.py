@@ -189,6 +189,12 @@ class NPC:
         # Death callback (for coin drops, etc.)
         self.on_death_callback = None
         
+        # Network ID for multiplayer
+        self.net_id = None
+        
+        # Crowd Control - Snare/Root effect (Player2 E skill)
+        self.snare_timer = 0  # Root duration countdown (seconds)
+        
         # Load sprites (implemented by child classes)
         self._load_sprites()
     
@@ -212,6 +218,16 @@ class NPC:
             delta_time: Time elapsed since last update
             game_map: GameMap instance for tile collision
         """
+        # Handle snare (root) effect - prevent movement while snared
+        if self.snare_timer > 0:
+            self.snare_timer -= delta_time
+            self.velocity_x = 0  # Stop horizontal movement
+            # Note: Can still animate, still can attack if player is in range
+            self._update_animation()
+            self.x += self.velocity_x  # Apply (zero) velocity
+            if self.velocity_y != 0: self.y += self.velocity_y  # Gravity still applies
+            return
+        
         if self.state == NPCState.DEAD:
             self._update_animation()
             

@@ -18,7 +18,8 @@ if root_dir not in sys.path:
 from entities.player import Player
 from entities.player_2_projectile import PoisonProjectile, PlantProjectile, HealDustProjectile
 from combat.player_2.skill_w import SkillW
-from settings import SKILL_W_BUFF_DURATION, SKILL_W_COST
+from combat.player_2.skill_e import SkillE, load_arrow_rain_cast_animation
+from settings import SKILL_W_BUFF_DURATION, SKILL_W_COST, SKILL_E_2_COST, SKILL_E_2_COOLDOWN
 
 
 class Player2(Player):
@@ -55,6 +56,11 @@ class Player2(Player):
         
         # Poison tracking (optional DoT management)
         self.w_poison_applied = {}  # target_id -> timestamp of last poison application
+        
+        # Create E skill instance for Arrow Rain
+        self.skill_e = SkillE(self)
+        self.e_casting_frames = []  # Will load casting animation on demand
+        self.e_aoe = None  # Current active AoE (if any)
     
     def start_w(self, direction=0):
         """
@@ -101,10 +107,86 @@ class Player2(Player):
         
         print(f"Player2: Toxin Enhancement activated for {SKILL_W_BUFF_DURATION}s!")
     
-    def update(self, dt, world, factory, renderer, active_list_q, active_list_w, 
-               game_map=None, boxes=None):
+    def start_e(self, world=None, factory=None, renderer=None, direction=0):
         """
-        Override: Call parent update AND manage W buff duration.
+        Activate Arrow Rain skill - spawns AoE at calculated position.
+        
+        Args:
+            world: SDL2 entity world (ignored, for compatibility with Player.start_e signature)
+            factory: Sprite factory (ignored, for compatibility)
+            renderer: SDL2 renderer (used for asset loading)
+            direction: Direction input (used for facing)
+        """
+        # Check cooldown and stamina
+        if self.stamina < SKILL_E_2_COST or not self.cooldowns.is_ready("skill_e"):
+            return
+        
+        # Only cast from valid states
+        if self.state not in ['idle', 'jumping']:
+            return
+        
+        # Spend stamina and set cooldown
+        self.stamina -= SKILL_E_2_COST
+        cd = self.get_skill_cooldown('e')
+        if not hasattr(self.cooldowns, 'start_cooldown'):
+            # Fallback if method doesn't exist
+            cd = SKILL_E_2_COOLDOWN
+        else:
+            self.cooldowns.start_cooldown("skill_e", cd)
+        
+        # Update facing direction
+        if direction:
+            self.facing_right = (direction > 0)
+        
+        # Set state to casting animation
+        self.state = 'casting_e'
+        self.frame_index = 0
+        
+        # Load casting animation if not already loaded
+        if not self.e_casting_frames:
+            self.e_casting_frames = load_arrow_rain_cast_animation()
+        
+        # Play sound
+        if self.sound_manager:
+            try:
+                self.sound_manager.play_sound("player_e1")
+            except:
+                pass
+    
+    def spawn_e_aoe(self, renderer):
+        """
+        Called when E casting animation completes.
+        Spawns the Arrow Rain AoE entity.
+        
+        Args:
+            renderer: SDL2 renderer
+        """
+        if self.skill_e is None:
+            return
+        
+        # Execute the skill to spawn AoE
+        self.skill_e.execute(renderer)
+        
+        print(f"Player2: Arrow Rain spawned!")
+    
+    def handle_movement(self, keys):
+        """
+        Override: Block movement during E skill casting.
+        
+        Args:
+            keys: Keyboard state
+        """
+        # Block movement during E casting
+        if self.is_blocking or self.state in ['casting_q', 'casting_w', 'casting_e', 'dashing_e', 'attacking', 'dead', 'hurt']:
+            return
+        
+        # Call parent's movement handling
+        super().handle_movement(keys)
+    
+    def update(self, dt, world, factory, renderer, active_list_q, active_list_w, 
+               game_map=None, boxes=None, active_list_e=None):
+        """
+        Override: Call parent update AND manage W buff duration + E AoE casting.
         
         Args:
             dt: Delta time
@@ -115,6 +197,7 @@ class Player2(Player):
             active_list_w: List for W skill effects
             game_map: Game map for collision
             boxes: Obstacle boxes
+            active_list_e: List for E skill AoE effects
         """
         # Call parent update (handles movement, animation, conditions, etc.)
         super().update(dt, world, factory, renderer, active_list_q, active_list_w, 
@@ -128,6 +211,24 @@ class Player2(Player):
             if not self.w_buff_active:
                 self.w_attack_toggle = False  # Reset toggle on expiration
                 self.w_poison_applied.clear()  # Clear poison tracking
+        
+        # Manage E casting animation
+        if self.state == 'casting_e':
+            # Animate the casting frames
+            if self.e_casting_frames:
+                self.frame_index += 1
+                
+                # Update sprite frame
+                idx = self.frame_index % len(self.e_casting_frames)
+                old_pos = self.sprite.position
+                self.sprite = self.e_casting_frames[idx]
+                self.sprite.position = old_pos
+                
+                if self.frame_index >= len(self.e_casting_frames):
+                    # Casting animation complete - spawn AoE
+                    self.spawn_e_aoe(renderer)
+                    self.state = 'idle'
+                    self.frame_index = 0
     
     def attack(self):
         """
