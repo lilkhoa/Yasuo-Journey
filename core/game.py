@@ -277,6 +277,9 @@ def run(net_mode: str = "solo", host_ip: str = "127.0.0.1", ext_seed: int = 0):
                 ex + ew/2 + offset_x, ey + eh/2, coin_tex, coin_w, coin_h,
                 text_renderer, ItemType.COIN, coin_name
             )
+            # Set pickup delay for network mode (prevent immediate re-collection)
+            if is_multi:
+                coin_item.pickup_delay = 1.5  # 1.5 second delay before pickup allowed
             dropped_items.append(coin_item)
         sound_manager.play_sound("item_pop")
     
@@ -585,7 +588,7 @@ def run(net_mode: str = "solo", host_ip: str = "127.0.0.1", ext_seed: int = 0):
                         # Get items before opening chest
                         for item in dropped_items: 
                             if collect_timer <= 0:
-                                if item.interact(notif_system, player):
+                                if item.interact(notif_system, player, game_client):
                                     collect_timer = COLLECT_INTERVAL
                                     if sound_manager:
                                         sound_manager.play_sound("item_pickup")
@@ -994,6 +997,44 @@ def run(net_mode: str = "solo", host_ip: str = "127.0.0.1", ext_seed: int = 0):
                             b.x = e_state.get('x', b.x)
                             b.y = e_state.get('y', b.y)
                             break
+                
+                # --- ITEM NETWORK HANDLING (CLIENT) ---
+                # Process ITEM_DROPPED events from server
+                for gev in game_client.pop_game_events():
+                    t = gev.get('type')
+                    if t == net_pkt.ITEM_DROPPED:
+                        # Create dropped item from network event
+                        item_type_val = gev.get('item_type')
+                        x = gev.get('x', 0)
+                        y = gev.get('y', 0)
+                        item_net_id = gev.get('item_net_id')
+                        
+                        # Find the item type from registry
+                        try:
+                            item_type = ItemType(item_type_val)
+                            item_info = common_drop_table.get(item_type)
+                            if item_info:
+                                item_name, item_w, item_h, item_tex = item_info
+                                new_item = DroppedItem(x, y, item_tex, item_w, item_h,
+                                                      text_renderer, item_type, item_name)
+                                new_item.net_id = item_net_id
+                                new_item.pickup_delay = 1.5  # Prevent immediate re-collection
+                                dropped_items.append(new_item)
+                                print(f"[Client] Received dropped item: {item_name} at ({x:.1f}, {y:.1f})")
+                        except ValueError:
+                            print(f"[Client] Invalid item type: {item_type_val}")
+                    elif t == net_pkt.PICKUP_REQUEST:
+                        # Client-side: pickup request approved by server
+                        item_net_id = gev.get('item_net_id')
+                        approved = gev.get('approved', False)
+                        
+                        if approved:
+                            # Remove item from world
+                            for i, item in enumerate(dropped_items):
+                                if item.net_id == item_net_id:
+                                    item.is_collected = True
+                                    print(f"[Client] Pickup approved: {item.item_name}")
+                                    break
 
             elif is_client and game_client and not game_client.is_connected() and game_menu.state == MenuState.GAME_PLAYING:
                 print("[Client] Disconnected from server! Returning to menu.")

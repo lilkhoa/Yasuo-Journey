@@ -1,6 +1,7 @@
 import sdl2
 from enum import Enum
 import random
+import time
 from sdl2 import SDL_Rect, SDL_RenderCopy
 from settings import *
 from world.map import GameMap
@@ -37,6 +38,7 @@ ITEM_REGISTRY = {
 
 class DroppedItem:
     collected_count = 0
+    _next_net_id = 1000  # Start high to avoid conflicts with entities
 
     def __init__(self, x, y, texture, width, height, text_renderer, item_type, item_name):
         self.x = x
@@ -60,6 +62,15 @@ class DroppedItem:
         self.can_interact = False 
 
         self.text_renderer = text_renderer
+        
+        # --- NETWORK SUPPORT ---
+        # Unique identifier for network synchronization
+        self.net_id = DroppedItem._next_net_id
+        DroppedItem._next_net_id += 1
+        
+        # Pickup delay prevents immediate re-collection on spawn or drop
+        self.spawn_time = time.time()
+        self.pickup_delay = 0.0  # In seconds (0 = can pickup immediately)
 
     def update(self, dt, game_map: GameMap, player):
         if self.is_collected:
@@ -146,27 +157,63 @@ class DroppedItem:
                 radius=8
             )
 
-    def interact(self, notification_system: ItemNotificationSystem, player):
-        # collecting item
-        if not self.is_collected:
-            center_x = self.x + self.width/2
-            center_y = self.y + self.height/2
-            player_cx = player.x + player.width/2
-            player_cy = player.y + player.height/2
-
-            dist = (center_x - player_cx)**2 + (center_y - player_cy)**2
-            # dist = abs(self.x + self.width/2 - (player.x + player.width/2))
-            if dist <= self.interact_range**2:
-                self.is_collected = True
-                notification_system.add_notification(self.item_name, self.texture)
-                player.collect_item(self.item_type)
-                DroppedItem.collected_count += 1
-
-                if DroppedItem.collected_count > 0:
-                    print(f"Collected {DroppedItem.collected_count} items!")
-    
-                return True
+    def interact(self, notification_system: ItemNotificationSystem, player, game_client=None):
+        """
+        Handle item pickup interaction.
         
-        else:
+        Args:
+            notification_system: ItemNotificationSystem for UI feedback
+            player: Player object attempting pickup
+            game_client: GameClient instance (if in network mode)
+            
+        Returns:
+            True if pickup was processed, False otherwise
+        """
+        if self.is_collected:
             return False
+        
+        # Check pickup delay - item must wait this many seconds after spawn
+        elapsed_time = time.time() - self.spawn_time
+        if elapsed_time < self.pickup_delay:
+            return False  # Still in pickup delay window, cannot collect
+        
+        center_x = self.x + self.width/2
+        center_y = self.y + self.height/2
+        player_cx = player.x + player.width/2
+        player_cy = player.y + player.height/2
+
+        dist = (center_x - player_cx)**2 + (center_y - player_cy)**2
+        if dist <= self.interact_range**2:
+            # Determine item category using ITEM_REGISTRY
+            category = ITEM_REGISTRY.get(self.item_type)
+            
+            # --- NETWORK MODE: Send pickup request to server ---
+            if game_client and game_client.is_connected():
+                # In network mode: send pickup request, don't collect immediately
+                game_client.send_pickup_request(self.net_id, player.net_id if hasattr(player, 'net_id') else 0)
+                # Item remains on ground until server approves
+                return True  # Pickup interaction was processed
+            
+            # --- OFFLINE MODE: Collect immediately ---
+            self.is_collected = True
+            notification_system.add_notification(self.item_name, self.texture)
+            
+            # Handle different item types
+            if category == ItemCategory.CURRENCY:
+                # Instant pickup for currency
+                player.collect_item(self.item_type)
+            elif category == ItemCategory.EQUIPMENT:
+                # Instant apply for equipment
+                player.collect_item(self.item_type)
+            elif category == ItemCategory.CONSUMABLE:
+                # Add to inventory for consumables
+                player.collect_item(self.item_type)
+            
+            DroppedItem.collected_count += 1
+            if DroppedItem.collected_count > 0:
+                print(f"[Items] Collected {DroppedItem.collected_count} items! (Item: {self.item_name})")
+            
+            return True
+        
+        return False
         

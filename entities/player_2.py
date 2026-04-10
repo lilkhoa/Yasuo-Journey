@@ -70,6 +70,67 @@ class Player2(Player):
             None,          # Index 3 - R key (reserved)
             None           # Index 4 - A/S key (reserved)
         ]
+        
+        # --- INVENTORY SYSTEM FOR PLAYER2 ---
+        # Store active inventory item(s)
+        # In this implementation, support both single item and list for future expansion
+        self.inventory = None  # Currently holds: None or ItemType
+        self.dropped_item_net_id = None  # Track dropped item for network sync
+    
+    def add_item_to_inventory(self, item_type):
+        """
+        Add an item to Player2's active inventory.
+        
+        In network mode, consumables go to inventory.
+        Equipment/Currency are applied immediately (inherited behavior).
+        
+        Args:
+            item_type: ItemType enum value
+        """
+        # Store the item in inventory
+        self.inventory = item_type
+        print(f"[Player2] Added to Inventory: {item_type.name}")
+    
+    def drop_item(self, game_client=None):
+        """
+        Drop the current inventory item at player's position.
+        
+        Args:
+            game_client: GameClient instance for network synchronization
+            
+        Returns:
+            ItemType if successfully dropped, None if inventory empty
+        """
+        if self.inventory is None:
+            print("[Player2] Inventory is empty, nothing to drop")
+            return None
+        
+        dropped_type = self.inventory
+        
+        # Send network event to server (if multiplayer)
+        if game_client and game_client.is_connected():
+            # Generate unique item ID for network sync
+            from items.item import DroppedItem
+            item_net_id = DroppedItem._next_net_id
+            DroppedItem._next_net_id += 1
+            
+            # Notify server about dropped item
+            event = {
+                "type": "ITEM_DROPPED",
+                "player_id": game_client.player_id,
+                "item_type": dropped_type.value,  # Convert enum to int
+                "x": self.x,
+                "y": self.y,
+                "item_net_id": item_net_id,
+            }
+            game_client._enqueue(event)
+            self.dropped_item_net_id = item_net_id
+        
+        # Clear inventory
+        self.inventory = None
+        print(f"[Player2] Dropped item: {dropped_type.name} at ({self.x:.1f}, {self.y:.1f})")
+        
+        return dropped_type
     
     def start_w(self, direction=0):
         """

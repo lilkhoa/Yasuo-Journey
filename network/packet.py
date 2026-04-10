@@ -57,6 +57,8 @@ GAME_EVENT       = "GAME_EVENT"
 LOBBY_STATE      = "LOBBY_STATE"
 GAME_PAUSE       = "GAME_PAUSE"
 GAME_RESUME      = "GAME_RESUME"
+PICKUP_REQUEST   = "PICKUP_REQUEST"
+ITEM_DROPPED     = "ITEM_DROPPED"
 
 # ── Serialisation helpers ────────────────────────────────────────────────────
 
@@ -200,4 +202,40 @@ def make_game_pause() -> dict:
 
 def make_game_resume() -> dict:
     return {"type": GAME_RESUME}
+
+
+def make_pickup_request(player_id: int, item_net_id: int, player_net_id: int) -> dict:
+    """
+    Send a request to pick up an item.
+    The server will validate and either approve or deny.
+    
+    Args:
+        player_id: Requesting player's ID
+        item_net_id: Unique item ID
+        player_net_id: Player's unique ID (for server verification)
+    """
+    return {
+        "type": PICKUP_REQUEST,
+        "player_id": player_id,
+        "item_net_id": item_net_id,
+        "player_net_id": player_net_id,
+    }
+
+
+def make_item_dropped(item_type: int, x: float, y: float, item_net_id: int) -> dict:
+    """
+    Notify clients that an item was dropped at a location.
+    
+    Args:
+        item_type: ItemType enum value
+        x, y: Position
+        item_net_id: Unique item ID
+    """
+    return {
+        "type": ITEM_DROPPED,
+        "item_type": item_type,
+        "x": round(x, 2),
+        "y": round(y, 2),
+        "item_net_id": item_net_id,
+    }
 
