@@ -127,6 +127,11 @@ class GameClient:
     def send_game_resume(self):
         self._enqueue(pkt.make_game_resume())
 
+    def send_pickup_request(self, item_net_id: int, player_net_id: int):
+        """Send a request to pick up an item (server must approve)."""
+        ev = pkt.make_pickup_request(self.player_id, item_net_id, player_net_id)
+        self._enqueue(ev)
+
     # ── Inbound helpers (game loop ← server) ─────────────────────────────
 
     def get_remote_player_state(self) -> dict:

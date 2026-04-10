@@ -261,6 +261,9 @@ class Player:
             None           # Index 4 - A/S key (reserved)
         ]
         
+        # --- NETWORK SUPPORT ---
+        self.net_id = None  # Assigned by server during game initialization
+        
         # --- UPGRADE SYSTEM ---
         # self.gold = 10 # Starting gold for testing (can be 0)
         self.skill_levels = {'q': 0, 'w': 0, 'e': 0, 'a': 0} # 0 = Base Level
