@@ -251,6 +251,16 @@ class Player:
         self.skill_w = SkillW(self)
         self.skill_e = SkillE(self)
         
+        # --- SKILLS LIST FOR HUD ---
+        # Group skills for easy HUD rendering
+        self.skills = [
+            self.skill_q,  # Index 0 - Q key
+            self.skill_w,  # Index 1 - W key
+            self.skill_e,  # Index 2 - E key
+            None,          # Index 3 - R key (reserved)
+            None           # Index 4 - A/S key (reserved)
+        ]
+        
         # --- UPGRADE SYSTEM ---
         # self.gold = 10 # Starting gold for testing (can be 0)
         self.skill_levels = {'q': 0, 'w': 0, 'e': 0, 'a': 0} # 0 = Base Level

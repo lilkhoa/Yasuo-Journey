@@ -61,6 +61,15 @@ class Player2(Player):
         self.skill_e = SkillE(self)
         self.e_casting_frames = []  # Will load casting animation on demand
         self.e_aoe = None  # Current active AoE (if any)
+        
+        # --- SKILLS LIST FOR HUD (Player 2 Override) ---
+        self.skills = [
+            self.skill_q,  # Index 0 - Q key
+            self.skill_w,  # Index 1 - W key
+            self.skill_e,  # Index 2 - E key
+            None,          # Index 3 - R key (reserved)
+            None           # Index 4 - A/S key (reserved)
+        ]
     
     def start_w(self, direction=0):
         """

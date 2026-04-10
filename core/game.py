@@ -264,7 +264,9 @@ def run(net_mode: str = "solo", host_ip: str = "127.0.0.1", ext_seed: int = 0):
     # Add special icons
     icon_map["COIN_ICON"] = coin_texture
 
-    hud = SkillBarHUD(renderer.sdlrenderer, player, icon_map=icon_map)
+    # Create HUD with character type (Yasuo is player1)
+    character_type = 'player1' if player.__class__.__name__ == 'Player' else 'player2'
+    hud = SkillBarHUD(renderer.sdlrenderer, player, character_type=character_type, icon_map=icon_map)
     
     def drop_coin_on_death(entity, num_coins=1):
         coin_name, coin_w, coin_h, coin_tex = common_drop_table[ItemType.COIN]
