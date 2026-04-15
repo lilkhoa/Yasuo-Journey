@@ -313,6 +313,7 @@ class SkillBarHUD:
                     sdl2.SDL_SetRenderDrawColor(self.renderer, 0, 0, 0, 200)
                     
                     ratio = cooldown / max_cd if max_cd > 0 else 0
+                    ratio = min(1.0, ratio) # Avoid cross 100% => Tran vien
                     h = int(self.icon_size * ratio)
                     overlay = sdl2.SDL_Rect(icon_x, icon_y + (self.icon_size - h), self.icon_size, h)
                     sdl2.SDL_RenderFillRect(self.renderer, overlay)
@@ -399,6 +400,12 @@ class SkillBarHUD:
     
     def _get_cooldown_max(self, skill_key):
         """Get max cooldown in frames for a skill."""
+        # [FIX] Ưu tiên lấy Max Cooldown trực tiếp từ chỉ số của Player
+        if hasattr(self.player, 'get_skill_cooldown'):
+            cd = self.player.get_skill_cooldown(skill_key.lower())
+            if cd and cd > 0:
+                return cd
+
         key_to_index = {'Q': 0, 'W': 1, 'E': 2, 'R': 3, 'A': 4}
         index = key_to_index.get(skill_key)
         
@@ -409,12 +416,10 @@ class SkillBarHUD:
         if skill_obj is None:
             return 60
         
-        # Get cooldown_time from skill object (in frames)
         if hasattr(skill_obj, 'cooldown_time'):
             return skill_obj.cooldown_time
         
-        # Fallback defaults
-        defaults = {0: 45, 1: 30, 2: 15, 3: 120, 4: 30}  # Q, W, E, R, Attack cooldowns in frames
+        defaults = {0: 45, 1: 30, 2: 15, 3: 120, 4: 30}
         return defaults.get(index, 60)
     
     def _get_skill_cost(self, skill_key):

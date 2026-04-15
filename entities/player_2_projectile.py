@@ -101,7 +101,7 @@ class Player2Projectile:
             else:
                 print(f"Warning: Projectile frame not found: {filepath}")
     
-    def update(self, delta_time=1):
+    def update(self, delta_time=1, world = None, my_map = None, obstacles = None):
         """
         Update projectile position and animation.
         
@@ -509,3 +509,137 @@ class HealDustProjectile(Player2Projectile):
                 return ally
         
         return None
+
+class NormalArrowProjectile(Player2Projectile):
+    """
+    Normal attack arrow for Player 2.
+    Travels straight and deals base physical damage.
+    """
+    def __init__(self, x, y, direction, owner, renderer):
+        # Path to the directory of normal arrow:
+        texture_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'assets', 'Player_2', 'projectiles_and_effects', 'arrow')
+        
+        # Initialize the baseclass (temporaly pass 1 frame)
+        super().__init__(x, y, direction, owner, renderer, 1, texture_dir)
+        
+        # --- Basic stats of normal attack
+        self.velocity_x = 800 * direction  # Arrow move's speed (800 px/s)
+        self.velocity_y = 0                # Go straight, now drop down.
+        
+        # Get the owner's physical damage
+        self.damage = getattr(owner, 'attack_damage', 10) 
+        
+        # Range and Stuck Logic
+        self.start_x = x
+        # Taking reference from shooter NPC projectile speed or a fixed range (e.g., 700px)
+        self.max_range = 700
+
+        self.is_stuck = False
+        self.stucker_timer = 0
+        self.STUCK_DURATION = 1.0   # time in second before disappearing
+
+        # [OVERRIDE] Process the arrow image 
+        self._load_exact_arrow(texture_dir)
+
+    def _load_exact_arrow(self, texture_dir):
+        """Delete default load texture and exactly load the file arrow_.png"""
+        for tex in self.frame_textures:
+            if tex: sdl2.SDL_DestroyTexture(tex)
+        self.frame_textures.clear()
+        
+        filepath = os.path.join(texture_dir, 'arrow_.png')
+        if os.path.exists(filepath):
+            surface = sdl2.ext.load_image(filepath)
+
+            # Flip image if facing left
+            if self.direction < 0:
+                dup_surface_ptr = sdl2.SDL_DuplicateSurface(surface)
+                dup_surface = dup_surface_ptr.contents
+                dst_px = sdl2.ext.pixels3d(dup_surface)
+                dst_px[:] = dst_px[:, ::-1, :] # Flip horizontal
+                sdl2.SDL_FreeSurface(surface)
+                surface = dup_surface_ptr
+                
+            texture = sdl2.SDL_CreateTextureFromSurface(self.renderer, surface)
+            self.frame_textures.append(texture)
+            
+            # Update Hitbox to fit with the arrow
+            if hasattr(surface, "contents"):
+                self.width = surface.contents.w
+                self.height = surface.contents.h
+            else:
+                self.width = surface.w
+                self.height = surface.h
+                
+            sdl2.SDL_FreeSurface(surface)
+
+    def check_collision(self, target):
+        """
+        Override to ensure that the arrow go through Yasuo (Player 1).
+        Game loop system is always check projectile with enemies,
+        but need to check here to ensure in Multiplayer mode.
+        """
+        # If target is anthoer Player (Yasuo), skip collision
+        if hasattr(target, 'inventory') and target != self.owner: 
+            return False
+            
+        return super().check_collision(target)
+    
+    def update(self, dt, world, my_map, interactables=None):
+        """
+        Modified update logic to handle sticking and range.
+        """
+        if not self.active:
+            return
+
+        if self.is_stuck:
+            # If stuck, just wait for the duration to pass
+            self.stuck_timer += dt
+            if self.stuck_timer >= self.STUCK_DURATION:
+                self.active = False
+            return
+
+        # 1. Standard Movement
+        self.x += self.velocity_x * dt
+        self.y += self.velocity_y * dt
+        
+        # 2. Check Range Limit
+        distance_traveled = abs(self.x - self.start_x)
+        if distance_traveled >= self.max_range:
+            self.active = False
+            return
+
+        # 3. Check Collision with Map Blocks (block)
+        # Assuming boxes is a list of SDL_Rect or objects with .x, .y, .w, .h
+        for block in my_map:
+            if self.check_world_collision(block):
+                self._stick_to_surface()
+                return
+
+        # 4. Check Collision with Obstacles (barrels, boxes, chests)
+        if interactables:
+            for obj in interactables:
+                # We only stick to physical obstacles like barrels, chests, etc.
+                if self.check_world_collision(obj):
+                    self._stick_to_surface()
+                    return
+
+    def check_world_collision(self, obstacle):
+        """Helper to check collision with non-enemy objects."""
+        # Simple AABB collision check
+        obj_x = getattr(obstacle, 'x', obstacle[0] if isinstance(obstacle, (list, tuple)) else 0)
+        obj_y = getattr(obstacle, 'y', obstacle[1] if isinstance(obstacle, (list, tuple)) else 0)
+        obj_w = getattr(obstacle, 'w', obstacle[2] if isinstance(obstacle, (list, tuple)) else 32)
+        obj_h = getattr(obstacle, 'h', obstacle[3] if isinstance(obstacle, (list, tuple)) else 32)
+
+        return (self.x < obj_x + obj_w and
+                self.x + self.width > obj_x and
+                self.y < obj_y + obj_h and
+                self.y + self.height > obj_y)
+
+    def _stick_to_surface(self):
+        """Stops the arrow and starts the stick timer."""
+        self.is_stuck = True
+        self.velocity_x = 0
+        self.velocity_y = 0
+        self.stuck_timer = 0

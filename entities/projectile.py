@@ -22,6 +22,9 @@ from settings import (
     BOSS_LASER_WIDTH,
     BOSS_LASER_HEIGHT,
 )
+
+from entities.player_2_projectile import NormalArrowProjectile
+
 class ProjectileType(Enum):
     """Enumeration for projectile types."""
     GHOST_CHARGE_1 = "Ghost_Charge_1"
@@ -1912,10 +1915,13 @@ class ProjectileManager:
         self.projectiles.append(laser)
         return laser
     
-    def update_all(self, delta_time=1):
+    def update_all(self, delta_time=1, world=None, my_map=None, interactables=None):
         """Update all projectiles."""
         for projectile in self.projectiles:
-            projectile.update(delta_time)
+            if isinstance(projectile, NormalArrowProjectile):
+                projectile.update(delta_time, world, my_map, interactables)
+            else:
+                projectile.update(delta_time)
         
         # Remove inactive projectiles
         self.projectiles = [p for p in self.projectiles if p.active]
