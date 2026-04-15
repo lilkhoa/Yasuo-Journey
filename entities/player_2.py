@@ -17,11 +17,13 @@ if root_dir not in sys.path:
 
 from entities.player import Player
 from entities.player_2_projectile import PoisonProjectile, PlantProjectile, HealDustProjectile, NormalArrowProjectile
+from combat.player_2.skill_q import SkillQLaser, update_q_laser_logic, load_laser_cast_animation, load_laser_projectile_frames
 from combat.player_2.skill_w import SkillW
-from combat.player_2.skill_e import SkillE, load_arrow_rain_cast_animation
+from combat.player_2.skill_e import SkillE, load_arrow_rain_cast_animation, update_e_aoe_logic
 from settings import SKILL_W_BUFF_DURATION, SKILL_W_COST, SKILL_E_2_COST, SKILL_E_2_COOLDOWN
 
 from combat.utils import load_image_sequence, flip_sprites_horizontal
+import os
 
 class Player2(Player):
     """
@@ -137,10 +139,25 @@ class Player2(Player):
         self.entity.sprite.position = x, y
         # ==========================================
 
+        # ==========================================
+        # STEP 2: OVERRIDE SKILL OBJECTS
+        # ==========================================
         # W Skill buff state management
         self.w_buff_active = False
         self.w_buff_timer = 0  # Timestamp when buff was activated
         self.w_attack_toggle = False  # False = Poison, True = Plant
+        
+        # Override Q skill with Laser (replaces parent's SkillQ tornado)
+        self.skill_q = SkillQLaser(self)
+        
+        # Pre-load laser assets for Q skill
+        _skill_asset_dir = os.path.join(root_dir, 'assets', 'Skills')
+        _proj_asset_dir  = os.path.join(root_dir, 'assets', 'Projectile')
+        self.laser_cast_frames     = load_laser_cast_animation(factory, _skill_asset_dir)
+        self.laser_projectile_frames = load_laser_projectile_frames(factory, _proj_asset_dir)
+        
+        # Active laser list (mirrors active_tornadoes for Yasuo)
+        self.active_lasers = []
         
         # Create W skill instance (replaces parent's SkillW)
         self.skill_w = SkillW(self)
@@ -150,7 +167,8 @@ class Player2(Player):
         
         # Create E skill instance for Arrow Rain
         self.skill_e = SkillE(self)
-        self.e_casting_frames = []  # Will load casting animation on demand
+        # Pre-load E casting animation
+        self.e_casting_frames = load_arrow_rain_cast_animation(factory, _skill_asset_dir)
         self.e_aoe = None  # Current active AoE (if any)
         
         # --- SKILLS LIST FOR HUD (Player 2 Override) ---
@@ -167,6 +185,67 @@ class Player2(Player):
         # In this implementation, support both single item and list for future expansion
         self.inventory = None  # Currently holds: None or ItemType
         self.dropped_item_net_id = None  # Track dropped item for network sync
+    
+    def update_skills(self, dt, enemies, network_ctx=None):
+        """
+        Polymorphic skill update method for Player2.
+        Updates active Q lasers and the E arrow-rain AoE.
+        
+        Args:
+            dt: Delta time
+            enemies: List of enemy entities for collision
+            network_ctx: Network context (is_multi, is_host, game_client) or None
+        """
+        # --- Q Laser update ---
+        for laser in self.active_lasers[:]:
+            update_q_laser_logic(laser, enemies, dt, network_ctx)
+            if not laser.active:
+                laser.delete()
+                self.active_lasers.remove(laser)
+        
+        # --- E Arrow Rain AoE update ---
+        if self.e_aoe is not None and self.e_aoe.active:
+            update_e_aoe_logic(self.e_aoe, enemies, dt, network_ctx)
+        elif self.e_aoe is not None and not self.e_aoe.active:
+            self.e_aoe = None  # Cleanup reference once AoE expires
+
+    def render_skills(self, renderer, camera):
+        """
+        Polymorphic skill render method for Player2.
+        Renders active Q laser beams and E arrow-rain AoE.
+        
+        Args:
+            renderer: SDL2 renderer  (raw sdlrenderer pointer)
+            camera: Camera object for coordinate transformation
+        """
+        import sdl2
+        
+        # --- Render active Q lasers ---
+        for laser in self.active_lasers:
+            if not hasattr(laser, 'sprites') or not laser.sprites:
+                continue
+            sprite = laser.sprites[laser.anim_frame % len(laser.sprites)]
+            if not hasattr(sprite, 'surface') or not sprite.surface:
+                continue
+            surface = sprite.surface
+            texture = sdl2.SDL_CreateTextureFromSurface(renderer, surface)
+            if texture:
+                # For a left-facing laser, render offset by the laser range
+                if laser.direction > 0:
+                    render_x = int(laser.x - camera.camera.x)
+                else:
+                    render_x = int(laser.x - laser.max_range - camera.camera.x)
+                dst_rect = sdl2.SDL_Rect(
+                    render_x,
+                    int(laser.y - camera.camera.y),
+                    surface.w, surface.h
+                )
+                sdl2.SDL_RenderCopy(renderer, texture, None, dst_rect)
+                sdl2.SDL_DestroyTexture(texture)
+        
+        # --- Render active E AoE ---
+        if self.e_aoe is not None and self.e_aoe.active:
+            self.e_aoe.render(camera.camera.x, camera.camera.y)
     
     def add_item_to_inventory(self, item_type):
         """
@@ -268,6 +347,67 @@ class Player2(Player):
         
         print(f"Player2: Toxin Enhancement activated for {SKILL_W_BUFF_DURATION}s!")
     
+    def start_q(self, direction=0):
+        """
+        Override: Fire a laser beam (Q skill for Player2).
+        Animation frame cycling is handled by the parent update() since
+        the state 'casting_q' is already there; laser spawning happens
+        in spawn_laser() which is called when the cast animation ends.
+        """
+        if self.stamina < 20 or not self.cooldowns.is_ready("skill_q"):  # 20 stamina = Q cost
+            return
+        if self.state in ['idle', 'jumping', 'run', 'walk']:
+            self.stamina -= 20
+            cd = self.get_skill_cooldown('q')
+            self.cooldowns.start_cooldown("skill_q", cd)
+            if direction:
+                self.facing_right = (direction > 0)
+            self.state = 'casting_q'
+            self.frame_index = 0
+            if self.sound_manager:
+                try:
+                    self.sound_manager.play_sound("player_q1")
+                except:
+                    pass
+
+    def spawn_laser(self, world, factory, renderer):
+        """
+        Called when Q casting animation completes.
+        Spawns a LaserObject and adds it to active_lasers.
+        """
+        # Use pre-loaded frames; fall back to coloured rectangle if missing
+        sprites = self.laser_projectile_frames
+        if not sprites:
+            import sdl2.ext as _ext
+            sprites = [factory.from_color(_ext.Color(255, 255, 0), size=(800, 80))]
+        laser = self.skill_q.execute(world, factory, renderer, skill_sprites=sprites)
+        if laser:
+            self.active_lasers.append(laser)
+
+    # ── Polymorphic overrides for base Player.update() animation loop ─────────
+    # The base Player.update() calls self.spawn_tornado() when the 'casting_q'
+    # animation ends, and self.spawn_wall() when 'casting_w' ends.
+    # We redirect those calls to Player2-specific logic here.
+
+    def spawn_tornado(self, world, factory, renderer):
+        """Override: Q cast done → fire laser instead of tornado."""
+        self.spawn_laser(world, factory, renderer)
+        if self.sound_manager:
+            try:
+                self.sound_manager.play_sound("player_q2")
+            except Exception:
+                pass
+
+    def spawn_wall(self, world, factory, renderer):
+        """Override: W cast done → activate toxin buff instead of fire wall."""
+        self.spawn_w_buff()
+        if self.sound_manager:
+            try:
+                self.sound_manager.play_sound("player_w2")
+            except Exception:
+                pass
+
+
     def start_e(self, world=None, factory=None, renderer=None, direction=0):
         """
         Activate Arrow Rain skill - spawns AoE at calculated position.
@@ -289,11 +429,7 @@ class Player2(Player):
         # Spend stamina and set cooldown
         self.stamina -= SKILL_E_2_COST
         cd = self.get_skill_cooldown('e')
-        if not hasattr(self.cooldowns, 'start_cooldown'):
-            # Fallback if method doesn't exist
-            cd = SKILL_E_2_COOLDOWN
-        else:
-            self.cooldowns.start_cooldown("skill_e", cd)
+        self.cooldowns.start_cooldown("skill_e", cd)
         
         # Update facing direction
         if direction:
@@ -302,10 +438,6 @@ class Player2(Player):
         # Set state to casting animation
         self.state = 'casting_e'
         self.frame_index = 0
-        
-        # Load casting animation if not already loaded
-        if not self.e_casting_frames:
-            self.e_casting_frames = load_arrow_rain_cast_animation()
         
         # Play sound
         if self.sound_manager:
@@ -317,7 +449,7 @@ class Player2(Player):
     def spawn_e_aoe(self, renderer):
         """
         Called when E casting animation completes.
-        Spawns the Arrow Rain AoE entity.
+        Spawns the Arrow Rain AoE entity and stores it for update/render.
         
         Args:
             renderer: SDL2 renderer
@@ -325,8 +457,10 @@ class Player2(Player):
         if self.skill_e is None:
             return
         
-        # Execute the skill to spawn AoE
-        self.skill_e.execute(renderer)
+        # Execute the skill to spawn AoE; store reference for update_skills/render_skills
+        aoe = self.skill_e.execute(renderer)
+        if aoe:
+            self.e_aoe = aoe
         
         print(f"Player2: Arrow Rain spawned!")
     
@@ -351,8 +485,7 @@ class Player2(Player):
             else:
                 self.state = 'fall'
     
-    def update(self, dt, world, factory, renderer, active_list_q, active_list_w, 
-               game_map=None, boxes=None, active_list_e=None):
+    def update(self, dt, world, factory, renderer, game_map=None, boxes=None):
         """
         Override: Call parent update AND manage W buff duration + E AoE casting.
         
@@ -361,15 +494,11 @@ class Player2(Player):
             world: Entity world
             factory: Sprite factory
             renderer: Renderer
-            active_list_q: List for Q skill effects
-            active_list_w: List for W skill effects
             game_map: Game map for collision
             boxes: Obstacle boxes
-            active_list_e: List for E skill AoE effects
         """
         # Call parent update (handles movement, animation, conditions, etc.)
-        super().update(dt, world, factory, renderer, active_list_q, active_list_w, 
-                      game_map, boxes)
+        super().update(dt, world, factory, renderer, game_map, boxes)
         
         # Manage W buff duration
         if self.w_buff_active:
@@ -380,23 +509,25 @@ class Player2(Player):
                 self.w_attack_toggle = False  # Reset toggle on expiration
                 self.w_poison_applied.clear()  # Clear poison tracking
         
-        # Manage E casting animation
+        # Manage E casting animation (Arrow Rain)
         if self.state == 'casting_e':
-            # Animate the casting frames
             if self.e_casting_frames:
                 self.frame_index += 1
-                
-                # Update sprite frame
                 idx = self.frame_index % len(self.e_casting_frames)
                 old_pos = self.sprite.position
                 self.sprite = self.e_casting_frames[idx]
                 self.sprite.position = old_pos
                 
                 if self.frame_index >= len(self.e_casting_frames):
-                    # Casting animation complete - spawn AoE
+                    # Casting complete – spawn AoE
                     self.spawn_e_aoe(renderer)
                     self.state = 'idle'
                     self.frame_index = 0
+            else:
+                # No casting frames loaded – spawn immediately
+                self.spawn_e_aoe(renderer)
+                self.state = 'idle'
+                self.frame_index = 0
     
     def attack(self):
         """

@@ -23,8 +23,6 @@ from entities.npc import NPCManager
 from entities.boss import BossManager
 from entities.projectile import ProjectileManager
 from core.event import handle_input
-from combat.skill_q import update_q_logic
-from combat.skill_w import update_w_logic
 from ui.hud import SkillBarHUD
 from ui.item_notification import ItemNotification, ItemNotificationSystem
 
@@ -314,8 +312,6 @@ def run(net_mode: str = "solo", host_ip: str = "127.0.0.1", ext_seed: int = 0):
     # Initial spawn of all NPCs and bosses
     spawn_all_npcs_and_bosses()
 
-    active_tornadoes = []
-    active_walls = []
     kill_count = 0
     game_over = False
     game_over_timer = 0
@@ -494,10 +490,10 @@ def run(net_mode: str = "solo", host_ip: str = "127.0.0.1", ext_seed: int = 0):
             projectile_manager.clear_all()
             # Clear dropped items and active skills
             dropped_items.clear()
-            for t in active_tornadoes: t.delete()
-            active_tornadoes.clear()
-            for w in active_walls: w.delete()
-            active_walls.clear()
+            for t in player.active_tornadoes: t.delete()
+            player.active_tornadoes.clear()
+            for w in player.active_walls: w.delete()
+            player.active_walls.clear()
             spawn_all_npcs_and_bosses()
             # Reset interactable objects
             for box in boxes: box.reset()
@@ -576,10 +572,10 @@ def run(net_mode: str = "solo", host_ip: str = "127.0.0.1", ext_seed: int = 0):
             projectile_manager.clear_all()
             # Clear dropped items and active skills
             dropped_items.clear()
-            for t in active_tornadoes: t.delete()
-            active_tornadoes.clear()
-            for w in active_walls: w.delete()
-            active_walls.clear()
+            for t in player.active_tornadoes: t.delete()
+            player.active_tornadoes.clear()
+            for w in player.active_walls: w.delete()
+            player.active_walls.clear()
             # Reset interactable objects
             for box in boxes: box.reset()
             for barrel in barrels: barrel.reset()
@@ -659,7 +655,7 @@ def run(net_mode: str = "solo", host_ip: str = "127.0.0.1", ext_seed: int = 0):
                         if item_type:
                             sound_manager.play_sound(item_type.name)
 
-                if not handle_input(event, player, world, software_factory, renderer, active_tornadoes, active_walls, npc_manager):
+                if not handle_input(event, player, world, software_factory, renderer, npc_manager):
                     running = False
             
             collect_timer -= dt
@@ -740,10 +736,10 @@ def run(net_mode: str = "solo", host_ip: str = "127.0.0.1", ext_seed: int = 0):
                     projectile_manager.clear_all()
                     # Clear dropped items and active skills
                     dropped_items.clear()
-                    for t in active_tornadoes: t.delete()
-                    active_tornadoes.clear()
-                    for w in active_walls: w.delete()
-                    active_walls.clear()
+                    for t in player.active_tornadoes: t.delete()
+                    player.active_tornadoes.clear()
+                    for w in player.active_walls: w.delete()
+                    player.active_walls.clear()
                     # Reset interactable objects
                     for box in boxes: box.reset()
                     for barrel in barrels: barrel.reset()
@@ -838,10 +834,10 @@ def run(net_mode: str = "solo", host_ip: str = "127.0.0.1", ext_seed: int = 0):
                         projectile_manager.clear_all()
                         # Clear dropped items and active skills
                         dropped_items.clear()
-                        for t in active_tornadoes: t.delete()
-                        active_tornadoes.clear()
-                        for w in active_walls: w.delete()
-                        active_walls.clear()
+                        for t in player.active_tornadoes: t.delete()
+                        player.active_tornadoes.clear()
+                        for w in player.active_walls: w.delete()
+                        player.active_walls.clear()
                         # Reset interactable objects
                         for box in boxes: box.reset()
                         for barrel in barrels: barrel.reset()
@@ -859,7 +855,7 @@ def run(net_mode: str = "solo", host_ip: str = "127.0.0.1", ext_seed: int = 0):
 
             player.set_blocking(keys[sdl2.SDLK_s])
             player.handle_movement(keys)
-            player.update(dt, world, software_factory, None, active_tornadoes, active_walls, game_map=my_map, boxes=all_obstacles)
+            player.update(dt, world, software_factory, None, game_map=my_map, boxes=all_obstacles)
 
             if player.entity.sprite.x < 0: player.entity.sprite.x = 0
             if player.entity.sprite.x > my_map.width_pixel - 128: player.entity.sprite.x = my_map.width_pixel - 128
@@ -1128,18 +1124,14 @@ def run(net_mode: str = "solo", host_ip: str = "127.0.0.1", ext_seed: int = 0):
                     fade_timer = 0.0
                     fade_alpha = 0
             
+            # Collect all combat targets (NPCs, bosses, minions)
             all_combat_targets = alive_npcs + alive_bosses + all_minions
             
+            # --- UPDATE SKILLS (Polymorphic) ---
             network_ctx = (is_multi, is_host, game_client)
+            player.update_skills(dt, all_combat_targets, network_ctx)
             
-            for t in active_tornadoes[:]:
-                update_q_logic(t, all_combat_targets, dt, network_ctx)
-                if not t.active: t.delete(); active_tornadoes.remove(t)
-            
-            for w in active_walls[:]:
-                update_w_logic(w, all_combat_targets, projectile_manager.projectiles, dt, network_ctx)
-                if not w.active: w.delete(); active_walls.remove(w)
-                    
+            # Update E skill dash separately
             player.skill_e.update_dash(dt, all_combat_targets, all_obstacles, my_map, network_ctx)
             if player.skill_e.is_dashing: player.state = 'dashing_e'
             elif player.state == 'dashing_e' and not player.skill_e.is_dashing: player.state = 'idle'
@@ -1259,10 +1251,8 @@ def run(net_mode: str = "solo", host_ip: str = "127.0.0.1", ext_seed: int = 0):
 
             my_map.render(sdl_renderer, tileset_texture, deco_mgr, camera)
             
-            for t in active_tornadoes: 
-                 render_surface_to_texture(sdl_renderer, t.sprite.surface, t.sprite.x - camera.camera.x, t.sprite.y - camera.camera.y)
-            for w in active_walls: 
-                 render_surface_to_texture(sdl_renderer, w.sprite.surface, w.sprite.x - camera.camera.x, w.sprite.y - camera.camera.y)
+            # Render skills polymorphically (replaces hardcoded tornadoes/walls)
+            player.render_skills(sdl_renderer, camera)
             
             for box in boxes: box.render(sdl_renderer, camera)
             for barrel in barrels: barrel.render(sdl_renderer, camera)

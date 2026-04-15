@@ -1,7 +1,7 @@
 import sdl2
 import sys
 
-def handle_input(event, player, world, factory, renderer, active_tornadoes, active_walls, npc_manager):
+def handle_input(event, player, world, factory, renderer, npc_manager):
     """
     Xử lý sự kiện đầu vào (Keyboard, Quit).
     Trả về False nếu người chơi muốn thoát game.

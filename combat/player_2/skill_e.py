@@ -58,6 +58,10 @@ class SkillE(Skill):
         """
         super().__init__(owner, cooldown_time=SKILL_E_2_COOLDOWN)
         self.aoe_active = None  # Current ArrowRainAoE instance
+        # Polymorphic interface: Player2's E is an AoE drop, not a dash.
+        # game.py reads skill_e.is_dashing for all character types, so we
+        # expose the attribute here and keep it permanently False.
+        self.is_dashing = False
     
     def execute(self, renderer, world=None):
         """
@@ -83,6 +87,20 @@ class SkillE(Skill):
         
         print(f"Arrow Rain spawned at ({spawn_x}, {spawn_y})")
         return aoe
+
+    def update_dash(self, dt, enemies, boxes=None, game_map=None, network_ctx=None):
+        """
+        Polymorphic stub: Player2's E skill doesn't use dashing.
+        This method is here for interface compatibility with Yasuo's SkillE.
+        
+        Args:
+            dt: Delta time
+            enemies: List of enemies
+            boxes: Obstacle boxes
+            game_map: Game map
+            network_ctx: Network context tuple
+        """
+        pass  # Player2's E uses AoE casting, not dashing
 
 
 # ─────────────────────────────────────────────────────────────────────────────
