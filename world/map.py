@@ -132,3 +132,39 @@ class GameMap:
                     rects.append(tile_rect)
         
         return rects
+    
+    def get_ground_height_at_x(self, world_x):
+        """
+        Find the ground height (Y position) at a given world X coordinate.
+        Scans from top to bottom to find the topmost solid terrain tile.
+        
+        Args:
+            world_x: World X position (in pixels)
+            
+        Returns:
+            float: Y position of the ground surface at this X coordinate,
+                   or None if no terrain found at this column
+        """
+        if not self.map_data or len(self.map_data) == 0:
+            return None
+        
+        # Convert world X to tile column
+        col = int(world_x // TILE_SIZE)
+        
+        # Bounds check
+        if col < 0 or col >= len(self.map_data[0]):
+            return None
+        
+        # Scan from top (row 0) downward to find first terrain tile
+        for row in range(len(self.map_data)):
+            if col < len(self.map_data[row]):
+                char = self.map_data[row][col]
+                if char in SOLID_TILES:
+                    # Found terrain! Return the Y position of its top surface
+                    # The tile's top is at (row * TILE_SIZE)
+                    # Subtracting a bit for visual positioning on ground
+                    ground_y = row * TILE_SIZE
+                    return ground_y
+        
+        # No terrain found in this column
+        return None

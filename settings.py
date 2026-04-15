@@ -126,7 +126,7 @@ SKILL_E_COOLDOWN = 100
 
 # Player 2 E Skill (Arrow Rain) Settings
 SKILL_E_2_COOLDOWN = 12.0            # E skill cooldown (seconds)
-SKILL_E_2_COST = 40                  # E skill stamina cost
+SKILL_E_2_COST = 4                  # E skill stamina cost
 SKILL_E_2_WIDTH = 350                # Arrow rain area width (pixels)
 SKILL_E_2_HEIGHT = 400               # Arrow rain area height (pixels)
 SKILL_E_2_DURATION = 2.5             # Arrow rain duration (seconds)
