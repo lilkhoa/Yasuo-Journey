@@ -50,40 +50,81 @@ class Player2(Player):
         # ==========================================
         # STEP 1: OVERRIDE ASSETS AND ANIMATIONS
         # ==========================================
-        player2_dir = os.path.join(root_dir, 'assets', 'Player_2')
+        player2_dir = os.path.join('./assets', 'Player_2')
+        def load_scaled_sequence(folder, prefix, count, scale=1.35):
+            frames = []
+            for i in range(1, count + 1):
+                file_path = os.path.join(player2_dir, folder, f"{prefix}{i}.png")
+                
+                # Bắt lỗi: Nếu file không tồn tại, bỏ qua frame này thay vì crash game
+                if not os.path.exists(file_path):
+                    print(f"[CẢNH BÁO] Thiếu ảnh: {file_path}")
+                    continue
+                
+                try:
+                    surf_ptr = sdl2.ext.load_image(file_path)
+                    
+                    # Tương thích lấy kích thước (PySDL2 versions)
+                    orig_w = surf_ptr.w if hasattr(surf_ptr, 'w') else surf_ptr.contents.w
+                    orig_h = surf_ptr.h if hasattr(surf_ptr, 'h') else surf_ptr.contents.h
+                    
+                    # Tính toán kích thước phóng to
+                    new_w = int(orig_w * scale)
+                    new_h = int(orig_h * scale)
+                    
+                    # Tạo một Surface trống với kích thước mới (Hỗ trợ Alpha channel / Trong suốt)
+                    rmask, gmask, bmask, amask = 0x000000ff, 0x0000ff00, 0x00ff0000, 0xff000000
+                    if sys.byteorder == 'big':
+                        rmask, gmask, bmask, amask = 0xff000000, 0x00ff0000, 0x0000ff00, 0x000000ff
+                        
+                    scaled_surf = sdl2.SDL_CreateRGBSurface(0, new_w, new_h, 32, rmask, gmask, bmask, amask)
+                    
+                    # Phóng to ảnh gốc dán vào bề mặt mới
+                    sdl2.SDL_SetSurfaceBlendMode(surf_ptr, sdl2.SDL_BLENDMODE_NONE)
+                    src_rect = sdl2.SDL_Rect(0, 0, orig_w, orig_h)
+                    dst_rect = sdl2.SDL_Rect(0, 0, new_w, new_h)
+                    
+                    sdl2.SDL_BlitScaled(surf_ptr, src_rect, scaled_surf, dst_rect)
+                    
+                    # Chuyển đổi thành Sprite và lưu vào mảng
+                    sprite = factory.from_surface(scaled_surf)
+                    frames.append(sprite)
+                    
+                    # Giải phóng RAM cho ảnh gốc
+                    sdl2.SDL_FreeSurface(surf_ptr)
+                except Exception as e:
+                    print(f"[LỖI] Không thể load hoặc scale ảnh {file_path}: {e}")
+                    
+            return frames
         
+        # --- CÀI ĐẶT ĐỘ LỚN NHÂN VẬT TẠI ĐÂY ---
+        # 1.35 nghĩa là to hơn 35%. Bạn có thể đổi thành 1.4 hoặc 1.5 tùy mắt nhìn.
+        SCALE_FACTOR = 1.35
+
         self.anims_right = {}
         
-        # Mapping Elementals Leaf Ranger states to Base Player states
-        # Make sure the folder names in 'assets/Player_2' match these exactly
-        self.anims_right['idle'] = load_image_sequence(factory, os.path.join(player2_dir, 'idle'), 'idle_', 12, zero_pad=False)
+        self.anims_right['idle'] = load_scaled_sequence('idle', 'idle_', 12, SCALE_FACTOR)
+        self.anims_right['run']  = load_scaled_sequence('run', 'run_', 10, SCALE_FACTOR)
+        self.anims_right['walk'] = [frame for frame in self.anims_right['run'] for _ in range(2)]
         
-        # Resolve Run
-        run_frames = load_image_sequence(factory, os.path.join(player2_dir, 'run'), 'run_', 10, zero_pad=False)
-        self.anims_right['run'] = run_frames
+        self.anims_right['attack_normal'] = load_scaled_sequence('1_atk', '1_atk_', 10, SCALE_FACTOR)
+        self.anims_right['block'] = load_scaled_sequence('defend', 'defend_', 19, SCALE_FACTOR)
+        self.anims_right['q'] = load_scaled_sequence('2_atk', '2_atk_', 15, SCALE_FACTOR)
+        self.anims_right['w'] = load_scaled_sequence('3_atk', '3_atk_', 12, SCALE_FACTOR)
+        self.anims_right['e'] = load_scaled_sequence('sp_atk', 'sp_atk_', 17, SCALE_FACTOR)
         
-        # [TRICK] Resolve Walk: Double the number of frames of Run to reduce 1/2 frame speed (FPS) of animation.
-        # E.g.: [1, 2, 3] -> [1, 1, 2, 2, 3, 3]
-        self.anims_right['walk'] = [frame for frame in run_frames for _ in range(2)]
+        self.anims_right['jump_up'] = load_scaled_sequence('jump_up', 'jump_up_', 3, SCALE_FACTOR)
+        self.anims_right['fall'] = load_scaled_sequence('jump_down', 'jump_down_', 3, SCALE_FACTOR)
+        self.anims_right['jump'] = load_scaled_sequence('jump_full', 'jump_', 22, SCALE_FACTOR)
+        self.anims_right['roll'] = load_scaled_sequence('roll', 'roll_', 8, SCALE_FACTOR)
+        self.anims_right['dead'] = load_scaled_sequence('death', 'death_', 19, SCALE_FACTOR)
+        self.anims_right['hurt'] = load_scaled_sequence('take_hit', 'take_hit_', 6, SCALE_FACTOR)
 
-
-        
-        # Attacks
-        self.anims_right['attack_normal'] = load_image_sequence(factory, os.path.join(player2_dir, 'normal_attack'), '2_atk_', 15, zero_pad=False)
-        self.anims_right['block'] = load_image_sequence(factory, os.path.join(player2_dir, 'defend'), 'defend_', 19, zero_pad=False)
-        
-        # Movement & Status
-        self.anims_right['jump_up'] = load_image_sequence(factory, os.path.join(player2_dir, 'jump_up'), 'jump_up_', 3, zero_pad=False)
-        self.anims_right['fall'] = load_image_sequence(factory, os.path.join(player2_dir, 'jump_down'), 'jump_down_', 3, zero_pad=False)
-        self.anims_right['jump'] = load_image_sequence(factory, os.path.join(player2_dir, 'jump_full'), 'jump_', 22, zero_pad=False)
-        self.anims_right['dead'] = load_image_sequence(factory, os.path.join(player2_dir, 'death'), 'death_', 19, zero_pad=False)
-        self.anims_right['hurt'] = load_image_sequence(factory, os.path.join(player2_dir, 'take_hit'), 'take_hit_', 6, zero_pad=False)
-
-        # Fallback mechanism if assets are missing
+        # Tránh crash nếu thiếu toàn bộ ảnh Idle
         if not self.anims_right['idle']: 
-            self.anims_right['idle'] = [factory.from_color(sdl2.ext.Color(0, 255, 0), (40, 60))] # Green box
+            self.anims_right['idle'] = [factory.from_color(sdl2.ext.Color(0, 255, 0), (40, 60))]
 
-        # Re-create Left Animations by flipping the newly loaded Right Animations
+        # Lật ảnh để tạo hoạt ảnh quay trái (hàm flip này chạy tốt trên cả ảnh đã scale)
         self.anims_left = {}
         for key, sprites in self.anims_right.items():
             if sprites:
@@ -91,7 +132,7 @@ class Player2(Player):
             else:
                 self.anims_left[key] = []
 
-        # Force update the entity's sprite to the new Ranger idle frame to prevent crash
+        # Set ảnh đứng im mặc định và tạo vị trí
         self.entity.sprite = self.anims_right['idle'][0]
         self.entity.sprite.position = x, y
         # ==========================================
@@ -304,27 +345,11 @@ class Player2(Player):
         super().handle_movement(keys)
         
         # 1. In the air states (Jump & Fall)
-        if self.velocity_y < 0:
-            self.state = 'jump_up'
-        elif self.velocity_y > 0:
-            self.state = 'fall'
-            
-        # 2. On the round state (Run, Walk, Idle)
-        elif self.velocity_y == 0:
-            # If velocity X-axis
-            if abs(self.velocity_x) > 0:
-                # Discriminate Walk and Run base on Shift button
-                if keys[sdl2.SDL_SCANCODE_LSHIFT]:
-                    # Nếu có phím Shift / Roll thì gọi state roll hoặc run nhanh
-                    self.state = 'run'
-                else:
-                    # Base on the current speed to determine walking or running
-                    if abs(self.velocity_x) > 200:# NEED TO MODIFY IF HAVE ANOTHER VALUE TO PLUGIN
-                        self.state = 'run'
-                    else:
-                        self.state = 'walk'
+        if self.is_jumping:
+            if self.vel_y < 0:
+                self.state = 'jump_up'
             else:
-                self.state = 'idle'
+                self.state = 'fall'
     
     def update(self, dt, world, factory, renderer, active_list_q, active_list_w, 
                game_map=None, boxes=None, active_list_e=None):
@@ -416,7 +441,7 @@ class Player2(Player):
         # If W buff is active, spawn special projectiles
         if self.w_buff_active:
             # Air attack (jumping) → Heal Dust
-            if self.velocity_y != 0:
+            if self.vel_y != 0:
                 projectile = HealDustProjectile(proj_x, proj_y, direction, self, renderer)
                 projectile_manager.add_projectile(projectile)
                 

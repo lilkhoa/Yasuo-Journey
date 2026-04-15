@@ -423,7 +423,32 @@ def run(net_mode: str = "solo", host_ip: str = "127.0.0.1", ext_seed: int = 0):
             is_client = False
             is_multi = False
 
-        elif menu_action == "START_GAME":
+        elif menu_action == "START_GAME" or (isinstance(menu_action, tuple) and menu_action[0] == "START_GAME"):
+            game_menu.state = MenuState.GAME_PLAYING
+            
+            # Kiểm tra xem có dữ liệu nhân vật đi kèm không
+            char_id = "yasuo" # Mặc định
+            if isinstance(menu_action, tuple):
+                char_id = menu_action[1]
+            
+            print(f"[DEBUG] Starting game with character: {char_id}")
+            
+            # Xóa Player cũ nếu có
+            if 'player' in locals() and player.entity:
+                player.entity.delete()
+
+            # KHỞI TẠO ĐÚNG CLASS NHÂN VẬT
+            if char_id == "leaf_ranger":
+                from entities.player_2 import Player2
+                player = Player2(world, software_factory, 100, 350, sound_manager, renderer_ptr=renderer.sdlrenderer)
+                character_type = 'player2'
+            else:
+                player = Player(world, software_factory, 100, 350, sound_manager, renderer_ptr=renderer.sdlrenderer)
+                character_type = 'player1'
+            
+            # Cập nhật HUD
+            hud = SkillBarHUD(renderer.sdlrenderer, player, character_type=character_type, icon_map=icon_map)
+
             # Reset player state
             player.hp = player.max_hp
             player.stamina = player.max_stamina
