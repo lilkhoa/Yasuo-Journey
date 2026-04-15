@@ -111,9 +111,17 @@ class Player2(Player):
         
         self.anims_right['attack_normal'] = load_scaled_sequence('1_atk', '1_atk_', 10, SCALE_FACTOR)
         self.anims_right['block'] = load_scaled_sequence('defend', 'defend_', 19, SCALE_FACTOR)
-        self.anims_right['q'] = load_scaled_sequence('2_atk', '2_atk_', 15, SCALE_FACTOR)
-        self.anims_right['w'] = load_scaled_sequence('3_atk', '3_atk_', 12, SCALE_FACTOR)
-        self.anims_right['e'] = load_scaled_sequence('sp_atk', 'sp_atk_', 17, SCALE_FACTOR)
+        
+        # Load skill assets
+        _skill_asset_dir = os.path.join(root_dir, 'assets', 'Skills')
+        _proj_asset_dir  = os.path.join(root_dir, 'assets', 'Projectile')
+        self.laser_cast_frames = load_laser_cast_animation(factory, _skill_asset_dir)
+        self.laser_projectile_frames = load_laser_projectile_frames(factory, _proj_asset_dir)
+        
+        # Map skill casting animations correctly
+        self.anims_right['q'] = self.laser_cast_frames
+        self.anims_right['w'] = load_scaled_sequence('3_atk', '3_atk_', 12, SCALE_FACTOR) # Ensure this is correct
+        self.anims_right['e'] = load_scaled_sequence('sp_atk', 'sp_atk_', 17, SCALE_FACTOR) # Wait, is this correct? Let's keep it for now.
         
         self.anims_right['jump_up'] = load_scaled_sequence('jump_up', 'jump_up_', 3, SCALE_FACTOR)
         self.anims_right['fall'] = load_scaled_sequence('jump_down', 'jump_down_', 3, SCALE_FACTOR)
@@ -149,12 +157,6 @@ class Player2(Player):
         
         # Override Q skill with Laser (replaces parent's SkillQ tornado)
         self.skill_q = SkillQLaser(self)
-        
-        # Pre-load laser assets for Q skill
-        _skill_asset_dir = os.path.join(root_dir, 'assets', 'Skills')
-        _proj_asset_dir  = os.path.join(root_dir, 'assets', 'Projectile')
-        self.laser_cast_frames     = load_laser_cast_animation(factory, _skill_asset_dir)
-        self.laser_projectile_frames = load_laser_projectile_frames(factory, _proj_asset_dir)
         
         # Active laser list (mirrors active_tornadoes for Yasuo)
         self.active_lasers = []
@@ -390,8 +392,10 @@ class Player2(Player):
     # We redirect those calls to Player2-specific logic here.
 
     def spawn_tornado(self, world, factory, renderer):
-        """Override: Q cast done → fire laser instead of tornado."""
-        self.spawn_laser(world, factory, renderer)
+        """Override: Q cast done. Prevent double fire if we already fired early."""
+        if not getattr(self, '_laser_spawned', False):
+            self.spawn_laser(world, factory, renderer)
+        self._laser_spawned = False
         if self.sound_manager:
             try:
                 self.sound_manager.play_sound("player_q2")
@@ -497,8 +501,36 @@ class Player2(Player):
             game_map: Game map for collision
             boxes: Obstacle boxes
         """
+        # Store references so spawn_laser/spawn_tornado can always find them
+        # (the base Player.update passes these as args, not stored on self)
+        self._world   = world
+        self._factory = factory
+        self._renderer = renderer
+
         # Call parent update (handles movement, animation, conditions, etc.)
+        # 1. Store whether we already fired the laser this cast to prevent double spawning
+        if self.state != 'casting_q':
+            self._laser_spawned = False
+            
+        # 2. Intercept 'casting_q' to fire midway through the animation (e.g. frame 9)
+        # instead of waiting for the full 17-frame recovery to end.
+        if self.state == 'casting_q' and hasattr(self, 'frame_index'):
+            if self.frame_index >= 9 and not getattr(self, '_laser_spawned', False):
+                self.spawn_laser(world, factory, renderer)
+                self._laser_spawned = True
+        
         super().update(dt, world, factory, renderer, game_map, boxes)
+
+        # ── Guard: base update returns early when frames is empty (line 516 of
+        # player.py).  If Q-animation assets are missing the character stays
+        # stuck in 'casting_q' forever.  Detect that here and force-complete.
+        if self.state == 'casting_q':
+            q_frames = (self.anims_right if self.facing_right else self.anims_left).get('q', [])
+            if not q_frames:
+                # No cast frames available – fire laser immediately and unblock
+                self.spawn_laser(world, factory, renderer)
+                self.state = 'idle'
+                self.frame_index = 0
         
         # Manage W buff duration
         if self.w_buff_active:
