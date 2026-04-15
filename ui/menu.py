@@ -21,6 +21,7 @@ class MenuState:
     MULTIPLAYER = 5
     HOST_LOBBY = 6
     JOIN_LOBBY = 7
+    CHARACTER_SELECT = 8
 
 class GameMenu:
     def __init__(self, renderer, window_width, window_height):
@@ -48,6 +49,37 @@ class GameMenu:
         self.main_options = ["SINGLEPLAYER", "MULTIPLAYER", "OPTION", "ABOUT", "EXIT"]
         self.pause_options = ["Resume", "Exit to Main Menu"]
         self.multiplayer_options = ["Host Game", "Join Game", "Back"]
+
+        # --- [NEW] CHARACTER SELECT DATA ---
+        self.char_selection = 0  # 0: Yasuo, 1: Leaf Ranger
+        self.char_profiles = [
+            {"name": "YASUO", "id": "yasuo", "texture": None, "w": 128, "h": 128},
+            {"name": "LEAF RANGER", "id": "leaf_ranger", "texture": None, "w": 288, "h": 128}
+        ]
+
+        assets_dir = "./assets"
+        # Load ảnh Yasuo (Cắt frame đầu tiên của animation Idle)
+        yasuo_path = os.path.join(assets_dir, "Player", "Idle.png")
+        try:
+            surf = sdl2.ext.load_image(yasuo_path)
+            self.char_profiles[0]["texture"] = sdl2.SDL_CreateTextureFromSurface(self.renderer, surf)
+            # Giả định ảnh strip ngang, frame_width = frame_height
+            self.char_profiles[0]["w"] = surf.contents.h 
+            self.char_profiles[0]["h"] = surf.contents.h
+            sdl2.SDL_FreeSurface(surf)
+        except Exception as e:
+            print(f"[MENU] Không thể load ảnh Yasuo: {e}")
+
+        # Load ảnh Leaf Ranger (Lấy frame idle_1.png)
+        ranger_path = os.path.join(assets_dir, "Player_2", "idle", "idle_1.png")
+        try:
+            surf = sdl2.ext.load_image(ranger_path)
+            self.char_profiles[1]["texture"] = sdl2.SDL_CreateTextureFromSurface(self.renderer, surf)
+            self.char_profiles[1]["w"] = surf.contents.w
+            self.char_profiles[1]["h"] = surf.contents.h
+            sdl2.SDL_FreeSurface(surf)
+        except Exception as e:
+            print(f"[MENU] Không thể load ảnh Leaf Ranger: {e}")
 
         # Multiplayer Data
         self.join_ip = ""
@@ -146,8 +178,10 @@ class GameMenu:
                     elif key == sdl2.SDLK_RETURN or key == sdl2.SDLK_KP_ENTER:
                         choice = self.main_options[self.selected_index]
                         if choice == "SINGLEPLAYER":
-                            self.state = MenuState.GAME_PLAYING
-                            return "START_GAME"
+                            # [FIX] Chuyển state sang màn hình chọn tướng
+                            self.state = MenuState.CHARACTER_SELECT
+                            self.char_selection = 0  # Reset về Yasuo mặc định
+                            return None  # Trả về None để vòng lặp menu tiếp tục chạy
                         elif choice == "MULTIPLAYER":
                             self.state = MenuState.MULTIPLAYER
                             self.selected_index = 0
@@ -158,6 +192,22 @@ class GameMenu:
                             self.state = MenuState.ABOUT
                         elif choice == "EXIT":
                             return "QUIT_GAME"
+
+                # --- CHARACTER SELECT MENU ---
+                elif self.state == MenuState.CHARACTER_SELECT:
+                    if key == sdl2.SDLK_LEFT:
+                        self.char_selection = (self.char_selection - 1) % len(self.char_profiles)
+                        # Play sound tick (nếu có)
+                    elif key == sdl2.SDLK_RIGHT:
+                        self.char_selection = (self.char_selection + 1) % len(self.char_profiles)
+                        # Play sound tick (nếu có)
+                    elif key == sdl2.SDLK_RETURN or key == sdl2.SDLK_KP_ENTER:
+                        selected_id = self.char_profiles[self.char_selection]["id"]
+                        self.state = MenuState.GAME_PLAYING
+                        return ("START_GAME", selected_id)  # Trả về Tuple để game.py nhận diện
+                    elif key == sdl2.SDLK_ESCAPE:
+                        self.state = MenuState.MAIN_MENU
+                        self.selected_index = 0
 
                 # --- MULTIPLAYER MENU ---
                 elif self.state == MenuState.MULTIPLAYER:
@@ -312,6 +362,8 @@ class GameMenu:
             self._render_join_lobby()
         elif self.state == MenuState.HOST_LOBBY:
             self._render_host_lobby()
+        elif self.state == MenuState.CHARACTER_SELECT:
+            self._render_character_select()
     
     def _draw_background(self):
         """Draw scrolling parallax background"""
@@ -387,6 +439,39 @@ class GameMenu:
         else:
             # Fallback if placeholder not loaded
             self._render_list("YASUO'S JOURNEY", self.main_options)
+
+    def _render_character_select(self):
+        """Vẽ giao diện chọn nhân vật trực quan với ảnh và mũi tên"""
+        self._draw_centered_text("CHOOSE YOUR HERO", -200, self.title_font, YELLOW)
+        
+        profile = self.char_profiles[self.char_selection]
+        
+        # Vẽ 2 mũi tên điều hướng < và >
+        self._draw_text_at("<", self.width // 2 - 200, self.height // 2 - 30, self.title_font, WHITE)
+        self._draw_text_at(">", self.width // 2 + 180, self.height // 2 - 30, self.title_font, WHITE)
+        
+        # Vẽ Ảnh Nhân Vật
+        if profile["texture"]:
+            scale = 2.0  # Phóng to ảnh lên gấp đôi cho rõ
+            dst_w = int(profile["w"] * scale)
+            dst_h = int(profile["h"] * scale)
+            dst_x = (self.width - dst_w) // 2
+            dst_y = (self.height - dst_h) // 2 - 60
+            
+            # Cắt frame đầu tiên (nếu là sprite sheet)
+            src_rect = sdl2.SDL_Rect(0, 0, profile["w"], profile["h"])
+            dst_rect = sdl2.SDL_Rect(dst_x, dst_y, dst_w, dst_h)
+            
+            sdl2.SDL_RenderCopy(self.renderer, profile["texture"], src_rect, dst_rect)
+        else:
+            self._draw_centered_text("[NO IMAGE FOUND]", -50, self.menu_font, GRAY)
+            
+        # Vẽ Tên Nhân Vật (Màu xanh lá cho Leaf Ranger, Màu Vàng cho Yasuo)
+        name_color = GREEN if profile["id"] == "leaf_ranger" else YELLOW
+        self._draw_centered_text(profile["name"], 80, self.title_font, name_color)
+        
+        # Vẽ Hướng dẫn
+        self._draw_centered_text("[Left/Right] Select   [Enter] Play   [Esc] Back", 160, self.info_font, WHITE)
 
     def _render_list(self, title, options):
         self._draw_centered_text(title, -100, self.title_font, YELLOW)
@@ -585,3 +670,9 @@ class GameMenu:
             sdl2.SDL_DestroyTexture(self.placeholder_texture)
         if self.prefix_texture:
             sdl2.SDL_DestroyTexture(self.prefix_texture)
+
+        # [NEW] Dọn dẹp ảnh character select
+        if hasattr(self, 'char_profiles'):
+            for profile in self.char_profiles:
+                if profile["texture"]:
+                    sdl2.SDL_DestroyTexture(profile["texture"])
