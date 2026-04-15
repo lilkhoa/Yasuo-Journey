@@ -84,8 +84,8 @@ class LaserObject:
         # Animation
         self.anim_frame = 0
         self.anim_timer = 0
-        self.anim_speed = 0.04  # Frame duration in seconds
-        self.anim_duration = 0.2  # Total laser duration (~5 frames at 60 FPS)
+        self.anim_speed = 0.1  # Frame duration in seconds (slower cycling)
+        self.anim_duration = 0.6  # Total laser duration (visible longer)
         self.total_timer = 0
         
         # Active state
@@ -162,8 +162,9 @@ class SkillQLaser(Skill):
         direction = 1 if self.owner.facing_right else -1
         
         # Origin: slightly offset from character's center
-        start_x = self.owner.sprite.x + (50 * direction)
-        start_y = self.owner.sprite.y + 30
+        start_x = self.owner.sprite.x + (62 * direction)
+        # Position it around the middle/bow area rather than above the head
+        start_y = self.owner.sprite.y + 61
         
         laser = LaserObject(
             world,
@@ -210,11 +211,11 @@ def update_q_laser_logic(laser_obj, enemies, dt, network_ctx=None):
             laser_obj.anim_timer = 0
             laser_obj.anim_frame = (laser_obj.anim_frame + 1) % len(laser_obj.sprites)
             
-            # Update sprite display
-            if laser_obj.sprite:
-                old_x, old_y = laser_obj.sprite.position
-                laser_obj.sprite = laser_obj.sprites[laser_obj.anim_frame]
-                laser_obj.sprite.position = old_x, old_y
+            # Update sprite display (write via entity.sprite — .sprite is read-only property)
+            if laser_obj.entity.sprite:
+                old_x, old_y = laser_obj.entity.sprite.position
+                laser_obj.entity.sprite = laser_obj.sprites[laser_obj.anim_frame]
+                laser_obj.entity.sprite.position = old_x, old_y
 
     # 2. UPDATE LIFETIME
     laser_obj.total_timer += dt

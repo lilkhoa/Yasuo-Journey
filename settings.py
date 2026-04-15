@@ -111,7 +111,7 @@ BOSS_MINION_FIREBALL_SPEED = 10
 BOSS_MINION_FIREBALL_SIZE = 32
 
 # Player Settings
-PLAYER_MAX_HEALTH = 750
+PLAYER_MAX_HEALTH = 75000
 PLAYER_MAX_STAMINA = 150
 PLAYER_SPEED_WALK = 200
 PLAYER_SPEED_RUN = 300
@@ -120,13 +120,13 @@ PLAYER_MAX_JUMPS = 1
 
 # Combat Settings
 ATTACK_COOLDOWN = 60
-SKILL_Q_COOLDOWN = 240
+SKILL_Q_COOLDOWN = 24
 SKILL_W_COOLDOWN = 300
 SKILL_E_COOLDOWN = 100
 
 # Player 2 E Skill (Arrow Rain) Settings
 SKILL_E_2_COOLDOWN = 12.0            # E skill cooldown (seconds)
-SKILL_E_2_COST = 40                  # E skill stamina cost
+SKILL_E_2_COST = 4                  # E skill stamina cost
 SKILL_E_2_WIDTH = 350                # Arrow rain area width (pixels)
 SKILL_E_2_HEIGHT = 400               # Arrow rain area height (pixels)
 SKILL_E_2_DURATION = 2.5             # Arrow rain duration (seconds)
@@ -160,7 +160,7 @@ PLAYER_STAMINA_REGEN_WALK = 0.05
 PLAYER_HEALTH_REGEN = 0.02
 
 PLAYER_RUN_COST = 0.2
-SKILL_Q_COST = 20
+SKILL_Q_COST = 2
 SKILL_W_COST = 30
 SKILL_E_COST = 15
 

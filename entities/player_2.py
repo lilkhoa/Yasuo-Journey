@@ -111,9 +111,23 @@ class Player2(Player):
         
         self.anims_right['attack_normal'] = load_scaled_sequence('1_atk', '1_atk_', 10, SCALE_FACTOR)
         self.anims_right['block'] = load_scaled_sequence('defend', 'defend_', 19, SCALE_FACTOR)
-        self.anims_right['q'] = load_scaled_sequence('2_atk', '2_atk_', 15, SCALE_FACTOR)
-        self.anims_right['w'] = load_scaled_sequence('3_atk', '3_atk_', 12, SCALE_FACTOR)
-        self.anims_right['e'] = load_scaled_sequence('sp_atk', 'sp_atk_', 17, SCALE_FACTOR)
+        
+        # Load skill assets
+        _skill_asset_dir = os.path.join(root_dir, 'assets', 'Skills')
+        _proj_asset_dir  = os.path.join(root_dir, 'assets', 'Projectile')
+        self.laser_cast_frames = load_laser_cast_animation(factory, _skill_asset_dir)
+        self.laser_projectile_frames = load_laser_projectile_frames(factory, _proj_asset_dir)
+        from combat.player_2.skill_e import load_arrow_rain_cast_animation
+        self.e_casting_frames = load_arrow_rain_cast_animation(factory, _skill_asset_dir)
+        print(f"[Player2.__init__] E casting frames loaded: {len(self.e_casting_frames)}")
+        
+        # Map skill casting animations correctly
+        self.anims_right['q'] = self.laser_cast_frames
+        
+        from combat.utils import load_image_sequence
+        w_folder = os.path.join(_skill_asset_dir, "skill_w_2")
+        self.anims_right['w'] = load_image_sequence(factory, w_folder, "air_atk_", 10, (150, 150), zero_pad=True)
+        self.anims_right['e'] = self.e_casting_frames
         
         self.anims_right['jump_up'] = load_scaled_sequence('jump_up', 'jump_up_', 3, SCALE_FACTOR)
         self.anims_right['fall'] = load_scaled_sequence('jump_down', 'jump_down_', 3, SCALE_FACTOR)
@@ -150,12 +164,6 @@ class Player2(Player):
         # Override Q skill with Laser (replaces parent's SkillQ tornado)
         self.skill_q = SkillQLaser(self)
         
-        # Pre-load laser assets for Q skill
-        _skill_asset_dir = os.path.join(root_dir, 'assets', 'Skills')
-        _proj_asset_dir  = os.path.join(root_dir, 'assets', 'Projectile')
-        self.laser_cast_frames     = load_laser_cast_animation(factory, _skill_asset_dir)
-        self.laser_projectile_frames = load_laser_projectile_frames(factory, _proj_asset_dir)
-        
         # Active laser list (mirrors active_tornadoes for Yasuo)
         self.active_lasers = []
         
@@ -167,8 +175,6 @@ class Player2(Player):
         
         # Create E skill instance for Arrow Rain
         self.skill_e = SkillE(self)
-        # Pre-load E casting animation
-        self.e_casting_frames = load_arrow_rain_cast_animation(factory, _skill_asset_dir)
         self.e_aoe = None  # Current active AoE (if any)
         
         # --- SKILLS LIST FOR HUD (Player 2 Override) ---
@@ -220,6 +226,10 @@ class Player2(Player):
         """
         import sdl2
         
+        print(f"\n[Player2.render_skills] ===== RENDER SKILLS CALLED =====")
+        print(f"[Player2.render_skills] Called with renderer={renderer}, camera pos=({camera.camera.x}, {camera.camera.y})")
+        print(f"[Player2.render_skills] e_aoe exists: {self.e_aoe is not None}, active: {self.e_aoe.active if self.e_aoe else 'N/A'}")
+        
         # --- Render active Q lasers ---
         for laser in self.active_lasers:
             if not hasattr(laser, 'sprites') or not laser.sprites:
@@ -244,8 +254,20 @@ class Player2(Player):
                 sdl2.SDL_DestroyTexture(texture)
         
         # --- Render active E AoE ---
-        if self.e_aoe is not None and self.e_aoe.active:
-            self.e_aoe.render(camera.camera.x, camera.camera.y)
+        if self.e_aoe is not None:
+            print(f"[Player2.render_skills] E AoE active check: {self.e_aoe.active}")
+            if self.e_aoe.active:
+                print(f"[Player2.render_skills] Calling e_aoe.render() with camera ({camera.camera.x}, {camera.camera.y})")
+                if self.e_aoe.renderer != renderer:
+                    print(f"[Player2.render_skills] WARNING: E AoE renderer mismatch! AoE={self.e_aoe.renderer}, passed={renderer}")
+                    # FIX: Update the AoE renderer to the current one
+                    print(f"[Player2.render_skills] FIXING renderer mismatch!")
+                    self.e_aoe.renderer = renderer
+                self.e_aoe.render(camera.camera.x, camera.camera.y)
+            else:
+                print(f"[Player2.render_skills] E AoE exists but NOT active")
+        else:
+            print(f"[Player2.render_skills] E AoE is None")
     
     def add_item_to_inventory(self, item_type):
         """
@@ -390,8 +412,10 @@ class Player2(Player):
     # We redirect those calls to Player2-specific logic here.
 
     def spawn_tornado(self, world, factory, renderer):
-        """Override: Q cast done → fire laser instead of tornado."""
-        self.spawn_laser(world, factory, renderer)
+        """Override: Q cast done. Prevent double fire if we already fired early."""
+        if not getattr(self, '_laser_spawned', False):
+            self.spawn_laser(world, factory, renderer)
+        self._laser_spawned = False
         if self.sound_manager:
             try:
                 self.sound_manager.play_sound("player_q2")
@@ -418,13 +442,24 @@ class Player2(Player):
             renderer: SDL2 renderer (used for asset loading)
             direction: Direction input (used for facing)
         """
+        # Debug log
+        print(f"[Player2.start_e] Called. Current state: {self.state}, stamina: {self.stamina}, cooldown ready: {self.cooldowns.is_ready('skill_e')}")
+        
         # Check cooldown and stamina
-        if self.stamina < SKILL_E_2_COST or not self.cooldowns.is_ready("skill_e"):
+        if self.stamina < SKILL_E_2_COST:
+            print(f"[Player2.start_e] Not enough stamina: {self.stamina} < {SKILL_E_2_COST}")
+            return
+        
+        if not self.cooldowns.is_ready("skill_e"):
+            print(f"[Player2.start_e] Skill on cooldown")
             return
         
         # Only cast from valid states
         if self.state not in ['idle', 'jumping']:
+            print(f"[Player2.start_e] Invalid state for casting: {self.state}")
             return
+        
+        print(f"[Player2.start_e] ✓ Casting Arrow Rain!")
         
         # Spend stamina and set cooldown
         self.stamina -= SKILL_E_2_COST
@@ -435,16 +470,18 @@ class Player2(Player):
         if direction:
             self.facing_right = (direction > 0)
         
-        # Set state to casting animation
-        self.state = 'casting_e'
+        # Set state to dashing_e (matches parent Player.start_e and Player2.update interception logic)
+        self.state = 'dashing_e'
+        self.skill_e.is_dashing = True  # Prevent parent's update() from resetting state to idle prematurely
         self.frame_index = 0
+        print(f"[Player2.start_e] State changed to: {self.state}, animations available: {len(self.e_casting_frames) if hasattr(self, 'e_casting_frames') else 'N/A'}")
         
         # Play sound
         if self.sound_manager:
             try:
                 self.sound_manager.play_sound("player_e1")
-            except:
-                pass
+            except Exception as e:
+                print(f"[Player2.start_e] Sound error: {e}")
     
     def spawn_e_aoe(self, renderer):
         """
@@ -454,15 +491,20 @@ class Player2(Player):
         Args:
             renderer: SDL2 renderer
         """
+        print(f"[Player2.spawn_e_aoe] Spawning Arrow Rain AoE at ({self.sprite.x}, {self.sprite.y})")
+        
         if self.skill_e is None:
             return
         
-        # Execute the skill to spawn AoE; store reference for update_skills/render_skills
-        aoe = self.skill_e.execute(renderer)
+        # Execute the skill to spawn AoE; pass game_map for terrain height calculation
+        game_map = getattr(self, '_game_map', None)
+        aoe = self.skill_e.execute(renderer, game_map)
         if aoe:
             self.e_aoe = aoe
         
-        print(f"Player2: Arrow Rain spawned!")
+        # DON'T set is_dashing=False here yet! Keep it True so animation continues.
+        # We'll set it to False at the END of the animation in update() POST section.
+        print(f"[Player2.spawn_e_aoe] Arrow Rain spawned!")
     
     def handle_movement(self, keys):
         """
@@ -497,8 +539,64 @@ class Player2(Player):
             game_map: Game map for collision
             boxes: Obstacle boxes
         """
+        # Store references so spawn_laser/spawn_tornado can always find them
+        # (the base Player.update passes these as args, not stored on self)
+        self._world   = world
+        self._factory = factory
+        self._renderer = renderer
+        self._game_map = game_map
+
         # Call parent update (handles movement, animation, conditions, etc.)
+        # 1. Store whether we already fired the laser this cast to prevent double spawning
+        if self.state != 'casting_q':
+            self._laser_spawned = False
+            
+        # 2. Intercept 'casting_q' to fire midway through the animation (e.g. frame 9)
+        # instead of waiting for the full 17-frame recovery to end.
+        if self.state == 'casting_q' and hasattr(self, 'frame_index'):
+            if self.frame_index >= 9 and not getattr(self, '_laser_spawned', False):
+                self.spawn_laser(world, factory, renderer)
+                self._laser_spawned = True
+                
+        # 3. Intercept 'dashing_e' to spawn the Arrow Rain AoE mid-animation
+        if self.state != 'dashing_e':
+            self._e_spawned = False
+        
+        if self.state == 'dashing_e' and hasattr(self, 'frame_index'):
+            print(f"[Player2.update PRE] E state: dashing_e, frame_index={self.frame_index}")
+            # The E cast animation has 12 frames, so firing on 6 makes it appear mid-action
+            if self.frame_index >= 6 and not getattr(self, '_e_spawned', False):
+                print(f"[Player2.update PRE] Frame >= 6, spawning AoE!")
+                self.spawn_e_aoe(renderer)
+                self._e_spawned = True
+        
         super().update(dt, world, factory, renderer, game_map, boxes)
+        
+        print(f"[Player2.update POST] After parent update - state: {self.state}, frame_index: {self.frame_index}, is_dashing: {self.skill_e.is_dashing}")
+        
+        # Handle E animation completion: Keep is_dashing=True until animation finishes all 12 frames
+        if self.state == 'dashing_e' and self.skill_e.is_dashing:
+            # Check if animation has completed all 12 frames
+            e_frames = (self.anims_right if self.facing_right else self.anims_left).get('e', [])
+            if len(e_frames) > 0:
+                # Animation cycles 0->(len-1)->0. Detect when we just completed the last frame
+                # by checking if frame_index == len-1. When parent next updates, it will reset to 0
+                # We want to catch this LAST frame and set is_dashing=False for next update to exit state
+                if self.frame_index == len(e_frames) - 1:
+                    # Last frame reached, next cycle will be frame 0. Set flag to exit state.
+                    print(f"[Player2.update POST] E animation complete at frame {self.frame_index}/{len(e_frames)-1}, setting is_dashing=False")
+                    self.skill_e.is_dashing = False
+
+        # ── Guard: base update returns early when frames is empty (line 516 of
+        # player.py).  If Q-animation assets are missing the character stays
+        # stuck in 'casting_q' forever.  Detect that here and force-complete.
+        if self.state == 'casting_q':
+            q_frames = (self.anims_right if self.facing_right else self.anims_left).get('q', [])
+            if not q_frames:
+                # No cast frames available – fire laser immediately and unblock
+                self.spawn_laser(world, factory, renderer)
+                self.state = 'idle'
+                self.frame_index = 0
         
         # Manage W buff duration
         if self.w_buff_active:
@@ -511,6 +609,7 @@ class Player2(Player):
         
         # Manage E casting animation (Arrow Rain)
         if self.state == 'casting_e':
+            print(f"[Player2.update] E casting animation: frame {self.frame_index}")
             if self.e_casting_frames:
                 self.frame_index += 1
                 idx = self.frame_index % len(self.e_casting_frames)
@@ -520,11 +619,13 @@ class Player2(Player):
                 
                 if self.frame_index >= len(self.e_casting_frames):
                     # Casting complete – spawn AoE
+                    print(f"[Player2.update] E animation complete! Spawning AoE now.")
                     self.spawn_e_aoe(renderer)
                     self.state = 'idle'
                     self.frame_index = 0
             else:
                 # No casting frames loaded – spawn immediately
+                print(f"[Player2.update] No casting frames available! Spawning AoE immediately.")
                 self.spawn_e_aoe(renderer)
                 self.state = 'idle'
                 self.frame_index = 0

@@ -855,6 +855,8 @@ def run(net_mode: str = "solo", host_ip: str = "127.0.0.1", ext_seed: int = 0):
 
             player.set_blocking(keys[sdl2.SDLK_s])
             player.handle_movement(keys)
+            if hasattr(player, 'state'):
+                print(f"[game.py] Before player.update(): type={type(player).__name__}, state={player.state}, frame_index={player.frame_index if hasattr(player, 'frame_index') else 'N/A'}")
             player.update(dt, world, software_factory, None, game_map=my_map, boxes=all_obstacles)
 
             if player.entity.sprite.x < 0: player.entity.sprite.x = 0
@@ -1129,6 +1131,7 @@ def run(net_mode: str = "solo", host_ip: str = "127.0.0.1", ext_seed: int = 0):
             
             # --- UPDATE SKILLS (Polymorphic) ---
             network_ctx = (is_multi, is_host, game_client)
+            print(f"[game.py] About to call player.update_skills, player type: {type(player).__name__}")
             player.update_skills(dt, all_combat_targets, network_ctx)
             
             # Update E skill dash separately

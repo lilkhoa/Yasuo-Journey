@@ -25,14 +25,18 @@ def load_arrow_rain_cast_animation(factory, skill_asset_dir):
     Expected: assets/Skills/skill_e_2/3_atk_1.png through 3_atk_12.png
     """
     e_folder = os.path.join(skill_asset_dir, "skill_e_2")
+    print(f"[load_arrow_rain_cast_animation] Loading from: {e_folder}")
+    print(f"[load_arrow_rain_cast_animation] Folder exists: {os.path.exists(e_folder)}")
+    
     sprites = load_image_sequence(
         factory,
         e_folder,
         prefix="3_atk_",
         count=12,
         target_size=(150, 150),
-        zero_pad=True
+        zero_pad=False  # Files are 3_atk_1.png, not 3_atk_001.png
     )
+    print(f"[load_arrow_rain_cast_animation] Loaded {len(sprites)} frames")
     return sprites
 
 
@@ -63,29 +67,45 @@ class SkillE(Skill):
         # expose the attribute here and keep it permanently False.
         self.is_dashing = False
     
-    def execute(self, renderer, world=None):
+    def execute(self, renderer, game_map=None):
         """
         Cast Arrow Rain AoE at a position in front of the player.
+        Positions the AoE to land on the ground at the target location.
         
         Args:
             renderer: SDL2 renderer for texture loading
-            world: SDL2 entity world (not used for AoE)
+            game_map: GameMap instance for terrain height calculation
         
         Returns:
             ArrowRainAoE instance, or None if skill couldn't be cast
         """
         print("Casting E: Arrow Rain!")
         
-        # Calculate spawn position (in front of player)
+        # Calculate spawn position (in front of player, horizontally)
         direction = 1 if self.owner.facing_right else -1
         spawn_x = self.owner.sprite.x + (SKILL_E_2_CAST_RANGE * direction)
-        spawn_y = self.owner.sprite.y + 80  # Slightly below center
+        
+        # Calculate vertical position: either from terrain or use fixed position
+        if game_map:
+            ground_height = game_map.get_ground_height_at_x(spawn_x)
+            if ground_height is not None:
+                # Position AoE at ground level (use center of AoE, so subtract half height)
+                spawn_y = ground_height
+                print(f"[SkillE.execute] Found ground at Y={ground_height} for X={spawn_x}")
+            else:
+                # Fallback if no terrain found
+                spawn_y = self.owner.sprite.y + 80
+                print(f"[SkillE.execute] No ground terrain found at X={spawn_x}, using fallback position Y={spawn_y}")
+        else:
+            # No game_map provided, use default offset
+            spawn_y = self.owner.sprite.y + 80
+            print(f"[SkillE.execute] No game_map provided, using fixed offset Y={spawn_y}")
         
         # Create AoE object
         aoe = ArrowRainAoE(spawn_x, spawn_y, renderer)
         self.aoe_active = aoe
         
-        print(f"Arrow Rain spawned at ({spawn_x}, {spawn_y})")
+        print(f"Arrow Rain spawned at world position ({spawn_x}, {spawn_y})")
         return aoe
 
     def update_dash(self, dt, enemies, boxes=None, game_map=None, network_ctx=None):
@@ -125,6 +145,8 @@ def update_e_aoe_logic(aoe_obj, enemies, dt, network_ctx=None):
     """
     if not aoe_obj.active:
         return
+    
+    print(f"[update_e_aoe_logic] Updating E AoE, dt={dt:.4f}s")
     
     # 1. UPDATE ANIMATION AND LIFETIME
     aoe_obj.update(dt)

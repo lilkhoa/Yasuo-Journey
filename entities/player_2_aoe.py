@@ -59,36 +59,75 @@ class ArrowRainAoE:
         # Collision tracking - prevents hitting same target multiple times
         self.hit_list = set()  # Set of target net_ids that have been hit
         
-        # Animation
-        self.frame_textures = []
+        # Animation (loaded on-demand during render, not preloaded)
+        self.frame_paths = []  # Paths to frame images
+        self.frame_textures = {}  # Cache of loaded textures (frame_index -> texture)
         self.current_frame = 0
         self.animation_speed = 0.12
         self.frame_counter = 0
         self.renderer = renderer
         
-        # Load animation frames
-        self._load_textures()
-    
-    def _load_textures(self):
-        """Load arrow rain animation frames (18 frames)."""
-        base_path = os.path.join("assets", "Projectile", "Player_2", "e")
-        
+        # Pre-build frame paths list
+        current_dir = os.path.dirname(os.path.abspath(__file__))
+        root_dir = os.path.dirname(current_dir)
+        base_path = os.path.join(root_dir, "assets", "Projectile", "Player_2", "e")
         for i in range(1, 19):  # 18 frames
-            filename = f"arrow_shower_effect_{i}.png"
-            filepath = os.path.join(base_path, filename)
+            self.frame_paths.append(os.path.join(base_path, f"arrow_shower_effect_{i}.png"))
+        
+        print(f"[ArrowRainAoE] Created at world position ({x}, {y})")
+        print(f"[ArrowRainAoE] AoE will render from screen Y: {y - self.height // 2} to {y + self.height // 2}")
+        print(f"[ArrowRainAoE] Duration: {SKILL_E_2_DURATION}s, Snare Duration: {SKILL_E_2_SNARE_DURATION}s")
+        print(f"[ArrowRainAoE] Size: {self.width}x{self.height}")
+        print(f"[ArrowRainAoE] Prebuilt frame paths: {len(self.frame_paths)} frames")
+    
+    def _get_frame_texture(self, frame_index):
+        """
+        Load texture for frame on-demand (like Q laser does).
+        Uses caching so we only load once per frame.
+        """
+        if frame_index < 0 or frame_index >= len(self.frame_paths):
+            return None
+        
+        # Check cache first
+        if frame_index in self.frame_textures:
+            return self.frame_textures[frame_index]
+        
+        # Not cached, load from file
+        filepath = self.frame_paths[frame_index]
+        if not os.path.exists(filepath):
+            print(f"[ArrowRainAoE._get_frame_texture] Frame file not found: {filepath}")
+            return None
+        
+        try:
+            # Load surface from file (matches Q laser pattern)
+            surface = sdl2.ext.load_image(filepath)
+            if surface is None:
+                print(f"[ArrowRainAoE._get_frame_texture] Failed to load surface: {filepath}")
+                return None
             
-            if os.path.exists(filepath):
-                try:
-                    surface = sdl2.ext.load_image(filepath)
-                    texture = sdl2.SDL_CreateTextureFromSurface(self.renderer, surface)
-                    sdl2.SDL_FreeSurface(surface)
-                    
-                    if texture:
-                        self.frame_textures.append(texture)
-                except Exception as e:
-                    print(f"Failed to load {filepath}: {e}")
-            else:
-                print(f"Warning: Arrow rain effect frame not found: {filepath}")
+            # Create texture from surface (matches Q laser pattern)
+            texture = sdl2.SDL_CreateTextureFromSurface(self.renderer, surface)
+            
+            # Free surface after texture creation
+            sdl2.SDL_FreeSurface(surface)
+            
+            if texture is None:
+                # Get SDL error for debugging
+                error = sdl2.SDL_GetError()
+                print(f"[ArrowRainAoE._get_frame_texture] Failed to create texture: {filepath}")
+                print(f"  SDL Error: {error}")
+                return None
+            
+            # Cache the texture
+            self.frame_textures[frame_index] = texture
+            print(f"[ArrowRainAoE] Loaded and cached frame {frame_index + 1}")
+            return texture
+            
+        except Exception as e:
+            print(f"[ArrowRainAoE._get_frame_texture] Exception: {e}")
+            import traceback
+            traceback.print_exc()
+            return None
     
     def update(self, dt):
         """
@@ -105,20 +144,22 @@ class ArrowRainAoE:
         
         # Update lifetime countdown
         self.lifetime_timer -= dt
+        print(f"[ArrowRainAoE.update] Lifetime remaining: {self.lifetime_timer:.2f}s")
         
         if self.lifetime_timer <= 0:
+            print(f"[ArrowRainAoE.update] AoE expired and destroyed")
             self.active = False
     
     def _update_animation(self):
         """Update animation frame."""
-        if not self.frame_textures:
+        if not self.frame_paths:
             return
         
         self.frame_counter += self.animation_speed
         
         if self.frame_counter >= 1.0:
             self.frame_counter = 0
-            self.current_frame = (self.current_frame + 1) % len(self.frame_textures)
+            self.current_frame = (self.current_frame + 1) % len(self.frame_paths)
     
     def get_hitbox(self):
         """
@@ -209,37 +250,53 @@ class ArrowRainAoE:
     
     def render(self, camera_x=0, camera_y=0):
         """
-        Render AoE animation.
+        Render AoE animation using on-demand texture loading (matches Q laser pattern).
         
         Args:
             camera_x: Camera x offset for screen positioning
             camera_y: Camera y offset for screen positioning
         """
-        if not self.active or not self.frame_textures:
+        if not self.active:
             return
         
-        # Get current frame texture
-        texture = self.frame_textures[self.current_frame]
+        # Verify renderer is valid
+        if self.renderer is None:
+            print(f"[ArrowRainAoE.render] ERROR: Renderer is None!")
+            return
+        
+        # Get current frame texture (loads on-demand, like Q laser does)
+        texture = self._get_frame_texture(self.current_frame)
+        
+        if texture is None:
+            # Texture not available, skip rendering this frame
+            return
         
         # Destination rectangle (screen position)
+        dest_x = int(self.x - self.width // 2 - camera_x)
+        dest_y = int(self.y - self.height // 2 - camera_y)
+        
         dest_rect = sdl2.SDL_Rect(
-            int(self.x - self.width // 2 - camera_x),
-            int(self.y - self.height // 2 - camera_y),
+            dest_x,
+            dest_y,
             self.width,
             self.height
         )
         
-        # Render centered on AoE position
-        sdl2.SDL_RenderCopy(
+        # Render using same pattern as Q laser
+        result = sdl2.SDL_RenderCopy(
             self.renderer,
             texture,
             None,  # Use entire texture
             dest_rect
         )
+        
+        if result != 0:
+            error = sdl2.SDL_GetError()
+            print(f"[ArrowRainAoE.render] SDL_RenderCopy FAILED on frame {self.current_frame}: {error}")
     
     def cleanup(self):
-        """Clean up resources."""
-        for texture in self.frame_textures:
+        """Clean up resources - destroy cached textures."""
+        for frame_index, texture in self.frame_textures.items():
             if texture:
                 sdl2.SDL_DestroyTexture(texture)
         self.frame_textures.clear()
