@@ -251,6 +251,10 @@ class Player:
         self.skill_w = SkillW(self)
         self.skill_e = SkillE(self)
         
+        # --- SKILL CONTAINERS (For active skill objects on the field) ---
+        self.active_tornadoes = []  # Active Q skill tornadoes
+        self.active_walls = []      # Active W skill walls
+        
         # --- SKILLS LIST FOR HUD ---
         # Group skills for easy HUD rendering
         self.skills = [
@@ -382,7 +386,7 @@ class Player:
             ad_scaling = (self.attack_damage / self.base_attack_damage) * SKILL_AD_RATIO
             skill.damage_multiplier = level_scaling * ad_scaling
 
-    def update(self, dt, world, factory, renderer, active_list_q, active_list_w, game_map=None, boxes=None):
+    def update(self, dt, world, factory, renderer, game_map=None, boxes=None):
         # [NEW] Update Mastery
         if self.mastery_emote:
             self.mastery_emote.update()
@@ -522,12 +526,12 @@ class Player:
             self.frame_index += 1
             if self.frame_index >= len(frames):
                 if self.state == 'casting_q':
-                    self.spawn_tornado(world, factory, renderer, active_list_q)
+                    self.spawn_tornado(world, factory, renderer)
                     if self.sound_manager:
                         self.sound_manager.play_sound("player_q2")
                     self.state = 'idle'
                 elif self.state == 'casting_w':
-                    self.spawn_wall(world, factory, renderer, active_list_w)
+                    self.spawn_wall(world, factory, renderer)
                     if self.sound_manager:
                         self.sound_manager.play_sound("player_w2")
                     self.state = 'idle'
@@ -641,15 +645,91 @@ class Player:
             if self.sound_manager:
                 self.sound_manager.play_sound("player_e1")
 
-    def spawn_tornado(self, world, factory, renderer, active_list):
+    def spawn_tornado(self, world, factory, renderer):
         if self.tornado_frames: 
             t = self.skill_q.cast(world, factory, renderer, skill_sprites=self.tornado_frames)
-            if t: active_list.append(t)
+            if t: self.active_tornadoes.append(t)
 
-    def spawn_wall(self, world, factory, renderer, active_list):
+    def spawn_wall(self, world, factory, renderer):
         if self.wall_frames: 
             w = self.skill_w.cast(world, factory, renderer, skill_sprites=self.wall_frames)
-            if w: active_list.append(w)
+            if w: self.active_walls.append(w)
+
+    def update_skills(self, dt, enemies, network_ctx=None):
+        """
+        Polymorphic skill update method.
+        Updates all active skills (tornadoes, walls, dashes, etc.)
+        
+        Args:
+            dt: Delta time
+            enemies: List of enemy entities for collision
+            network_ctx: Network context (is_multi, is_host, game_client) or None
+        """
+        # Import here to avoid circular imports
+        from combat.skill_q import update_q_logic
+        from combat.skill_w import update_w_logic
+        
+        # Update all active Q skill tornadoes
+        for t in self.active_tornadoes[:]:
+            update_q_logic(t, enemies, dt, network_ctx)
+            if not t.active:
+                t.delete()
+                self.active_tornadoes.remove(t)
+        
+        # Update all active W skill walls
+        for w in self.active_walls[:]:
+            # Note: update_w_logic needs projectiles list, pass empty if not available
+            projectiles = getattr(self, '_projectiles', [])
+            update_w_logic(w, enemies, projectiles, dt, network_ctx)
+            if not w.active:
+                w.delete()
+                self.active_walls.remove(w)
+        
+        # Update E skill dash
+        if hasattr(self.skill_e, 'update_dash'):
+            # Will be filled from game loop context via separate call
+            pass
+
+    def render_skills(self, renderer, camera):
+        """
+        Polymorphic skill render method.
+        Renders all active skill objects on screen.
+        
+        Args:
+            renderer: SDL2 renderer
+            camera: Camera object for coordinate transformation
+        """
+        # Render active Q skill tornadoes
+        for t in self.active_tornadoes:
+            if hasattr(t, 'sprite') and hasattr(t.sprite, 'surface'):
+                surface = t.sprite.surface
+                if surface:
+                    texture = sdl2.SDL_CreateTextureFromSurface(renderer, surface)
+                    if texture:
+                        w, h = surface.w, surface.h
+                        dst_rect = sdl2.SDL_Rect(
+                            int(t.sprite.x - camera.camera.x), 
+                            int(t.sprite.y - camera.camera.y), 
+                            w, h
+                        )
+                        sdl2.SDL_RenderCopy(renderer, texture, None, dst_rect)
+                        sdl2.SDL_DestroyTexture(texture)
+        
+        # Render active W skill walls
+        for w in self.active_walls:
+            if hasattr(w, 'sprite') and hasattr(w.sprite, 'surface'):
+                surface = w.sprite.surface
+                if surface:
+                    texture = sdl2.SDL_CreateTextureFromSurface(renderer, surface)
+                    if texture:
+                        w_dim, h_dim = surface.w, surface.h
+                        dst_rect = sdl2.SDL_Rect(
+                            int(w.sprite.x - camera.camera.x), 
+                            int(w.sprite.y - camera.camera.y), 
+                            w_dim, h_dim
+                        )
+                        sdl2.SDL_RenderCopy(renderer, texture, None, dst_rect)
+                        sdl2.SDL_DestroyTexture(texture)
 
     def attack(self):
         if self.state in ['idle', 'run', 'walk'] and not self.is_blocking:

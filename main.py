@@ -10,7 +10,7 @@ from core.game import run
 
 def main():
     parser = argparse.ArgumentParser(
-        description="A3 Yasuo – run single-player or 2-player co-op over LAN."
+        description="A3 Yasuo - run single-player or 2-player co-op over LAN."
     )
     mode_group = parser.add_mutually_exclusive_group()
     mode_group.add_argument(
