@@ -16,11 +16,12 @@ if root_dir not in sys.path:
     sys.path.append(root_dir)
 
 from entities.player import Player
-from entities.player_2_projectile import PoisonProjectile, PlantProjectile, HealDustProjectile
+from entities.player_2_projectile import PoisonProjectile, PlantProjectile, HealDustProjectile, NormalArrowProjectile
 from combat.player_2.skill_w import SkillW
 from combat.player_2.skill_e import SkillE, load_arrow_rain_cast_animation
 from settings import SKILL_W_BUFF_DURATION, SKILL_W_COST, SKILL_E_2_COST, SKILL_E_2_COOLDOWN
 
+from combat.utils import load_image_sequence, flip_sprites_horizontal
 
 class Player2(Player):
     """
@@ -46,6 +47,55 @@ class Player2(Player):
         """
         super().__init__(world, factory, x, y, sound_manager, renderer_ptr)
         
+        # ==========================================
+        # STEP 1: OVERRIDE ASSETS AND ANIMATIONS
+        # ==========================================
+        player2_dir = os.path.join(root_dir, 'assets', 'Player_2')
+        
+        self.anims_right = {}
+        
+        # Mapping Elementals Leaf Ranger states to Base Player states
+        # Make sure the folder names in 'assets/Player_2' match these exactly
+        self.anims_right['idle'] = load_image_sequence(factory, os.path.join(player2_dir, 'idle'), 'idle_', 12, zero_pad=False)
+        
+        # Resolve Run
+        run_frames = load_image_sequence(factory, os.path.join(player2_dir, 'run'), 'run_', 10, zero_pad=False)
+        self.anims_right['run'] = run_frames
+        
+        # [TRICK] Resolve Walk: Double the number of frames of Run to reduce 1/2 frame speed (FPS) of animation.
+        # E.g.: [1, 2, 3] -> [1, 1, 2, 2, 3, 3]
+        self.anims_right['walk'] = [frame for frame in run_frames for _ in range(2)]
+
+
+        
+        # Attacks
+        self.anims_right['attack_normal'] = load_image_sequence(factory, os.path.join(player2_dir, 'normal_attack'), '2_atk_', 15, zero_pad=False)
+        self.anims_right['block'] = load_image_sequence(factory, os.path.join(player2_dir, 'defend'), 'defend_', 19, zero_pad=False)
+        
+        # Movement & Status
+        self.anims_right['jump_up'] = load_image_sequence(factory, os.path.join(player2_dir, 'jump_up'), 'jump_up_', 3, zero_pad=False)
+        self.anims_right['fall'] = load_image_sequence(factory, os.path.join(player2_dir, 'jump_down'), 'jump_down_', 3, zero_pad=False)
+        self.anims_right['jump'] = load_image_sequence(factory, os.path.join(player2_dir, 'jump_full'), 'jump_', 22, zero_pad=False)
+        self.anims_right['dead'] = load_image_sequence(factory, os.path.join(player2_dir, 'death'), 'death_', 19, zero_pad=False)
+        self.anims_right['hurt'] = load_image_sequence(factory, os.path.join(player2_dir, 'take_hit'), 'take_hit_', 6, zero_pad=False)
+
+        # Fallback mechanism if assets are missing
+        if not self.anims_right['idle']: 
+            self.anims_right['idle'] = [factory.from_color(sdl2.ext.Color(0, 255, 0), (40, 60))] # Green box
+
+        # Re-create Left Animations by flipping the newly loaded Right Animations
+        self.anims_left = {}
+        for key, sprites in self.anims_right.items():
+            if sprites:
+                self.anims_left[key] = flip_sprites_horizontal(factory, sprites)
+            else:
+                self.anims_left[key] = []
+
+        # Force update the entity's sprite to the new Ranger idle frame to prevent crash
+        self.entity.sprite = self.anims_right['idle'][0]
+        self.entity.sprite.position = x, y
+        # ==========================================
+
         # W Skill buff state management
         self.w_buff_active = False
         self.w_buff_timer = 0  # Timestamp when buff was activated
@@ -250,8 +300,31 @@ class Player2(Player):
         if self.is_blocking or self.state in ['casting_q', 'casting_w', 'casting_e', 'dashing_e', 'attacking', 'dead', 'hurt']:
             return
         
-        # Call parent's movement handling
+        # Call parent's movement handling (velocity, collision) from base class
         super().handle_movement(keys)
+        
+        # 1. In the air states (Jump & Fall)
+        if self.velocity_y < 0:
+            self.state = 'jump_up'
+        elif self.velocity_y > 0:
+            self.state = 'fall'
+            
+        # 2. On the round state (Run, Walk, Idle)
+        elif self.velocity_y == 0:
+            # If velocity X-axis
+            if abs(self.velocity_x) > 0:
+                # Discriminate Walk and Run base on Shift button
+                if keys[sdl2.SDL_SCANCODE_LSHIFT]:
+                    # Nếu có phím Shift / Roll thì gọi state roll hoặc run nhanh
+                    self.state = 'run'
+                else:
+                    # Base on the current speed to determine walking or running
+                    if abs(self.velocity_x) > 200:# NEED TO MODIFY IF HAVE ANOTHER VALUE TO PLUGIN
+                        self.state = 'run'
+                    else:
+                        self.state = 'walk'
+            else:
+                self.state = 'idle'
     
     def update(self, dt, world, factory, renderer, active_list_q, active_list_w, 
                game_map=None, boxes=None, active_list_e=None):
@@ -400,6 +473,22 @@ class Player2(Player):
             # Optional: Call parent attack logic or spawn normal projectile
             # This would need additional implementation based on how
             # normal attacks are handled in the base Player class
+            
+            # [NEW] No W buff active -> Spawn Normal Arrow
+            projectile = NormalArrowProjectile(proj_x, proj_y, direction, self, renderer)
+            projectile_manager.add_projectile(projectile)
+            
+            action = 'attack_normal'
+            print("Player2: Normal Arrow spawned (Physical Damage)")
+            
+            # Network sync
+            if network_ctx:
+                is_multi, is_host, game_client = network_ctx
+                if is_multi and game_client and game_client.is_connected():
+                    try:
+                        game_client.send_skill_event(action, direction, proj_x, proj_y)
+                    except:
+                        pass
     
     def apply_poison_damage(self, target, damage, tick_rate, duration):
         """

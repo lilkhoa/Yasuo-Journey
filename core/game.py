@@ -1121,7 +1121,8 @@ def run(net_mode: str = "solo", host_ip: str = "127.0.0.1", ext_seed: int = 0):
 
             npc_manager.update_all(dt, my_map)
             boss_manager.update_all(dt, my_map)
-            projectile_manager.update_all(dt)
+            obstacles = all_obstacles + chests   # Include chest in this situation
+            projectile_manager.update_all(dt, world, my_map, obstacles)
             
             # Collision Logic
             if not game_over:
