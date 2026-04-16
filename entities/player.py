@@ -554,6 +554,8 @@ class Player:
 
     # --- ACTIONS ---
     def jump(self):
+        if self.state in ('casting_q', 'casting_w', 'dashing_e'):
+            return
         if self.jump_count < PLAYER_MAX_JUMPS:
             self.vel_y = self.jump_force
             self.is_jumping = True
