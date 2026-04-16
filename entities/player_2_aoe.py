@@ -56,7 +56,6 @@ class ArrowRainAoE:
         self.active = True
         self.duration = SKILL_E_2_DURATION
         self.snare_duration = SKILL_E_2_SNARE_DURATION
-        self.damage = damage
         
         # Hitbox is narrower than the render rect: the arrow sprites have
         # transparent padding on both sides, so only the centre third is
