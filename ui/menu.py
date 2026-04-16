@@ -9,6 +9,9 @@ WHITE = (255, 255, 255)
 YELLOW = (255, 255, 0)
 GRAY = (100, 100, 100)
 GREEN = (50, 205, 50)
+GREEN_DARK = (0, 180, 0)      # xanh lá đậm hơn
+CYAN = (0, 200, 255)          # xanh da trời (cyan)
+BLUE_DEEP = (0, 102, 204)
 BLACK = (0, 0, 0)
 OVERLAY_COLOR = (0, 0, 0, 150)
 
@@ -452,11 +455,11 @@ class GameMenu:
         
         # Vẽ Ảnh Nhân Vật
         if profile["texture"]:
-            scale = 2.0  # Phóng to ảnh lên gấp đôi cho rõ
+            scale = 2.0 if profile["id"] == "yasuo" else 3.5  # Phóng to ảnh lên gấp đôi cho rõ
             dst_w = int(profile["w"] * scale)
             dst_h = int(profile["h"] * scale)
             dst_x = (self.width - dst_w) // 2
-            dst_y = (self.height - dst_h) // 2 - 60
+            dst_y = (self.height - dst_h) // 2 - 60 if profile["id"] == "yasuo" else (self.height - dst_h) // 2 - 150
             
             # Cắt frame đầu tiên (nếu là sprite sheet)
             src_rect = sdl2.SDL_Rect(0, 0, profile["w"], profile["h"])
@@ -467,7 +470,8 @@ class GameMenu:
             self._draw_centered_text("[NO IMAGE FOUND]", -50, self.menu_font, GRAY)
             
         # Vẽ Tên Nhân Vật (Màu xanh lá cho Leaf Ranger, Màu Vàng cho Yasuo)
-        name_color = GREEN if profile["id"] == "leaf_ranger" else YELLOW
+        # name_color = GREEN if profile["id"] == "leaf_ranger" else YELLOW
+        name_color = GREEN_DARK if profile["id"] == "leaf_ranger" else BLUE_DEEP
         self._draw_centered_text(profile["name"], 80, self.title_font, name_color)
         
         # Vẽ Hướng dẫn

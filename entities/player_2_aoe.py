@@ -37,7 +37,7 @@ class ArrowRainAoE:
         frame_counter: Animation timer
     """
     
-    def __init__(self, x, y, renderer, damage=0):
+    def __init__(self, x, y, owner, renderer, damage_multiplier=1.0):
         """
         Initialize Arrow Rain AoE.
         
@@ -48,13 +48,14 @@ class ArrowRainAoE:
         """
         self.x = x
         self.y = y
+        self.owner = owner
+        self.damage_multiplier = damage_multiplier
         self.width = SKILL_E_2_WIDTH
         self.height = SKILL_E_2_HEIGHT
         
         self.active = True
         self.duration = SKILL_E_2_DURATION
         self.snare_duration = SKILL_E_2_SNARE_DURATION
-        self.damage = damage
         
         # Hitbox is narrower than the render rect: the arrow sprites have
         # transparent padding on both sides, so only the centre third is
@@ -72,7 +73,7 @@ class ArrowRainAoE:
         
         # Animation (loaded on-demand during render, not preloaded)
         self.frame_paths = []  # Paths to frame images
-        self.frame_textures = {}  # Cache of loaded textures (frame_index -> texture)
+        self.frame_textures = {}  # Cache of loaded textures (frame_index -> texture) t
         self.current_frame = 0
         self.animation_speed = 0.12
         self.frame_counter = 0
