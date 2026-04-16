@@ -1301,6 +1301,22 @@ def run(net_mode: str = "solo", host_ip: str = "127.0.0.1", ext_seed: int = 0):
                         sdl2.SDL_SetRenderDrawColor(sdl_renderer, 255, 165, 0, 255)  # Bright orange border
                         sdl2.SDL_RenderDrawRect(sdl_renderer, minion_rect)
                 
+                # Draw E skill AoE hitbox: cyan = damage zone, yellow = root zone
+                if hasattr(player, 'e_aoe') and player.e_aoe is not None and player.e_aoe.active:
+                    ax, ay, aw, ah = player.e_aoe.get_hitbox()
+                    aoe_rect = sdl2.SDL_Rect(int(ax - camera.camera.x), int(ay - camera.camera.y), int(aw), int(ah))
+                    sdl2.SDL_SetRenderDrawColor(sdl_renderer, 0, 255, 255, 40)   # Cyan, semi-transparent
+                    sdl2.SDL_RenderFillRect(sdl_renderer, aoe_rect)
+                    sdl2.SDL_SetRenderDrawColor(sdl_renderer, 0, 255, 255, 255)  # Bright cyan border
+                    sdl2.SDL_RenderDrawRect(sdl_renderer, aoe_rect)
+                    # Root zone (yellow)
+                    rx, ry, rw, rh = player.e_aoe.get_root_zone_hitbox()
+                    root_rect = sdl2.SDL_Rect(int(rx - camera.camera.x), int(ry - camera.camera.y), int(rw), int(rh))
+                    sdl2.SDL_SetRenderDrawColor(sdl_renderer, 255, 255, 0, 80)   # Yellow, semi-transparent
+                    sdl2.SDL_RenderFillRect(sdl_renderer, root_rect)
+                    sdl2.SDL_SetRenderDrawColor(sdl_renderer, 255, 255, 0, 255)  # Bright yellow border
+                    sdl2.SDL_RenderDrawRect(sdl_renderer, root_rect)
+                
                 sdl2.SDL_SetRenderDrawBlendMode(sdl_renderer, sdl2.SDL_BLENDMODE_NONE)
             
             # Render Remote Player (draw behind local player)

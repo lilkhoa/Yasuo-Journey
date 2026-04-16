@@ -12,6 +12,7 @@ import time
 from settings import (
     SKILL_E_2_WIDTH,
     SKILL_E_2_HEIGHT,
+    SKILL_E_2_ROOT_ZONE_HEIGHT,
     SKILL_E_2_DURATION,
     SKILL_E_2_SNARE_DURATION,
 )
@@ -36,13 +37,14 @@ class ArrowRainAoE:
         frame_counter: Animation timer
     """
     
-    def __init__(self, x, y, renderer):
+    def __init__(self, x, y, renderer, damage=0):
         """
         Initialize Arrow Rain AoE.
         
         Args:
             x, y: Center position of AoE
             renderer: SDL2 renderer for loading textures
+            damage: Damage dealt to each enemy hit
         """
         self.x = x
         self.y = y
@@ -52,12 +54,21 @@ class ArrowRainAoE:
         self.active = True
         self.duration = SKILL_E_2_DURATION
         self.snare_duration = SKILL_E_2_SNARE_DURATION
+        self.damage = damage
+        
+        # Hitbox is narrower than the render rect: the arrow sprites have
+        # transparent padding on both sides, so only the centre third is
+        # the actual impact zone.
+        self.hitbox_width = self.width // 3
+        # Root zone: bottom strip of the AoE where the ground roots appear
+        self.root_zone_height = SKILL_E_2_ROOT_ZONE_HEIGHT
         
         self.created_at = time.time()
         self.lifetime_timer = self.duration
         
-        # Collision tracking - prevents hitting same target multiple times
-        self.hit_list = set()  # Set of target net_ids that have been hit
+        # Separate hit tracking for damage vs root
+        self.hit_list = set()       # Targets already damaged
+        self.root_hit_list = set()  # Targets already rooted
         
         # Animation (loaded on-demand during render, not preloaded)
         self.frame_paths = []  # Paths to frame images
@@ -73,12 +84,6 @@ class ArrowRainAoE:
         base_path = os.path.join(root_dir, "assets", "Projectile", "Player_2", "e")
         for i in range(1, 19):  # 18 frames
             self.frame_paths.append(os.path.join(base_path, f"arrow_shower_effect_{i}.png"))
-        
-        print(f"[ArrowRainAoE] Created at world position ({x}, {y})")
-        print(f"[ArrowRainAoE] AoE will render from screen Y: {y - self.height // 2} to {y + self.height // 2}")
-        print(f"[ArrowRainAoE] Duration: {SKILL_E_2_DURATION}s, Snare Duration: {SKILL_E_2_SNARE_DURATION}s")
-        print(f"[ArrowRainAoE] Size: {self.width}x{self.height}")
-        print(f"[ArrowRainAoE] Prebuilt frame paths: {len(self.frame_paths)} frames")
     
     def _get_frame_texture(self, frame_index):
         """
@@ -120,7 +125,6 @@ class ArrowRainAoE:
             
             # Cache the texture
             self.frame_textures[frame_index] = texture
-            print(f"[ArrowRainAoE] Loaded and cached frame {frame_index + 1}")
             return texture
             
         except Exception as e:
@@ -144,10 +148,8 @@ class ArrowRainAoE:
         
         # Update lifetime countdown
         self.lifetime_timer -= dt
-        print(f"[ArrowRainAoE.update] Lifetime remaining: {self.lifetime_timer:.2f}s")
         
         if self.lifetime_timer <= 0:
-            print(f"[ArrowRainAoE.update] AoE expired and destroyed")
             self.active = False
     
     def _update_animation(self):
@@ -163,16 +165,27 @@ class ArrowRainAoE:
     
     def get_hitbox(self):
         """
-        Get rectangular hitbox for collision detection.
+        Full damage hitbox — the entire arrow column (narrow width, full height).
         
         Returns:
-            tuple: (x, y, width, height) - hitbox coordinates and dimensions
+            tuple: (x, y, width, height)
         """
-        # Center the AoE on the given position
-        hitbox_x = self.x - self.width // 2
+        hitbox_x = self.x - self.hitbox_width // 2
         hitbox_y = self.y - self.height // 2
+        return (hitbox_x, hitbox_y, self.hitbox_width, self.height)
+
+    def get_root_zone_hitbox(self):
+        """
+        Root zone hitbox — bottom strip where the ground roots visually appear.
+        Same width as the damage hitbox, but only the bottom root_zone_height pixels.
         
-        return (hitbox_x, hitbox_y, self.width, self.height)
+        Returns:
+            tuple: (x, y, width, height)
+        """
+        bottom_edge = self.y + self.height // 2
+        rz_x = self.x - self.hitbox_width // 2
+        rz_y = bottom_edge - self.root_zone_height
+        return (rz_x, rz_y, self.hitbox_width, self.root_zone_height)
     
     def check_collision(self, target):
         """
@@ -206,44 +219,48 @@ class ArrowRainAoE:
         # AABB collision detection
         return sdl2.SDL_HasIntersection(aoe_rect, target_rect)
     
-    def apply_root(self, target, network_ctx=None):
+    def apply_damage(self, target, network_ctx=None):
         """
-        Apply root/snare effect to target if not already hit.
-        
-        Args:
-            target: Enemy/Boss to root
-            network_ctx: Network context tuple (is_multi, is_host, game_client)
-            
-        Returns:
-            bool: True if root was applied, False if already hit
+        Apply damage to a target hit by the falling arrows (full AoE column).
+        Each target is damaged at most once per AoE.
         """
         if not self.active:
             return False
         
         target_net_id = getattr(target, 'net_id', id(target))
-        
-        # Only hit each target once per AoE
         if target_net_id in self.hit_list:
             return False
         
-        # Mark as hit
         self.hit_list.add(target_net_id)
         
-        print(f"Arrow Rain Root Applied! Duration: {self.snare_duration}s")
+        if hasattr(target, 'take_damage'):
+            target.take_damage(self.damage)
         
-        # Apply root effect to target
+        return True
+
+    def apply_root(self, target, network_ctx=None):
+        """
+        Apply root/snare to a target inside the ground impact zone.
+        Each target is rooted at most once per AoE.
+        """
+        if not self.active:
+            return False
+        
+        target_net_id = getattr(target, 'net_id', id(target))
+        if target_net_id in self.root_hit_list:
+            return False
+        
+        self.root_hit_list.add(target_net_id)
+        
         if hasattr(target, 'snare_timer'):
             target.snare_timer = self.snare_duration
         
-        # Network synchronization
         if network_ctx:
             is_multi, is_host, game_client = network_ctx
             if is_multi and game_client and game_client.is_connected():
                 try:
-                    # Send status event for snare
                     game_client.send_status_event(target_net_id, 'snare', self.snare_duration)
                 except:
-                    # Fallback: if send_status_event doesn't exist
                     pass
         
         return True
