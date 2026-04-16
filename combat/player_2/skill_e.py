@@ -12,7 +12,7 @@ import time
 from combat.skill import Skill
 from combat.utils import load_image_sequence
 from settings import SKILL_E_2_COOLDOWN, SKILL_E_2_CAST_RANGE
-from entities.player_2_aoe import ArrowRainAoE
+from entities.leaf_ranger_aoe import ArrowRainAoE
 
 
 # ─────────────────────────────────────────────────────────────────────────────

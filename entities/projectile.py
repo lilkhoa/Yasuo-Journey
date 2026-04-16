@@ -23,7 +23,7 @@ from settings import (
     BOSS_LASER_HEIGHT,
 )
 
-from entities.player_2_projectile import NormalArrowProjectile
+from entities.leaf_ranger_projectile import NormalArrowProjectile
 
 class ProjectileType(Enum):
     """Enumeration for projectile types."""
@@ -1661,6 +1661,12 @@ class ProjectileManager:
         # Preload boss projectile textures
         self._preload_boss_projectile_textures()
     
+    def add_projectile(self, projectile):
+        """
+        Thêm một projectile đã được khởi tạo sẵn (từ Player) vào danh sách quản lý.
+        """
+        self.projectiles.append(projectile)
+
     def _preload_boss_projectile_textures(self):
         """Preload boss projectile textures to prevent lag during gameplay."""
         # Preload flame projectile textures

@@ -1,0 +1,6 @@
+# Required dependencies for the A3_Yasuo project
+pygame
+sdl2
+sdl2.ext
+numpy
+pytest
