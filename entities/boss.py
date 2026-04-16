@@ -452,7 +452,7 @@ class Boss:
         if self.is_moving_to_center or self.is_returning_from_center:
             self._update_skill_movement()
         
-        self._update_minions()
+        self._update_minions(delta_time)
         
         # Update skill execution if active
         if self.current_skill is not None:
@@ -979,10 +979,10 @@ class Boss:
             self.vel_y = 0
             self.is_jumping = False
     
-    def _update_minions(self):
+    def _update_minions(self, delta_time=1):
         """Update all summoned minions."""
         for minion in self.minions[:]:
-            minion.update()
+            minion.update(delta_time)
             # Remove dead minions
             if minion.ready_for_removal:
                 self.minions.remove(minion)

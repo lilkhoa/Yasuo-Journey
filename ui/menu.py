@@ -46,7 +46,7 @@ class GameMenu:
         self.selected_index = 0
         
         # --- DATA MENU ---
-        self.main_options = ["SINGLEPLAYER", "MULTIPLAYER", "OPTION", "ABOUT", "EXIT"]
+        self.main_options = ["SINGLE PLAYER", "MULTIPLAYER", "OPTION", "ABOUT", "EXIT"]
         self.pause_options = ["Resume", "Exit to Main Menu"]
         self.multiplayer_options = ["Host Game", "Join Game", "Back"]
 
@@ -177,7 +177,7 @@ class GameMenu:
                         self.selected_index = (self.selected_index + 1) % len(self.main_options)
                     elif key == sdl2.SDLK_RETURN or key == sdl2.SDLK_KP_ENTER:
                         choice = self.main_options[self.selected_index]
-                        if choice == "SINGLEPLAYER":
+                        if choice == "SINGLE PLAYER":
                             # [FIX] Chuyển state sang màn hình chọn tướng
                             self.state = MenuState.CHARACTER_SELECT
                             self.char_selection = 0  # Reset về Yasuo mặc định
@@ -399,7 +399,7 @@ class GameMenu:
         # Draw cloth placeholder in center
         if self.placeholder_texture:
             # Scale placeholder to fit nicely
-            scale = 1.5
+            scale = 1.7
             scaled_w = int(self.placeholder_w * scale)
             scaled_h = int(self.placeholder_h * scale)
             
@@ -410,7 +410,7 @@ class GameMenu:
             sdl2.SDL_RenderCopy(self.renderer, self.placeholder_texture, None, placeholder_rect)
             
             # Draw menu options on the cloth
-            start_y = placeholder_y + 40
+            start_y = placeholder_y + 54
             line_height = 50
             
             for i, option in enumerate(self.main_options):

@@ -128,7 +128,8 @@ SKILL_E_COOLDOWN = 100
 SKILL_E_2_COOLDOWN = 12.0            # E skill cooldown (seconds)
 SKILL_E_2_COST = 4                  # E skill stamina cost
 SKILL_E_2_WIDTH = 350                # Arrow rain area width (pixels)
-SKILL_E_2_HEIGHT = 400               # Arrow rain area height (pixels)
+SKILL_E_2_HEIGHT = 600               # Arrow rain area height (pixels)
+SKILL_E_2_ROOT_ZONE_HEIGHT = 100     # Bottom portion where roots appear (ground impact zone)
 SKILL_E_2_DURATION = 2.5             # Arrow rain duration (seconds)
 SKILL_E_2_SNARE_DURATION = 1.5       # Root duration for enemies hit (seconds)
 SKILL_E_2_CAST_RANGE = 200           # Distance from player to spawn AoE center
@@ -141,6 +142,7 @@ DAMAGE_SKILL_W = 25
 
 # Player 2 (New Character) Damage Settings
 DAMAGE_SKILL_Q_2 = 45  # Laser beam damage (slightly lower than tornado)
+DAMAGE_SKILL_E_2 = 35  # Arrow Rain damage per enemy hit
 
 # Player 2 W Skill Settings
 SKILL_W_BUFF_DURATION = 5.0        # Duration of W buff in seconds

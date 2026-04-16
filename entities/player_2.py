@@ -202,6 +202,8 @@ class Player2(Player):
             enemies: List of enemy entities for collision
             network_ctx: Network context (is_multi, is_host, game_client) or None
         """
+        self._cached_enemies = enemies  # Cache for spawn_e_aoe (called before update_skills)
+        
         # --- Q Laser update ---
         for laser in self.active_lasers[:]:
             update_q_laser_logic(laser, enemies, dt, network_ctx)
@@ -225,10 +227,6 @@ class Player2(Player):
             camera: Camera object for coordinate transformation
         """
         import sdl2
-        
-        print(f"\n[Player2.render_skills] ===== RENDER SKILLS CALLED =====")
-        print(f"[Player2.render_skills] Called with renderer={renderer}, camera pos=({camera.camera.x}, {camera.camera.y})")
-        print(f"[Player2.render_skills] e_aoe exists: {self.e_aoe is not None}, active: {self.e_aoe.active if self.e_aoe else 'N/A'}")
         
         # --- Render active Q lasers ---
         for laser in self.active_lasers:
@@ -254,20 +252,10 @@ class Player2(Player):
                 sdl2.SDL_DestroyTexture(texture)
         
         # --- Render active E AoE ---
-        if self.e_aoe is not None:
-            print(f"[Player2.render_skills] E AoE active check: {self.e_aoe.active}")
-            if self.e_aoe.active:
-                print(f"[Player2.render_skills] Calling e_aoe.render() with camera ({camera.camera.x}, {camera.camera.y})")
-                if self.e_aoe.renderer != renderer:
-                    print(f"[Player2.render_skills] WARNING: E AoE renderer mismatch! AoE={self.e_aoe.renderer}, passed={renderer}")
-                    # FIX: Update the AoE renderer to the current one
-                    print(f"[Player2.render_skills] FIXING renderer mismatch!")
-                    self.e_aoe.renderer = renderer
-                self.e_aoe.render(camera.camera.x, camera.camera.y)
-            else:
-                print(f"[Player2.render_skills] E AoE exists but NOT active")
-        else:
-            print(f"[Player2.render_skills] E AoE is None")
+        if self.e_aoe is not None and self.e_aoe.active:
+            if self.e_aoe.renderer != renderer:
+                self.e_aoe.renderer = renderer
+            self.e_aoe.render(camera.camera.x, camera.camera.y)
     
     def add_item_to_inventory(self, item_type):
         """
@@ -496,9 +484,10 @@ class Player2(Player):
         if self.skill_e is None:
             return
         
-        # Execute the skill to spawn AoE; pass game_map for terrain height calculation
+        # Execute the skill to spawn AoE; pass game_map and cached enemies
         game_map = getattr(self, '_game_map', None)
-        aoe = self.skill_e.execute(renderer, game_map)
+        enemies = getattr(self, '_cached_enemies', [])
+        aoe = self.skill_e.execute(renderer, game_map, enemies)
         if aoe:
             self.e_aoe = aoe
         
@@ -558,34 +547,22 @@ class Player2(Player):
                 self.spawn_laser(world, factory, renderer)
                 self._laser_spawned = True
                 
-        # 3. Intercept 'dashing_e' to spawn the Arrow Rain AoE mid-animation
+        # 3. Guard: reset spawn flag when not in E-cast state
         if self.state != 'dashing_e':
             self._e_spawned = False
         
-        if self.state == 'dashing_e' and hasattr(self, 'frame_index'):
-            print(f"[Player2.update PRE] E state: dashing_e, frame_index={self.frame_index}")
-            # The E cast animation has 12 frames, so firing on 6 makes it appear mid-action
-            if self.frame_index >= 6 and not getattr(self, '_e_spawned', False):
-                print(f"[Player2.update PRE] Frame >= 6, spawning AoE!")
-                self.spawn_e_aoe(renderer)
-                self._e_spawned = True
-        
         super().update(dt, world, factory, renderer, game_map, boxes)
         
-        print(f"[Player2.update POST] After parent update - state: {self.state}, frame_index: {self.frame_index}, is_dashing: {self.skill_e.is_dashing}")
-        
-        # Handle E animation completion: Keep is_dashing=True until animation finishes all 12 frames
+        # Handle E animation completion: spawn AoE on the very last rendered frame,
+        # then clear is_dashing so the parent transitions to idle next cycle.
         if self.state == 'dashing_e' and self.skill_e.is_dashing:
-            # Check if animation has completed all 12 frames
             e_frames = (self.anims_right if self.facing_right else self.anims_left).get('e', [])
-            if len(e_frames) > 0:
-                # Animation cycles 0->(len-1)->0. Detect when we just completed the last frame
-                # by checking if frame_index == len-1. When parent next updates, it will reset to 0
-                # We want to catch this LAST frame and set is_dashing=False for next update to exit state
-                if self.frame_index == len(e_frames) - 1:
-                    # Last frame reached, next cycle will be frame 0. Set flag to exit state.
-                    print(f"[Player2.update POST] E animation complete at frame {self.frame_index}/{len(e_frames)-1}, setting is_dashing=False")
-                    self.skill_e.is_dashing = False
+            if len(e_frames) > 0 and self.frame_index == len(e_frames) - 1:
+                # Last frame: fire the AoE (once), then unlock the state machine.
+                if not getattr(self, '_e_spawned', False):
+                    self.spawn_e_aoe(renderer)
+                    self._e_spawned = True
+                self.skill_e.is_dashing = False
 
         # ── Guard: base update returns early when frames is empty (line 516 of
         # player.py).  If Q-animation assets are missing the character stays
