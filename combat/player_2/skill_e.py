@@ -11,7 +11,7 @@ import os
 import time
 from combat.skill import Skill
 from combat.utils import load_image_sequence
-from settings import SKILL_E_2_COOLDOWN, SKILL_E_2_CAST_RANGE
+from settings import SKILL_E_2_COOLDOWN, SKILL_E_2_CAST_RANGE, SKILL_E_2_HEIGHT, DAMAGE_SKILL_E_2
 from entities.player_2_aoe import ArrowRainAoE
 
 
@@ -67,45 +67,59 @@ class SkillE(Skill):
         # expose the attribute here and keep it permanently False.
         self.is_dashing = False
     
-    def execute(self, renderer, game_map=None):
+    def execute(self, renderer, game_map=None, enemies=None):
         """
-        Cast Arrow Rain AoE at a position in front of the player.
-        Positions the AoE to land on the ground at the target location.
+        Cast Arrow Rain AoE targeting the nearest enemy in range.
+        If no enemy is in range, fires to the maximum cast distance.
+        The AoE bottom edge aligns with the terrain surface.
         
         Args:
             renderer: SDL2 renderer for texture loading
             game_map: GameMap instance for terrain height calculation
+            enemies: List of live enemy targets for targeting selection
         
         Returns:
-            ArrowRainAoE instance, or None if skill couldn't be cast
+            ArrowRainAoE instance
         """
-        print("Casting E: Arrow Rain!")
-        
-        # Calculate spawn position (in front of player, horizontally)
         direction = 1 if self.owner.facing_right else -1
-        spawn_x = self.owner.sprite.x + (SKILL_E_2_CAST_RANGE * direction)
+        player_cx = self.owner.sprite.x + 64  # Center of 128px-wide sprite
         
-        # Calculate vertical position: either from terrain or use fixed position
+        # Target nearest enemy in facing direction within cast range
+        spawn_x = player_cx + SKILL_E_2_CAST_RANGE * direction  # Default: max range
+        if enemies:
+            candidates = []
+            for target in enemies:
+                if hasattr(target, 'is_alive') and not target.is_alive():
+                    continue
+                if hasattr(target, 'health') and target.health <= 0:
+                    continue
+                if hasattr(target, 'get_bounds'):
+                    tx, ty, tw, th = target.get_bounds()
+                    ex = tx + tw // 2
+                elif hasattr(target, 'x'):
+                    ex = target.x + getattr(target, 'width', 32) // 2
+                else:
+                    continue
+                dx = ex - player_cx
+                in_facing_dir = (direction > 0 and dx > 0) or (direction < 0 and dx < 0)
+                if in_facing_dir and abs(dx) <= SKILL_E_2_CAST_RANGE:
+                    candidates.append((abs(dx), ex))
+            if candidates:
+                candidates.sort()
+                spawn_x = candidates[0][1]  # Nearest enemy's center X
+        
+        # Ground Y: bottom of AoE aligns with terrain surface
         if game_map:
             ground_height = game_map.get_ground_height_at_x(spawn_x)
             if ground_height is not None:
-                # Position AoE at ground level (use center of AoE, so subtract half height)
-                spawn_y = ground_height
-                print(f"[SkillE.execute] Found ground at Y={ground_height} for X={spawn_x}")
+                spawn_y = ground_height - SKILL_E_2_HEIGHT // 2
             else:
-                # Fallback if no terrain found
-                spawn_y = self.owner.sprite.y + 80
-                print(f"[SkillE.execute] No ground terrain found at X={spawn_x}, using fallback position Y={spawn_y}")
+                spawn_y = self.owner.sprite.y + 128 - SKILL_E_2_HEIGHT // 2
         else:
-            # No game_map provided, use default offset
-            spawn_y = self.owner.sprite.y + 80
-            print(f"[SkillE.execute] No game_map provided, using fixed offset Y={spawn_y}")
+            spawn_y = self.owner.sprite.y + 128 - SKILL_E_2_HEIGHT // 2
         
-        # Create AoE object
-        aoe = ArrowRainAoE(spawn_x, spawn_y, renderer)
+        aoe = ArrowRainAoE(spawn_x, spawn_y, renderer, damage=DAMAGE_SKILL_E_2)
         self.aoe_active = aoe
-        
-        print(f"Arrow Rain spawned at world position ({spawn_x}, {spawn_y})")
         return aoe
 
     def update_dash(self, dt, enemies, boxes=None, game_map=None, network_ctx=None):
@@ -146,8 +160,6 @@ def update_e_aoe_logic(aoe_obj, enemies, dt, network_ctx=None):
     if not aoe_obj.active:
         return
     
-    print(f"[update_e_aoe_logic] Updating E AoE, dt={dt:.4f}s")
-    
     # 1. UPDATE ANIMATION AND LIFETIME
     aoe_obj.update(dt)
     
@@ -160,13 +172,25 @@ def update_e_aoe_logic(aoe_obj, enemies, dt, network_ctx=None):
         elif not target.is_alive():
             continue
         
-        # Check if enemy is within AoE
+        # Damage: any enemy inside the arrow column
         if aoe_obj.check_collision(target):
-            # Apply root if not already hit
+            aoe_obj.apply_damage(target, network_ctx)
+        
+        # Root: only enemies standing inside the ground impact zone
+        rz = aoe_obj.get_root_zone_hitbox()
+        rz_rect = sdl2.SDL_Rect(int(rz[0]), int(rz[1]), int(rz[2]), int(rz[3]))
+        if hasattr(target, 'get_bounds'):
+            tx, ty, tw, th = target.get_bounds()
+        else:
+            tx = target.x if hasattr(target, 'x') else 0
+            ty = target.y if hasattr(target, 'y') else 0
+            tw = getattr(target, 'width', 32)
+            th = getattr(target, 'height', 64)
+        t_rect = sdl2.SDL_Rect(int(tx), int(ty), int(tw), int(th))
+        if sdl2.SDL_HasIntersection(rz_rect, t_rect):
             aoe_obj.apply_root(target, network_ctx)
     
     # 3. AUTO-DESTROY when duration expires
     if aoe_obj.lifetime_timer <= 0:
         aoe_obj.active = False
         aoe_obj.cleanup()
-        print("Arrow Rain AoE expired and destroyed")

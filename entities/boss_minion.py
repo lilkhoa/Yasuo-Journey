@@ -79,6 +79,7 @@ class BossMinion:
         if self.y < self.ground_y:
             self.y = self.ground_y
         
+        self.snare_timer = 0
         self.hurt_animation_complete = False
         self.death_animation_complete = False
         self.ready_for_removal = False
@@ -148,6 +149,11 @@ class BossMinion:
             if self.on_death_callback:
                 self.on_death_callback(self)
             
+            return
+        
+        if self.snare_timer > 0:
+            self.snare_timer -= delta_time
+            self._update_animation()
             return
         
         if self.state == MinionState.HURT:
