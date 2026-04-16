@@ -11,8 +11,8 @@ import os
 import time
 from combat.skill import Skill
 from combat.utils import load_image_sequence
-from settings import SKILL_E_2_COOLDOWN, SKILL_E_2_CAST_RANGE, SKILL_E_2_HEIGHT, DAMAGE_SKILL_E_2
-from entities.player_2_aoe import ArrowRainAoE
+from settings import SKILL_E_2_COOLDOWN, SKILL_E_2_CAST_RANGE
+from entities.leaf_ranger_aoe import ArrowRainAoE
 
 
 # ─────────────────────────────────────────────────────────────────────────────

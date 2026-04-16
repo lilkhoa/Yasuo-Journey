@@ -258,7 +258,10 @@ class SoundManager:
 
         # Press to activating the statue
         success &= self.load_sound("statue_click", os.path.join("assets", "Sounds", "press_F_activate.mp3"))
-        
+
+        success &= self.load_sound("arrow_shoot", os.path.join("assets", "Sounds", "arrow_hit.mp3"))
+        self.set_sound_volume("arrow_shoot", 0.7)
+
         return success
     
     def load_game_sounds(self):
@@ -398,6 +401,23 @@ class SoundManager:
         # Close audio
         sdl2.sdlmixer.Mix_CloseAudio()
         self.initialized = False
+
+    def set_sound_volume(self, name, volume_percent):
+        """
+        Chỉnh âm lượng cho một âm thanh cụ thể.
+        :param name: Tên âm thanh (ví dụ: "arrow_shoot")
+        :param volume_percent: Tỷ lệ phần trăm từ 0.0 đến 1.0 (ví dụ: 30% là 0.3)
+        """
+        import sdl2.sdlmixer
+        
+        if name in self.sounds:
+            # Chuyển đổi tỷ lệ 0.0 -> 1.0 sang thang điểm 0 -> 128 của SDL2
+            vol = int(sdl2.sdlmixer.MIX_MAX_VOLUME * volume_percent)
+            
+            # Gắn âm lượng vào file âm thanh đang lưu trong RAM
+            sdl2.sdlmixer.Mix_VolumeChunk(self.sounds[name], vol)
+        else:
+            print(f"[CẢNH BÁO] Không tìm thấy âm thanh '{name}' để chỉnh âm lượng.")
 
 
 # Global sound manager instance (singleton pattern)

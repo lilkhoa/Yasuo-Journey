@@ -16,7 +16,7 @@ if root_dir not in sys.path:
     sys.path.append(root_dir)
 
 from entities.player import Player
-from entities.player_2_projectile import PoisonProjectile, PlantProjectile, HealDustProjectile, NormalArrowProjectile
+from entities.leaf_ranger_projectile import PoisonProjectile, PlantProjectile, HealDustProjectile, NormalArrowProjectile
 from combat.player_2.skill_q import SkillQLaser, update_q_laser_logic, load_laser_cast_animation, load_laser_projectile_frames
 from combat.player_2.skill_w import SkillW
 from combat.player_2.skill_e import SkillE, load_arrow_rain_cast_animation, update_e_aoe_logic

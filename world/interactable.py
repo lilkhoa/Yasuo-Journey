@@ -7,7 +7,7 @@ from sdl2 import SDL_Rect
 from settings import *
 
 from core.camera import Camera
-from entities.player import Player
+from entities.base_char import BaseChar
 
 from .map import GameMap
 from items.item import DroppedItem
@@ -448,7 +448,7 @@ class Chest:
         self.chest_sound_channel = -1
         self.chest_sound_timer = 0.0
 
-    def update(self, dt, player: Player, dropped_items_list, renderer):
+    def update(self, dt, player: BaseChar, dropped_items_list, renderer):
         # Update chest sound timer and stop after 3 seconds
         if self.chest_sound_timer > 0:
             self.chest_sound_timer -= dt
@@ -540,7 +540,7 @@ class Chest:
             self.chest_sound_channel = -1
         self.chest_sound_timer = 0.0
     
-    def render(self, renderer, camera: Camera, player: Player):
+    def render(self, renderer, camera: Camera, player: BaseChar):
         # 1. Calculate Source Rect (Cut frame from sprite sheet)
         src_rect = SDL_Rect(
             self.top_left_corner[self.current_frame][0], 
