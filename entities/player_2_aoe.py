@@ -37,7 +37,7 @@ class ArrowRainAoE:
         frame_counter: Animation timer
     """
     
-    def __init__(self, x, y, renderer, damage=0):
+    def __init__(self, x, y, owner, renderer, damage_multiplier=1.0):
         """
         Initialize Arrow Rain AoE.
         
@@ -48,6 +48,8 @@ class ArrowRainAoE:
         """
         self.x = x
         self.y = y
+        self.owner = owner
+        self.damage_multiplier = damage_multiplier
         self.width = SKILL_E_2_WIDTH
         self.height = SKILL_E_2_HEIGHT
         
