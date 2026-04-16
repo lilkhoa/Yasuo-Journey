@@ -73,7 +73,7 @@ class ArrowRainAoE:
         
         # Animation (loaded on-demand during render, not preloaded)
         self.frame_paths = []  # Paths to frame images
-        self.frame_textures = {}  # Cache of loaded textures (frame_index -> texture)
+        self.frame_textures = {}  # Cache of loaded textures (frame_index -> texture) t
         self.current_frame = 0
         self.animation_speed = 0.12
         self.frame_counter = 0
