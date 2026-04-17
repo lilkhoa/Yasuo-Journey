@@ -856,6 +856,7 @@ def run(net_mode: str = "solo", host_ip: str = "127.0.0.1", ext_seed: int = 0):
                             'hp': float(getattr(n, 'health', 0)),
                             'state': _safe_str(getattr(n, 'state', 'IDLE')),
                             'direction': _safe_dir(getattr(n, 'direction', 1)),
+                            'is_attacking': bool(getattr(n, 'is_attacking', False)),
                         })
                     for b in boss_manager.bosses:
                         entity_list.append({
@@ -864,6 +865,8 @@ def run(net_mode: str = "solo", host_ip: str = "127.0.0.1", ext_seed: int = 0):
                             'hp': float(getattr(b, 'health', 0)),
                             'state': _safe_str(getattr(b, 'state', 'idle')),
                             'direction': _safe_dir(b.direction),
+                            'is_attacking': bool(getattr(b, 'is_attacking', False)),
+                            'attack_type': str(getattr(b, 'attack_type', 'melee')),
                         })
                     game_server.push_world_state(
                         net_pkt.make_entity_state(entity_list),
@@ -877,9 +880,31 @@ def run(net_mode: str = "solo", host_ip: str = "127.0.0.1", ext_seed: int = 0):
                     )
 
                 remote_raw = game_server.get_remote_state()
-                if remote_player and remote_raw:
-                    remote_player.apply_network_state(remote_raw)
+                if remote_player:
+                    remote_char = game_server.get_remote_character_type()
+                    if getattr(remote_player, '_character_type', '') != remote_char:
+                        remote_player.set_character_type(remote_char)
+                    if remote_raw:
+                        remote_player.apply_network_state(remote_raw)
                     remote_player.update(dt)
+
+                # Sync dropped items from host to client
+                for item in dropped_items:
+                    if not getattr(item, 'broadcasted', False):
+                        drop_pkt = {
+                            "type": net_pkt.ITEM_DROPPED,
+                            "item_type": item.item_type.value,
+                            "x": item.x,
+                            "y": item.y,
+                            "item_net_id": item.net_id
+                        }
+                        game_server.push_game_event(drop_pkt)
+                        item.broadcasted = True
+                    elif item.is_collected and not getattr(item, 'pickup_broadcasted', False):
+                        approved_ev = net_pkt.make_pickup_request(0, item.net_id, 0)
+                        approved_ev['approved'] = True
+                        game_server.push_game_event(approved_ev)
+                        item.pickup_broadcasted = True
 
                 for ev in game_server.pop_events():
                     t = ev.get('type')
@@ -893,6 +918,16 @@ def run(net_mode: str = "solo", host_ip: str = "127.0.0.1", ext_seed: int = 0):
                         for b in boss_manager.bosses:
                             if getattr(b, 'net_id', id(b)) == target_id:
                                 b.take_damage(damage)
+                                break
+                    elif t == net_pkt.PICKUP_REQUEST:
+                        item_net_id = ev.get('item_net_id')
+                        player_id = ev.get('player_id')
+                        for item in dropped_items:
+                            if item.net_id == item_net_id and not item.is_collected:
+                                item.is_collected = True
+                                approved_ev = net_pkt.make_pickup_request(player_id, item_net_id, player_id)
+                                approved_ev['approved'] = True
+                                game_server.push_game_event(approved_ev)
                                 break
                     elif t == net_pkt.GAME_PAUSE:
                         if game_menu.state == MenuState.GAME_PLAYING:
@@ -942,6 +977,8 @@ def run(net_mode: str = "solo", host_ip: str = "127.0.0.1", ext_seed: int = 0):
                                 n.health = hp
                             n.x = e_state.get('x', n.x)
                             n.y = e_state.get('y', n.y)
+                            n.direction = 1 if e_state.get('direction', 1) > 0 else -1
+                            n.is_attacking = e_state.get('is_attacking', False)
                             break
                     for b in boss_manager.bosses:
                         if getattr(b, 'net_id', id(b)) == target_id:
@@ -951,6 +988,9 @@ def run(net_mode: str = "solo", host_ip: str = "127.0.0.1", ext_seed: int = 0):
                                 b.health = hp
                             b.x = e_state.get('x', b.x)
                             b.y = e_state.get('y', b.y)
+                            b.direction = 1 if e_state.get('direction', 1) > 0 else -1
+                            b.is_attacking = e_state.get('is_attacking', False)
+                            b.attack_type = e_state.get('attack_type', 'melee')
                             break
 
                 for gev in game_client.pop_game_events():
