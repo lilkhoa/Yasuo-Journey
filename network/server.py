@@ -51,6 +51,11 @@ class GameServer:
         self.client_ready = False
         self.game_starting = False
 
+        # Character type tracking
+        self._host_character_type = "yasuo"      # Set by game loop before start
+        self._remote_character_type = "yasuo"     # Received from client
+        self._char_lock = threading.Lock()
+
         # latest skill/hit events queued by the client (consumed by game loop)
         self._event_queue: queue.Queue = queue.Queue(maxsize=128)
 
@@ -76,6 +81,16 @@ class GameServer:
 
     def is_connected(self) -> bool:
         return self._connected.is_set()
+
+    def set_host_character_type(self, char_type: str):
+        """Set the host player's character type (called before game start)."""
+        with self._char_lock:
+            self._host_character_type = char_type
+
+    def get_remote_character_type(self) -> str:
+        """Return the remote (client) player's character type."""
+        with self._char_lock:
+            return self._remote_character_type
 
     def get_remote_state(self) -> dict:
         """Return a copy of the latest PLAYER_STATE from the remote client."""
@@ -140,8 +155,11 @@ class GameServer:
             conn.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
 
             # Send handshake (player_id=1 for the client, seed for spawn sync)
+            with self._char_lock:
+                host_char = self._host_character_type
             hs = pkt.make_handshake(player_id=self._remote_player_id,
-                                    seed=self.seed)
+                                    seed=self.seed,
+                                    character_type=host_char)
             try:
                 conn.sendall(pkt.encode(hs))
             except OSError as e:
@@ -176,7 +194,11 @@ class GameServer:
                     self._remote_state = p
             elif t == pkt.LOBBY_STATE:
                 self.client_ready = p.get("client_ready", False)
-            elif t in (pkt.SKILL_EVENT, pkt.HIT_EVENT, pkt.GAME_PAUSE, pkt.GAME_RESUME, pkt.GAME_OVER):
+            elif t == pkt.CHARACTER_SELECT:
+                with self._char_lock:
+                    self._remote_character_type = p.get("character_type", "yasuo")
+                print(f"[Server] Client selected character: {self._remote_character_type}")
+            elif t in (pkt.SKILL_EVENT, pkt.HIT_EVENT, pkt.GAME_PAUSE, pkt.GAME_RESUME, pkt.GAME_EVENT):
                 try:
                     self._event_queue.put_nowait(p)
                 except queue.Full:

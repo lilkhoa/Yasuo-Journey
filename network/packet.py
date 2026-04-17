@@ -59,6 +59,7 @@ GAME_PAUSE       = "GAME_PAUSE"
 GAME_RESUME      = "GAME_RESUME"
 PICKUP_REQUEST   = "PICKUP_REQUEST"
 ITEM_DROPPED     = "ITEM_DROPPED"
+CHARACTER_SELECT = "CHARACTER_SELECT"
 
 # ── Serialisation helpers ────────────────────────────────────────────────────
 
@@ -108,8 +109,8 @@ def _recv_exactly(sock, n: int) -> bytes | None:
 
 # ── Packet constructors ──────────────────────────────────────────────────────
 
-def make_handshake(player_id: int, seed: int) -> dict:
-    return {"type": HANDSHAKE, "player_id": player_id, "seed": seed}
+def make_handshake(player_id: int, seed: int, character_type: str = "yasuo") -> dict:
+    return {"type": HANDSHAKE, "player_id": player_id, "seed": seed, "character_type": character_type}
 
 
 def make_player_state(player_id: int, x: float, y: float, vel_y: float,
@@ -219,6 +220,18 @@ def make_pickup_request(player_id: int, item_net_id: int, player_net_id: int) ->
         "player_id": player_id,
         "item_net_id": item_net_id,
         "player_net_id": player_net_id,
+    }
+
+
+def make_character_select(player_id: int, character_type: str) -> dict:
+    """
+    Notify the other player which character was selected.
+    character_type: 'yasuo' | 'leaf_ranger'
+    """
+    return {
+        "type": CHARACTER_SELECT,
+        "player_id": player_id,
+        "character_type": character_type,
     }
 
 
