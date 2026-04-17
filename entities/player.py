@@ -933,16 +933,22 @@ class Player:
         Called every frame by the network layer.
         """
         import time as _time
+        # Determine the effective state for remote display
+        # If jumping, override state to 'jump' so remote knows to show jump anim
+        display_state = self.state
+        if self.is_jumping and self.state in ('idle', 'run', 'walk'):
+            display_state = 'jump'
         return {
             'x':           self.x,
             'y':           self.y,
             'vel_y':       self.vel_y,
             'facing_right': self.facing_right,
-            'state':       self.state,
+            'state':       display_state,
             'hp':          self.hp,
             'stamina':     self.stamina,
             'frame_index': self.frame_index,
             'ts':          _time.monotonic(),
+            'is_jumping':  self.is_jumping,
         }
 
     def apply_network_state(self, data: dict):

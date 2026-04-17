@@ -694,6 +694,8 @@ class BaseChar:
 
     # ================= NETWORK & SAVE/LOAD =================
     def get_network_state(self) -> dict:
+        # State đã có jump_up/fall cho Leaf Ranger (set tự động bởi base_char.update)
+        # Yasuo không dùng base_char nên không ảnh hưởng
         return {
             'x':           self.x,
             'y':           self.y,
@@ -704,6 +706,7 @@ class BaseChar:
             'stamina':     self.stamina,
             'frame_index': self.frame_index,
             'ts':          time.monotonic(),
+            'is_jumping':  self.is_jumping,
         }
 
     def apply_network_state(self, data: dict):

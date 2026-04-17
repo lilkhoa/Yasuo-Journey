@@ -262,6 +262,13 @@ def run(net_mode: str = "solo", host_ip: str = "127.0.0.1", ext_seed: int = 0):
     hud = SkillBarHUD(renderer.sdlrenderer, player, character_type=character_type, icon_map=icon_map)
     
     def drop_coin_on_death(entity, num_coins=1):
+        # BUG FIX: Client kh\u00f4ng t\u1ef1 t\u1ea1o item khi qu\u00e1i ch\u1ebft.
+        # Item s\u1ebd \u0111\u01b0\u1ee3c nh\u1eadn t\u1eeb packet ITEM_DROPPED do host broadcast.
+        # N\u1ebfu t\u1ea1o c\u1ea3 tr\u00ean client l\u1eabn t\u1eeb packet \u2192 2 items b\u1ecb r\u1eddt.
+        if is_multi and is_client:
+            sound_manager.play_sound("item_pop")
+            return  # Client kh\u00f4ng t\u1ea1o item local
+        
         coin_name, coin_w, coin_h, coin_tex = common_drop_table[ItemType.COIN]
         ex, ey, ew, eh = entity.get_bounds()
         for i in range(num_coins):
@@ -271,7 +278,7 @@ def run(net_mode: str = "solo", host_ip: str = "127.0.0.1", ext_seed: int = 0):
                 text_renderer, ItemType.COIN, coin_name
             )
             if is_multi:
-                coin_item.pickup_delay = 1.5 
+                coin_item.pickup_delay = 1.5
             dropped_items.append(coin_item)
         sound_manager.play_sound("item_pop")
     
@@ -971,10 +978,10 @@ def run(net_mode: str = "solo", host_ip: str = "127.0.0.1", ext_seed: int = 0):
                     hp = e_state.get('hp', 0)
                     for n in npc_manager.npcs:
                         if getattr(n, 'net_id', id(n)) == target_id:
-                            if n.health > 0 and hp <= 0:
-                                n.take_damage(n.health)
-                            else:
-                                n.health = hp
+                            # BUG FIX: Không gọi take_damage() khi HP = 0 vì on_death_callback
+                            # sẽ tạo item local trùng với item nhận từ ITEM_DROPPED của host.
+                            # is_alive() chỉ kiểm tra health > 0, nên chỉ cần set health = 0.
+                            n.health = hp
                             n.x = e_state.get('x', n.x)
                             n.y = e_state.get('y', n.y)
                             n.direction = 1 if e_state.get('direction', 1) > 0 else -1
@@ -982,9 +989,9 @@ def run(net_mode: str = "solo", host_ip: str = "127.0.0.1", ext_seed: int = 0):
                             break
                     for b in boss_manager.bosses:
                         if getattr(b, 'net_id', id(b)) == target_id:
-                            if getattr(b, 'health', 0) > 0 and hp <= 0:
-                                b.take_damage(getattr(b, 'health', 0))
-                            elif hasattr(b, 'health'):
+                            # BUG FIX: Set health trực tiếp thay vì take_damage()
+                            # tránh trigger on_death_callback tạo item trùng
+                            if hasattr(b, 'health'):
                                 b.health = hp
                             b.x = e_state.get('x', b.x)
                             b.y = e_state.get('y', b.y)
@@ -1028,11 +1035,20 @@ def run(net_mode: str = "solo", host_ip: str = "127.0.0.1", ext_seed: int = 0):
                             pass
                     elif t == net_pkt.PICKUP_REQUEST:
                         item_net_id = gev.get('item_net_id')
+                        player_id = gev.get('player_id')
                         approved = gev.get('approved', False)
                         if approved:
                             for i, item in enumerate(dropped_items):
                                 if item.net_id == item_net_id:
                                     item.is_collected = True
+                                    # BUG FIX: player_id=1 là client, so sánh đúng
+                                    my_player_id = getattr(game_client, 'player_id', 1)
+                                    if player_id == my_player_id:
+                                        category = ITEM_REGISTRY.get(item.item_type)
+                                        notif_system.add_notification(item.item_name, item.texture)
+                                        if sound_manager:
+                                            sound_manager.play_sound("item_pickup")
+                                        player.collect_item(item.item_type)
                                     break
                     elif t == net_pkt.CHARACTER_SELECT:
                         remote_char = gev.get('character_type', 'yasuo')
@@ -1142,6 +1158,10 @@ def run(net_mode: str = "solo", host_ip: str = "127.0.0.1", ext_seed: int = 0):
                     if projectile.check_collision(player):
                         player.take_damage(projectile.damage)
                         projectile.on_hit()
+                    elif remote_player and remote_player.visible and getattr(projectile, 'owner', None) not in [player, getattr(remote_player, 'entity', None)]:
+                        # Remote player chặn đạn, đạn biến mất nhưng KHÔNG trừ máu (client kia tự trừ)
+                        if projectile.check_collision(remote_player):
+                            projectile.on_hit()
                     
                     # 2. Đạn của Player (Mũi tên) trúng NPC/Boss
                     owner_class = getattr(getattr(projectile, 'owner', None), '__class__', None)
