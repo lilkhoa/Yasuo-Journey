@@ -146,10 +146,10 @@ DAMAGE_SKILL_E_2 = 35  # Arrow Rain damage per enemy hit
 
 # Player 2 W Skill Settings
 SKILL_W_BUFF_DURATION = 5.0        # Duration of W buff in seconds
-DAMAGE_W_POISON = 35               # Poison projectile base damage
+DAMAGE_W_POISON = 3               # Poison projectile base damage
 POISON_TICK_RATE = 0.5             # Damage application frequency (seconds)
 POISON_DURATION = 3.0              # Duration of poison effect on target
-DAMAGE_W_PLANT = 25                # Plant/root projectile damage
+DAMAGE_W_PLANT = 2                # Plant/root projectile damage
 W_PLANT_SNARE_DURATION = 1.5       # Root duration in seconds
 HEAL_W_DUST = 50                   # Healing amount from dust projectile
 W_PROJECTILE_SPEED = 8             # Base projectile speed (pixels per frame)

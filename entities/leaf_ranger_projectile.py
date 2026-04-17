@@ -1,10 +1,9 @@
 """
 Player 2 Projectile System
 
-Three specialized projectile classes for Player 2's W skill (Toxin Enhancement):
-1. PoisonProjectile - Deals damage, optional DoT
-2. PlantProjectile - Roots first enemy hit
-3. HealDustProjectile - Heals allies (RemotePlayers)
+Two specialized projectile classes for Player 2's W skill (Toxin Enhancement):
+1. PoisonProjectile - Deals damage
+2. PlantProjectile  - Roots first enemy hit
 """
 
 import os
@@ -21,6 +20,9 @@ from settings import (
     W_PLANT_SNARE_DURATION,
     HEAL_W_DUST,
 )
+
+_MODULE_DIR = os.path.dirname(os.path.abspath(__file__))
+_ROOT_DIR   = os.path.dirname(_MODULE_DIR)  # .../A3_Yasuo
 
 
 class Player2Projectile:
@@ -218,298 +220,6 @@ class Player2Projectile:
                 sdl2.SDL_DestroyTexture(texture)
         self.frame_textures.clear()
 
-
-class PoisonProjectile(Player2Projectile):
-    """
-    Poison Projectile - Deals damage with optional DoT effect.
-    
-    Behavior:
-    - Moves horizontally
-    - Collides with enemies/bosses
-    - Applies damage on first hit
-    - Optional: Applies poison DoT status effect
-    """
-    
-    def __init__(self, x, y, direction, owner, renderer, damage_multiplier=1.0):
-        """
-        Initialize Poison projectile.
-        
-        Args:
-            x: Initial x position
-            y: Initial y position
-            direction: Direction (1 for right, -1 for left)
-            owner: The Player2 that fired this projectile
-            renderer: PySDL2 renderer
-            damage_multiplier: Damage scaling multiplier
-        """
-        # Load poison projectile animation (8 frames)
-        base_path = os.path.join("assets", "Projectile", "Player_2", "w", "poison")
-        
-        super().__init__(x, y, direction, owner, renderer, 
-                        frame_count=8, texture_dir=base_path)
-        
-        # Poison-specific stats
-        self.damage = DAMAGE_W_POISON * damage_multiplier
-        self.poison_duration = POISON_DURATION
-        self.poison_tick_rate = POISON_TICK_RATE
-        self.has_hit = False  # Track if already hit a target
-    
-    def _load_textures(self):
-        """Load poison projectile animation frames."""
-        for i in range(1, self.frame_count + 1):
-            filename = f"arrow_hit_poison_{i}.png"
-            filepath = os.path.join(self.texture_dir, filename)
-            
-            if os.path.exists(filepath):
-                try:
-                    surface = sdl2.ext.load_image(filepath)
-                    texture = sdl2.SDL_CreateTextureFromSurface(self.renderer, surface)
-                    sdl2.SDL_FreeSurface(surface)
-                    
-                    if texture:
-                        self.frame_textures.append(texture)
-                except Exception as e:
-                    print(f"Failed to load {filepath}: {e}")
-            else:
-                print(f"Warning: Poison projectile frame not found: {filepath}")
-    
-    def apply_damage(self, target, network_ctx=None):
-        """
-        Apply poison damage to target.
-        
-        Args:
-            target: Enemy/Boss to damage
-            network_ctx: Network context tuple (is_multi, is_host, game_client)
-        """
-        if self.has_hit:
-            return
-        
-        self.has_hit = True
-        damage = self.damage
-        target_net_id = getattr(target, 'net_id', id(target))
-        
-        print(f"Poison Hit! Damage: {damage}")
-        
-        # Apply damage - network-aware
-        if network_ctx:
-            is_multi, is_host, game_client = network_ctx
-            if is_multi and game_client and game_client.is_connected():
-                etype = 'boss' if target.__class__.__name__ == 'Boss' else 'npc'
-                game_client.send_hit_event(etype, target_net_id, damage)
-            else:
-                if hasattr(target, 'take_damage'):
-                    target.take_damage(damage)
-        else:
-            if hasattr(target, 'take_damage'):
-                target.take_damage(damage)
-        
-        # Optional: Apply poison DoT effect
-        if hasattr(target, 'apply_poison'):
-            target.apply_poison(self.poison_duration, self.poison_tick_rate)
-        
-        # Deactivate projectile
-        self.active = False
-
-
-class PlantProjectile(Player2Projectile):
-    """
-    Plant Projectile - Roots the first enemy hit for a duration.
-    
-    Behavior:
-    - Moves horizontally
-    - Does NOT pierce - destroys on first hit
-    - Applies root/snare status effect to first target
-    - No damage dealt (root effect is the primary effect)
-    """
-    
-    def __init__(self, x, y, direction, owner, renderer):
-        """
-        Initialize Plant projectile.
-        
-        Args:
-            x: Initial x position
-            y: Initial y position
-            direction: Direction (1 for right, -1 for left)
-            owner: The Player2 that fired this projectile
-            renderer: PySDL2 renderer
-        """
-        # Load plant projectile animation (8 frames)
-        base_path = os.path.join("assets", "Projectile", "Player_2", "w", "root")
-        
-        super().__init__(x, y, direction, owner, renderer, 
-                        frame_count=8, texture_dir=base_path)
-        
-        # Plant-specific stats
-        self.root_duration = W_PLANT_SNARE_DURATION
-        self.has_hit = False  # Can only hit once
-    
-    def _load_textures(self):
-        """Load plant projectile animation frames."""
-        for i in range(1, self.frame_count + 1):
-            filename = f"arrow_hit_entangle_{i}.png"
-            filepath = os.path.join(self.texture_dir, filename)
-            
-            if os.path.exists(filepath):
-                try:
-                    surface = sdl2.ext.load_image(filepath)
-                    texture = sdl2.SDL_CreateTextureFromSurface(self.renderer, surface)
-                    sdl2.SDL_FreeSurface(surface)
-                    
-                    if texture:
-                        self.frame_textures.append(texture)
-                except Exception as e:
-                    print(f"Failed to load {filepath}: {e}")
-            else:
-                print(f"Warning: Plant projectile frame not found: {filepath}")
-    
-    def apply_root(self, target, network_ctx=None):
-        """
-        Apply root/snare effect to target (no damage).
-        
-        Args:
-            target: Enemy/Boss to root
-            network_ctx: Network context tuple (is_multi, is_host, game_client)
-        """
-        if self.has_hit:
-            return
-        
-        self.has_hit = True
-        target_net_id = getattr(target, 'net_id', id(target))
-        
-        print(f"Plant Root Applied! Duration: {self.root_duration}s")
-        
-        # Apply root effect to target
-        if hasattr(target, 'snared_timer'):
-            target.snared_timer = self.root_duration
-        elif hasattr(target, 'apply_snare'):
-            target.apply_snare(self.root_duration)
-        
-        # Network sync - send status event
-        if network_ctx:
-            is_multi, is_host, game_client = network_ctx
-            if is_multi and game_client and game_client.is_connected():
-                # Send root/snare status event (requires custom network packet)
-                # For now, we'll use a hit event with 0 damage to signal root
-                try:
-                    game_client.send_status_event(target_net_id, 'snare', self.root_duration)
-                except:
-                    # Fallback: if send_status_event doesn't exist
-                    etype = 'boss' if target.__class__.__name__ == 'Boss' else 'npc'
-                    game_client.send_hit_event(etype, target_net_id, 0)
-        
-        # Deactivate projectile (no piercing)
-        self.active = False
-
-
-class HealDustProjectile(Player2Projectile):
-    """
-    Heal Dust Projectile - Heals allies (RemotePlayers) when jumping.
-    
-    Behavior:
-    - Spawned only from jump + attack (air attack with W buff)
-    - Does NOT collide with enemies
-    - Only collides with allies/RemotePlayers
-    - Applies healing when hitting ally
-    - Destroys after hitting first ally
-    - Visual effect: green dust particles
-    """
-    
-    def __init__(self, x, y, direction, owner, renderer):
-        """
-        Initialize Heal Dust projectile.
-        
-        Args:
-            x: Initial x position
-            y: Initial y position
-            direction: Direction (1 for right, -1 for left)
-            owner: The Player2 that fired this projectile
-            renderer: PySDL2 renderer
-        """
-        # Load heal dust projectile animation (8 frames)
-        base_path = os.path.join("assets", "Projectile", "Player_2", "w", "heal")
-        
-        super().__init__(x, y, direction, owner, renderer, 
-                        frame_count=8, texture_dir=base_path)
-        
-        # Heal-specific stats
-        self.heal_amount = HEAL_W_DUST
-        self.has_healed = False  # Only heal once
-    
-    def _load_textures(self):
-        """Load heal dust projectile animation frames."""
-        for i in range(1, self.frame_count + 1):
-            filename = f"diagonal_arrow_hit_thorns_{i}.png"
-            filepath = os.path.join(self.texture_dir, filename)
-            
-            if os.path.exists(filepath):
-                try:
-                    surface = sdl2.ext.load_image(filepath)
-                    texture = sdl2.SDL_CreateTextureFromSurface(self.renderer, surface)
-                    sdl2.SDL_FreeSurface(surface)
-                    
-                    if texture:
-                        self.frame_textures.append(texture)
-                except Exception as e:
-                    print(f"Failed to load {filepath}: {e}")
-            else:
-                print(f"Warning: Heal dust frame not found: {filepath}")
-    
-    def apply_heal(self, ally, network_ctx=None):
-        """
-        Heal an ally (RemotePlayer).
-        
-        Args:
-            ally: RemotePlayer to heal
-            network_ctx: Network context tuple (is_multi, is_host, game_client)
-        """
-        if self.has_healed:
-            return
-        
-        self.has_healed = True
-        heal_amount = self.heal_amount
-        ally_net_id = getattr(ally, 'net_id', id(ally))
-        
-        print(f"Heal Dust Applied! Healing: {heal_amount}HP")
-        
-        # Apply healing to ally
-        if hasattr(ally, 'heal'):
-            ally.heal(heal_amount)
-        elif hasattr(ally, 'hp'):
-            ally.hp = min(ally.hp + heal_amount, 
-                         getattr(ally, 'max_hp', ally.hp + heal_amount))
-        
-        # Network sync - send heal event
-        if network_ctx:
-            is_multi, is_host, game_client = network_ctx
-            if is_multi and game_client and game_client.is_connected():
-                try:
-                    game_client.send_heal_event(ally_net_id, heal_amount)
-                except:
-                    # Fallback: if send_heal_event doesn't exist, use custom packet
-                    pass
-        
-        # Deactivate projectile
-        self.active = False
-    
-    def check_ally_collision(self, allies):
-        """
-        Check collision with allies instead of enemies.
-        
-        Args:
-            allies: List of RemotePlayer objects
-            
-        Returns:
-            RemotePlayer if collision detected, None otherwise
-        """
-        if not self.active or self.has_healed:
-            return None
-        
-        for ally in allies:
-            if self.check_collision(ally):
-                return ally
-        
-        return None
-
 class NormalArrowProjectile(Player2Projectile):
     """
     Normal attack arrow for Player 2.
@@ -538,6 +248,10 @@ class NormalArrowProjectile(Player2Projectile):
 
         # Tiến hành cắt và phóng to mũi tên
         self._load_exact_arrow(texture_dir)
+
+    def _load_textures(self):
+        """No-op: NormalArrowProjectile uses _load_exact_arrow instead."""
+        pass
 
     def _load_exact_arrow(self, texture_dir):
         """Cắt chính xác mũi tên từ sprite sheet và phóng to"""
@@ -658,3 +372,208 @@ class NormalArrowProjectile(Player2Projectile):
 
     def on_hit(self):
         self.active = False
+
+_W_HIT_ANIM_SPEED = 0.25  # animation frames advanced per update tick
+
+
+class PoisonProjectile(NormalArrowProjectile):
+    """
+    W-enhanced normal attack: Poison shot.
+
+    Flight phase  -> identical to NormalArrowProjectile (same cropped arrow
+                     sprite, 800 px/s velocity, max-range / wall collision).
+    Hit phase     -> plays the poison hit animation at the impact point and
+                     then deactivates.  Poison effect is applied via
+                     apply_effect(enemy), called by the game loop before on_hit().
+    """
+
+    def __init__(self, x, y, direction, owner, renderer, damage_multiplier=1.0):
+        super().__init__(x, y, direction, owner, renderer)
+        self.damage = DAMAGE_W_POISON * damage_multiplier
+
+        # Hit-animation state
+        self.is_hit          = False
+        self.hit_frame       = 0
+        self.hit_frame_ctr   = 0.0
+        self.hit_textures    = []
+        self.hit_w           = 0
+        self.hit_h           = 0
+        self.hit_impact_x    = 0   # world-space X centre saved at impact
+        self.hit_impact_y    = 0   # world-space Y centre saved at impact
+        # Poison content bbox (114,26)→(178,88) in the 256×128 source.
+        # Add 10 px padding and display at 1.5× crop size → 126×123.
+        self._load_hit_textures("poison", "arrow_hit_poison_", 8,
+                                src_x=104, src_y=16, src_w=84, src_h=82,
+                                display_w=126, display_h=123)
+
+    # ------------------------------------------------------------------
+    def _load_hit_textures(self, subfolder, prefix, count,
+                           src_x=0, src_y=0, src_w=256, src_h=128,
+                           display_w=128, display_h=64):
+        """Load W hit-animation frames, cropping to the visible content area.
+
+        Args:
+            subfolder / prefix / count : asset location as before.
+            src_x, src_y, src_w, src_h : crop rect inside the 256×128 source
+                                          image (use Pillow getbbox + padding).
+            display_w, display_h        : final on-screen size (stored as
+                                          self.hit_w / self.hit_h for render).
+        """
+        import sys
+        self.hit_w = display_w
+        self.hit_h = display_h
+
+        folder = os.path.join(_ROOT_DIR, "assets", "Projectile",
+                              "Player_2", "w", subfolder)
+        rmask, gmask, bmask, amask = 0x000000ff, 0x0000ff00, 0x00ff0000, 0xff000000
+        if sys.byteorder == 'big':
+            rmask, gmask, bmask, amask = 0xff000000, 0x00ff0000, 0x0000ff00, 0x000000ff
+
+        for i in range(1, count + 1):
+            fpath = os.path.join(folder, f"{prefix}{i}.png")
+            if os.path.exists(fpath):
+                try:
+                    src_surf = sdl2.ext.load_image(fpath)
+                    # Step 1: crop to the content area of this frame
+                    crop = sdl2.SDL_CreateRGBSurface(0, src_w, src_h, 32,
+                                                     rmask, gmask, bmask, amask)
+                    crop_src  = sdl2.SDL_Rect(src_x, src_y, src_w, src_h)
+                    crop_dst  = sdl2.SDL_Rect(0, 0, src_w, src_h)
+                    sdl2.SDL_SetSurfaceBlendMode(src_surf, sdl2.SDL_BLENDMODE_NONE)
+                    sdl2.SDL_BlitSurface(src_surf, crop_src, crop, crop_dst)
+                    # Step 2: scale cropped region to display size
+                    tmp = sdl2.SDL_CreateRGBSurface(0, display_w, display_h, 32,
+                                                    rmask, gmask, bmask, amask)
+                    sdl2.SDL_BlitScaled(crop, crop_dst, tmp,
+                                        sdl2.SDL_Rect(0, 0, display_w, display_h))
+                    tex = sdl2.SDL_CreateTextureFromSurface(self.renderer, tmp)
+                    if tex:
+                        self.hit_textures.append(tex)
+                    else:
+                        print(f"[W-Hit] SDL_CreateTextureFromSurface failed: {fpath}")
+                    sdl2.SDL_FreeSurface(src_surf)
+                    sdl2.SDL_FreeSurface(crop)
+                    sdl2.SDL_FreeSurface(tmp)
+                except Exception as e:
+                    print(f"[W-Hit] load error {fpath}: {e}")
+            else:
+                print(f"[W-Hit] missing frame: {fpath}")
+        print(f"[W-Hit] Loaded {len(self.hit_textures)}/{count} frames from "
+              f"'{subfolder}' ({display_w}x{display_h} px)")
+
+    # ------------------------------------------------------------------
+    def apply_effect(self, enemy):
+        """
+        Apply poison effect to the enemy that was hit.
+        Called by the game loop just before on_hit().
+        """
+        if hasattr(enemy, 'apply_poison'):
+            enemy.apply_poison(POISON_DURATION, POISON_TICK_RATE)
+        elif hasattr(enemy, 'poisoned_timer'):
+            enemy.poisoned_timer   = max(getattr(enemy, 'poisoned_timer', 0),
+                                         POISON_DURATION)
+            enemy.poison_tick_rate = POISON_TICK_RATE
+            enemy.poison_damage    = getattr(enemy, 'poison_damage',
+                                             int(DAMAGE_W_POISON * 0.2))
+
+    # ------------------------------------------------------------------
+    def on_hit(self):
+        """Switch to hit-animation mode; do NOT instantly deactivate."""
+        if self.is_hit:          # ignore duplicate calls
+            return
+        self.is_hit        = True
+        self.hit_frame     = 0
+        self.hit_frame_ctr = 0.0
+        self.velocity_x    = 0
+        self.velocity_y    = 0
+        # Freeze the impact position at the arrow's visual centre so the hit
+        # animation stays perfectly aligned with the flight line.
+        self.hit_impact_x  = self.x + self.width  // 2
+        self.hit_impact_y  = self.y + self.height // 2
+        # active stays True so the manager keeps updating/rendering until
+        # the animation finishes (update() sets active=False at the end)
+
+    # ------------------------------------------------------------------
+    def update(self, dt, world=None, my_map=None, interactables=None):
+        if not self.active:
+            return
+
+        if self.is_hit:
+            if not self.hit_textures:
+                self.active = False
+                return
+            self.hit_frame_ctr += _W_HIT_ANIM_SPEED
+            if self.hit_frame_ctr >= 1.0:
+                self.hit_frame_ctr = 0.0
+                self.hit_frame    += 1
+                if self.hit_frame >= len(self.hit_textures):
+                    self.active = False
+            return
+
+        # Flying phase – delegate fully to NormalArrowProjectile
+        super().update(dt, world, my_map, interactables)
+
+    # ------------------------------------------------------------------
+    def render(self, camera_x=0, camera_y=0):
+        if not self.active:
+            return
+
+        if self.is_hit and self.hit_textures:
+            frame = min(self.hit_frame, len(self.hit_textures) - 1)
+            tex   = self.hit_textures[frame]
+            flip  = (sdl2.SDL_FLIP_HORIZONTAL
+                     if self.direction < 0 else sdl2.SDL_FLIP_NONE)
+            # Centre the animation on the exact point where the arrow struck.
+            dst = sdl2.SDL_Rect(
+                int(self.hit_impact_x - camera_x - self.hit_w // 2),
+                int(self.hit_impact_y - camera_y - self.hit_h // 2),
+                self.hit_w, self.hit_h
+            )
+            sdl2.SDL_RenderCopyEx(self.renderer, tex, None, dst, 0, None, flip)
+            return
+
+        # Flying phase – inherit NormalArrowProjectile -> Player2Projectile render
+        super().render(camera_x, camera_y)
+
+    # ------------------------------------------------------------------
+    def cleanup(self):
+        for tex in self.hit_textures:
+            if tex:
+                sdl2.SDL_DestroyTexture(tex)
+        self.hit_textures.clear()
+        super().cleanup()
+
+
+class PlantProjectile(PoisonProjectile):
+    """
+    W-enhanced normal attack: Plant/root shot.
+
+    Identical flight to PoisonProjectile, but plays the root (entangle) hit
+    animation and applies a snare instead of poison on impact.
+    """
+
+    def __init__(self, x, y, direction, owner, renderer):
+        super().__init__(x, y, direction, owner, renderer, damage_multiplier=1.0)
+        self.damage        = DAMAGE_W_PLANT
+        self.root_duration = W_PLANT_SNARE_DURATION
+
+        # Replace poison hit textures with root textures
+        for tex in self.hit_textures:
+            if tex:
+                sdl2.SDL_DestroyTexture(tex)
+        self.hit_textures.clear()
+        # Root content bbox (114,56)→(193,97) in the 256×128 source.
+        # Add 10 px padding and display at 1.5× crop size → 148×92.
+        self._load_hit_textures("root", "arrow_hit_entangle_", 8,
+                                src_x=104, src_y=46, src_w=99, src_h=61,
+                                display_w=148, display_h=92)
+
+    def apply_effect(self, enemy):
+        """Apply root/snare effect to the enemy that was hit."""
+        print(f"[PlantProjectile] Root applied for {self.root_duration}s "
+              f"on {enemy.__class__.__name__}")
+        if hasattr(enemy, 'snared_timer'):
+            enemy.snared_timer = self.root_duration
+        elif hasattr(enemy, 'apply_snare'):
+            enemy.apply_snare(self.root_duration)
+

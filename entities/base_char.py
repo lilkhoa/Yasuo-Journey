@@ -386,7 +386,18 @@ class BaseChar:
         elif self.state == 'fall': frames = current_anims.get('fall', current_anims.get('jump', current_anims.get('idle', [])))
         else: frames = current_anims.get('idle', [])
 
-        if not frames: return
+        # Safety check: If frames are missing for skill casting states, force return to idle
+        if not frames:
+            if self.state in ['casting_q', 'casting_w', 'dashing_e', 'attacking']:
+                print(f"[ANIMATION ERROR] Missing frames for state '{self.state}', forcing idle")
+                self.state = 'idle'
+                self.frame_index = 0
+                # Try to get idle frames as fallback
+                frames = current_anims.get('idle', [])
+                if not frames:
+                    return  # Critical failure - no idle frames either
+            else:
+                return
 
         if self.state != self.prev_state:
             self.frame_index = 0

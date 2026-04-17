@@ -10,7 +10,7 @@ if root_dir not in sys.path:
     sys.path.append(root_dir)
 
 from entities.base_char import BaseChar
-from entities.leaf_ranger_projectile import PoisonProjectile, PlantProjectile, HealDustProjectile, NormalArrowProjectile
+from entities.leaf_ranger_projectile import PoisonProjectile, PlantProjectile, NormalArrowProjectile
 from combat.player_2.refactored_skill_q import SkillQLaser, update_q_laser_logic, load_laser_cast_animation_proportional, load_laser_projectile_frames
 from combat.player_2.refactored_skill_w import SkillW
 from combat.player_2.refactored_skill_e import SkillE, load_arrow_rain_cast_animation_proportional, update_e_aoe_logic, update_e_projectile_logic
@@ -175,9 +175,8 @@ class LeafRanger(BaseChar):
         else:
             print(f"  ✗ MISMATCH! Character will jump during skill transitions!")
         
-        # W là chiêu đánh trên không
-        w_folder = os.path.join(_skill_asset_dir, "skill_w_2")
-        self.anims_right['w'] = load_image_sequence(factory, w_folder, "air_atk_", 10, (150, 150), zero_pad=True)
+        # W skill has no animation (instant buff)
+        self.anims_right['w'] = []
         
         self.anims_right['e'] = self.e_casting_frames
 
@@ -231,15 +230,17 @@ class LeafRanger(BaseChar):
 
     # ================= KHỞI TẠO KÍCH HOẠT =================
     def start_w(self, direction=0):
+        """Activate W buff instantly (no animation)"""
         if self.stamina < SKILL_W_COST or not self.cooldowns.is_ready("skill_w"): return
-        # [FIX] Bổ sung trạng thái nhảy
         if self.state in ['idle', 'run', 'walk', 'jump_up', 'fall']:
             self.stamina -= SKILL_W_COST
             cd = self.get_skill_cooldown('w')
             self.cooldowns.start_cooldown("skill_w", cd)
             if direction: self.facing_right = (direction > 0)
-            self.state = 'casting_w'
-            self.frame_index = 0
+            
+            # Instant buff activation (no casting animation)
+            self.spawn_w_buff()
+            
             if self.sound_manager:
                 try: self.sound_manager.play_sound("player_w1")
                 except: pass
@@ -297,10 +298,8 @@ class LeafRanger(BaseChar):
             except: pass
 
     def on_cast_w_complete(self, world, factory, renderer):
-        self.spawn_w_buff()
-        if self.sound_manager:
-            try: self.sound_manager.play_sound("player_w2")
-            except: pass
+        """W has no animation - this should never be called"""
+        pass
             
     def on_cast_e_complete(self, world, factory, renderer):
         # Mưa tên đã được gọi giữa chừng (trong update), ở đây chỉ để bắt event hết hoạt ảnh
@@ -495,39 +494,43 @@ class LeafRanger(BaseChar):
 
     # ================= OVERRIDE TẤN CÔNG (PROJECTILES) =================
     def spawn_attack_projectile(self, renderer, projectile_manager, network_ctx=None):
+        """Spawn normal attack projectile (enhanced by W buff if active)"""
         direction = 1 if self.facing_right else -1
         proj_x = self.sprite.x + (50 * direction)
-        proj_y = self.sprite.y + 70  # <--- Tăng giảm con số 40 này để chỉnh độ cao mũi tên bắn ra
+        proj_y = self.sprite.y + 70
         
         if self.w_buff_active:
-            if self.vel_y != 0:
-                projectile = HealDustProjectile(proj_x, proj_y, direction, self, renderer)
-                projectile_manager.add_projectile(projectile)
-                if network_ctx:
-                    is_multi, is_host, game_client = network_ctx
-                    if is_multi and game_client and game_client.is_connected():
-                        try: game_client.send_skill_event('attack_w_heal', direction, proj_x, proj_y)
-                        except: pass
+            # W buff active: Alternate between Poison and Plant projectiles
+            if not self.w_attack_toggle:
+                # Poison shot
+                projectile = PoisonProjectile(proj_x, proj_y, direction, self, renderer, 
+                                            damage_multiplier=self.get_skill_damage_scale('a'))
+                action = 'attack_w_poison'
+                print("[LeafRanger] W-enhanced attack: Poison")
             else:
-                if not self.w_attack_toggle:
-                    projectile = PoisonProjectile(proj_x, proj_y, direction, self, renderer, damage_multiplier=self.get_skill_damage_scale('a'))
-                    action = 'attack_w_poison'
+                # Plant/Root shot
+                if self.facing_right:
+                    proj_x += 100
                 else:
-                    projectile = PlantProjectile(proj_x, proj_y, direction, self, renderer)
-                    action = 'attack_w_plant'
-                
-                projectile_manager.add_projectile(projectile)
-                self.w_attack_toggle = not self.w_attack_toggle
-                
-                if network_ctx:
-                    is_multi, is_host, game_client = network_ctx
-                    if is_multi and game_client and game_client.is_connected():
-                        try: game_client.send_skill_event(action, direction, proj_x, proj_y)
-                        except: pass
+                    proj_x -= 20
+                projectile = PlantProjectile(proj_x, proj_y + 35, direction, self, renderer)
+                action = 'attack_w_plant'
+                print("[LeafRanger] W-enhanced attack: Plant (root)")
+            
+            projectile_manager.add_projectile(projectile)
+            self.w_attack_toggle = not self.w_attack_toggle  # Toggle for next attack
+            
+            if network_ctx:
+                is_multi, is_host, game_client = network_ctx
+                if is_multi and game_client and game_client.is_connected():
+                    try: game_client.send_skill_event(action, direction, proj_x, proj_y)
+                    except: pass
         else:
+            # Normal attack: Regular arrow
             projectile = NormalArrowProjectile(proj_x, proj_y, direction, self, renderer)
             projectile_manager.add_projectile(projectile)
             action = 'attack_normal'
+            
             if network_ctx:
                 is_multi, is_host, game_client = network_ctx
                 if is_multi and game_client and game_client.is_connected():

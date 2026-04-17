@@ -1141,6 +1141,10 @@ def run(net_mode: str = "solo", host_ip: str = "127.0.0.1", ext_seed: int = 0):
                                     kill_count += 1
                                     if hasattr(player, 'on_kill_enemy'): player.on_kill_enemy()
                                 
+                                # Áp dụng hiệu ứng đặc biệt (độc, chặn, ...) nếu đạn hỗ trợ
+                                if hasattr(projectile, 'apply_effect'):
+                                    projectile.apply_effect(enemy)
+                                
                                 # Gọi hàm on_hit() để mũi tên biến mất ngay lập tức
                                 projectile.on_hit()
                                 break # Trúng 1 quái là kết thúc viên đạn
