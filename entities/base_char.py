@@ -173,7 +173,8 @@ class BaseChar:
             int(self.height)
         )
 
-        self.draw_debug_rect(renderer, hitbox, camera_x, camera_y)  # đỏ = hitbox
+        # Debug collision box disabled
+        # self.draw_debug_rect(renderer, hitbox, camera_x, camera_y)  # đỏ = hitbox
 
     # ================= HỆ THỐNG BUFF VÀ CHỈ SỐ =================
     def apply_buff(self, name, duration, value=0):

@@ -24,7 +24,7 @@ MAP_PATH = "assets/Map"
 SKILLS_PATH = "assets/Skills"
 
 # Debug settings
-DEBUG_COLLISION_BOXES = False
+DEBUG_COLLISION_BOXES = False  # Set to True to see collision boxes and hitboxes
 
 # Sound settings
 MUSIC_VOLUME = 50

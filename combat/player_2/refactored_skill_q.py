@@ -232,8 +232,12 @@ class SkillQLaser(BaseSkill):
         
         # Scale offsets: idle (115px) → ~56px, cast (432px) → ~209px
         offset_x = int(62 * sprite_w / 128)
-        offset_y = int(61 * sprite_h / 128)
+        offset_y = int(61 * sprite_h / 128) - 18
         
+        if self.owner.facing_right:
+            offset_x = offset_x 
+        else:
+            offset_x = offset_x - 88
         start_x = self.owner.sprite.x + (offset_x * direction)
         start_y = self.owner.sprite.y + offset_y
 

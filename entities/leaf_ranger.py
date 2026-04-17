@@ -13,7 +13,7 @@ from entities.base_char import BaseChar
 from entities.leaf_ranger_projectile import PoisonProjectile, PlantProjectile, HealDustProjectile, NormalArrowProjectile
 from combat.player_2.refactored_skill_q import SkillQLaser, update_q_laser_logic, load_laser_cast_animation_proportional, load_laser_projectile_frames
 from combat.player_2.refactored_skill_w import SkillW
-from combat.player_2.refactored_skill_e import SkillE, load_arrow_rain_cast_animation_proportional, update_e_aoe_logic
+from combat.player_2.refactored_skill_e import SkillE, load_arrow_rain_cast_animation_proportional, update_e_aoe_logic, update_e_projectile_logic
 from combat.utils import load_image_sequence, flip_sprites_horizontal
 from settings import SKILL_W_BUFF_DURATION, SKILL_W_COST, SKILL_E_2_COST, SKILL_E_2_COOLDOWN, SKILL_DAMAGE_GROWTH
 
@@ -32,7 +32,8 @@ class LeafRanger(BaseChar):
         
         # --- QUẢN LÝ OBJECT SKILL RIÊNG ---
         self.active_lasers = []
-        self.e_aoe = None
+        self.e_projectiles = []  # Falling arrow projectiles
+        self.e_aoe = None  # Root AoE zone (spawned when projectile lands)
         
         # --- TÚI ĐỒ (Inventory System Overrides) ---
         self.inventory = None
@@ -101,6 +102,10 @@ class LeafRanger(BaseChar):
 
         # Khung chuẩn chung (Universal Box) tính toán từ số đo của bạn
         universal_crop = (117, 45, 77, 83)
+        
+        # Cast animations crop box: wider to include extended arms/bow (prevents character clipping)
+        # Cast sprites show character with extended arms, needs more horizontal space
+        cast_crop = (90, 45, 120, 83)  # Wider crop: starts earlier (90 vs 117), wider (120 vs 77)
 
         self.anims_right['idle'] = load_scaled_sequence('idle', 'idle_', 12, self.scale_factor, universal_crop)
         print(f"[SPRITE DEBUG] Idle loaded: {len(self.anims_right['idle'])} frames, "
@@ -128,12 +133,12 @@ class LeafRanger(BaseChar):
         _skill_asset_dir = os.path.join(root_dir, 'assets', 'Skills')
         _proj_asset_dir  = os.path.join(root_dir, 'assets', 'Projectile')
 
-        # Q cast: Crop to (117, 45, 77, 83) then scale by 1.5× → same size as idle
-        print(f"[SPRITE DEBUG] Loading Q cast with scale_factor={self.scale_factor}, crop_box={universal_crop}")
+        # Q cast: Use wider cast_crop (90, 45, 120, 83) to include extended bow/arms
+        print(f"[SPRITE DEBUG] Loading Q cast with scale_factor={self.scale_factor}, crop_box={cast_crop}")
         
         self.laser_cast_frames = load_laser_cast_animation_proportional(factory, _skill_asset_dir,
                                                                          scale_factor=self.scale_factor,
-                                                                         crop_box=universal_crop)
+                                                                         crop_box=cast_crop)
         
         print(f"[SPRITE DEBUG] Q cast loaded: {len(self.laser_cast_frames)} frames")
         if self.laser_cast_frames:
@@ -146,10 +151,10 @@ class LeafRanger(BaseChar):
         if self.laser_projectile_frames:
             print(f"  Size: {self.laser_projectile_frames[0].size if hasattr(self.laser_projectile_frames[0], 'size') else 'N/A'}")
         
-        # E cast: Also use same crop box to maintain position consistency
+        # E cast: Use wider cast_crop (90, 45, 120, 83) to include extended bow/arms
         self.e_casting_frames = load_arrow_rain_cast_animation_proportional(factory, _skill_asset_dir,
                                                                              scale_factor=self.scale_factor,
-                                                                             crop_box=universal_crop)
+                                                                             crop_box=cast_crop)
         
         self.anims_right['q'] = self.laser_cast_frames
         self.anims_right['e'] = self.e_casting_frames
@@ -161,10 +166,10 @@ class LeafRanger(BaseChar):
         
         print(f"[SIZE VALIDATION]")
         print(f"  Idle: {idle_size[0]}×{idle_size[1]} (crop {universal_crop}, scale {self.scale_factor}×)")
-        print(f"  Q cast: {q_size[0]}×{q_size[1]} (crop {universal_crop}, scale {self.scale_factor}×)")
-        print(f"  E cast: {e_size[0]}×{e_size[1]} (crop {universal_crop}, scale {self.scale_factor}×)")
+        print(f"  Q cast: {q_size[0]}×{q_size[1]} (crop {cast_crop}, scale {self.scale_factor}×)")
+        print(f"  E cast: {e_size[0]}×{e_size[1]} (crop {cast_crop}, scale {self.scale_factor}×)")
         
-        # All should be same size since they use same crop and scale
+        # Cast animations are wider than idle to include extended arms/bow
         if idle_size == q_size == e_size:
             print(f"  ✓ ALL MATCH! Character will stay in place during skill casts.")
         else:
@@ -321,12 +326,22 @@ class LeafRanger(BaseChar):
         else:
             print("[LASER DEBUG] ERROR - Laser spawn returned None!")
 
-    def spawn_e_aoe(self, renderer, game_map=None):
-        if self.skill_e is None: return
+    def spawn_e_aoe(self, renderer, game_map=None, camera=None):
+        """Spawn falling arrow projectile for E skill."""
+        if self.skill_e is None: 
+            return
+        
+        if camera is None:
+            print("[LeafRanger] ERROR: spawn_e_aoe called without camera!")
+            return
+        
         enemies = getattr(self, '_cached_enemies', [])
-        aoe = self.skill_e.execute(renderer, game_map, enemies=enemies)
-        if aoe:
-            self.e_aoe = aoe
+        
+        # Execute skill - spawns ArrowRainProjectile
+        projectile = self.skill_e.execute(renderer, game_map, camera=camera, enemies=enemies)
+        if projectile:
+            self.e_projectiles.append(projectile)
+            print(f"[LeafRanger] Spawned E projectile, total active: {len(self.e_projectiles)}")
 
     # ================= VÒNG LẶP UPDATE =================
     def update(self, dt, world, factory, renderer, game_map=None, boxes=None):
@@ -348,7 +363,9 @@ class LeafRanger(BaseChar):
             e_total = len(getattr(self, 'e_casting_frames', [])) or 12
             if self.frame_index >= e_total - 1 and not getattr(self, '_e_spawned', False):
                 self._e_spawned = True   # set first to prevent re-entry
-                self.spawn_e_aoe(renderer, game_map)
+                # Camera will be passed later via _cached_camera in update_skills
+                # For now, just set a flag
+                self._e_ready_to_spawn = True
                 
         # Update vật lý, máu, va chạm từ BaseChar
         super().update(dt, world, factory, renderer, game_map, boxes)
@@ -367,14 +384,35 @@ class LeafRanger(BaseChar):
                 self.w_poison_applied.clear()
 
     # ================= VÒNG LẶP SKILL & RENDER =================
-    def update_skills(self, dt, enemies, projectiles=None, network_ctx=None):
+    def update_skills(self, dt, enemies, projectiles=None, network_ctx=None, camera=None, game_map=None, renderer=None):
         self._cached_enemies = enemies  # Cache for spawn_e_aoe targeting
+        self._cached_camera = camera  # Cache camera for E skill
+        
+        # Check if E skill is ready to spawn (cast animation finished)
+        if getattr(self, '_e_ready_to_spawn', False):
+            self._e_ready_to_spawn = False
+            if camera and game_map and renderer:
+                self.spawn_e_aoe(renderer, game_map, camera)
+            else:
+                print("[LeafRanger] ERROR: Cannot spawn E - missing camera/map/renderer")
+        
+        # Update Q lasers
         for laser in self.active_lasers[:]:
             update_q_laser_logic(laser, enemies, dt, network_ctx)
             if not laser.active:
                 laser.delete()
                 self.active_lasers.remove(laser)
         
+        # Update E falling projectiles
+        for projectile in self.e_projectiles[:]:
+            aoe = update_e_projectile_logic(projectile, enemies, dt)
+            if aoe:  # Projectile landed, spawned AoE
+                self.e_aoe = aoe
+                print(f"[LeafRanger] E projectile landed, created AoE at ({aoe.x:.1f}, {aoe.y:.1f})")
+            if not projectile.active:
+                self.e_projectiles.remove(projectile)
+        
+        # Update E AoE (root zone)
         if self.e_aoe is not None and self.e_aoe.active:
             update_e_aoe_logic(self.e_aoe, enemies, dt, network_ctx)
         elif self.e_aoe is not None and not self.e_aoe.active:
@@ -443,6 +481,12 @@ class LeafRanger(BaseChar):
             
             sdl2.SDL_DestroyTexture(texture)
         
+        # Render E falling projectiles
+        for projectile in self.e_projectiles:
+            if projectile.active:
+                projectile.render(renderer, camera)
+        
+        # Render E AoE (root zone)
         if self.e_aoe is not None and self.e_aoe.active:
             # Sửa lỗi mismatch renderer
             if self.e_aoe.renderer != renderer:
