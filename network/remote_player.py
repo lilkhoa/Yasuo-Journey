@@ -207,9 +207,15 @@ class RemotePlayer:
         """
         if not net_state:
             return
+            
+        ts = net_state.get('ts', 0)
+        if hasattr(self, '_last_applied_ts') and ts <= self._last_applied_ts:
+            return
+        self._last_applied_ts = ts
+        
         self.visible = True
         self._interpolator.add_snapshot(
-            ts=net_state.get('ts', time.monotonic()),
+            ts=ts if ts != 0 else time.monotonic(),
             x=net_state.get('x', self.x),
             y=net_state.get('y', self.y),
             state=net_state.get('state', 'idle'),
@@ -275,14 +281,21 @@ class RemotePlayer:
             'attacking':   'attack_normal',
             'run':         'run',
             'walk':        'walk',
-            'jump_up':     'jump_up',
-            'fall':        'fall',
+            'jump':        'jump',      # Yasuo jump state
+            'jump_up':     'jump_up',  # Leaf Ranger jump up
+            'fall':        'fall',     # Leaf Ranger fall
         }
         key = state_to_anim.get(self.state, 'idle')
-        # Fallback chain: requested key → 'jump' (for jump_up/fall) → 'idle'
         result = anims.get(key)
-        if not result and key in ('jump_up', 'fall'):
-            result = anims.get('jump')
+        
+        # Fallback chain for jump states:
+        # - jump_up/fall not in anims (Yasuo) → try 'jump' → 'idle'
+        # - jump not in anims (Leaf Ranger) → try 'jump_up' or 'fall' → 'idle'
+        if not result:
+            if key in ('jump_up', 'fall'):
+                result = anims.get('jump')
+            elif key == 'jump':
+                result = anims.get('jump_up') or anims.get('fall')
         if not result:
             result = anims.get('idle', [])
         return result
