@@ -15,12 +15,35 @@ from combat.player_2.refactored_skill_q import SkillQLaser, update_q_laser_logic
 from combat.player_2.refactored_skill_w import SkillW
 from combat.player_2.refactored_skill_e import SkillE, load_arrow_rain_cast_animation_proportional, update_e_aoe_logic, update_e_projectile_logic
 from combat.utils import load_image_sequence, flip_sprites_horizontal
-from settings import SKILL_W_BUFF_DURATION, SKILL_W_COST, SKILL_E_2_COST, SKILL_E_2_COOLDOWN, SKILL_DAMAGE_GROWTH, DEBUG_COLLISION_BOXES
+from settings import (
+    SKILL_W_BUFF_DURATION, SKILL_DAMAGE_GROWTH, DEBUG_COLLISION_BOXES,
+    SKILL_CD_REDUCE_RATE, SKILL_CD_REDUCE_FLAT_MIN, FPS,
+    LR_MAX_HEALTH, LR_MAX_STAMINA,
+    LR_BASE_ATTACK_DAMAGE, LR_BASE_ARMOR, LR_BASE_LIFESTEAL,
+    LR_SPEED_WALK, LR_ATTACK_RANGE,
+    LR_SKILL_Q_COOLDOWN, LR_SKILL_W_COOLDOWN, LR_SKILL_E_COOLDOWN, LR_ATTACK_COOLDOWN,
+    LR_SKILL_Q_COST, LR_SKILL_W_COST, LR_SKILL_E_COST,
+)
 
 class LeafRanger(BaseChar):
     def __init__(self, world, factory, x, y, sound_manager=None, renderer_ptr=None):
         super().__init__(world, factory, x, y, sound_manager, renderer_ptr)
-        
+
+        # ── Override BaseChar stats with Leaf Ranger-specific values ──────────
+        self.max_hp              = LR_MAX_HEALTH
+        self.hp                  = self.max_hp
+        self.max_stamina         = LR_MAX_STAMINA
+        self.stamina             = self.max_stamina
+        self.base_attack_damage  = LR_BASE_ATTACK_DAMAGE
+        self.attack_damage       = self.base_attack_damage
+        self.base_armor          = LR_BASE_ARMOR
+        self.armor               = self.base_armor
+        self.base_lifesteal      = LR_BASE_LIFESTEAL
+        self.lifesteal_ratio     = self.base_lifesteal
+        self.base_move_speed     = LR_SPEED_WALK
+        self.attack_range        = LR_ATTACK_RANGE
+        # ─────────────────────────────────────────────────────────────────────
+
         # Đặc trưng nhân vật: Lớn hơn 35%
         self.scale_factor = 1.5
         
@@ -231,9 +254,9 @@ class LeafRanger(BaseChar):
     # ================= KHỞI TẠO KÍCH HOẠT =================
     def start_w(self, direction=0):
         """Activate W buff instantly (no animation)"""
-        if self.stamina < SKILL_W_COST or not self.cooldowns.is_ready("skill_w"): return
+        if self.stamina < LR_SKILL_W_COST or not self.cooldowns.is_ready("skill_w"): return
         if self.state in ['idle', 'run', 'walk', 'jump_up', 'fall']:
-            self.stamina -= SKILL_W_COST
+            self.stamina -= LR_SKILL_W_COST
             cd = self.get_skill_cooldown('w')
             self.cooldowns.start_cooldown("skill_w", cd)
             if direction: self.facing_right = (direction > 0)
@@ -246,14 +269,14 @@ class LeafRanger(BaseChar):
                 except: pass
 
     def start_q(self, direction=0):
-        if self.stamina < 20 or not self.cooldowns.is_ready("skill_q"): return
+        if self.stamina < LR_SKILL_Q_COST or not self.cooldowns.is_ready("skill_q"): return
         # [FIX] Bổ sung trạng thái nhảy
         if self.state in ['idle', 'run', 'walk', 'jump_up', 'fall']:
             sprite_w = self.sprite.size[0] if self.sprite else 0
             sprite_h = self.sprite.size[1] if self.sprite else 0
             print(f"[Q DEBUG] Cast Start: state={self.state} → casting_q, sprite_size=({sprite_w},{sprite_h})")
             
-            self.stamina -= 20
+            self.stamina -= LR_SKILL_Q_COST
             cd = self.get_skill_cooldown('q')
             self.cooldowns.start_cooldown("skill_q", cd)
             if direction: self.facing_right = (direction > 0)
@@ -265,10 +288,10 @@ class LeafRanger(BaseChar):
                 except: pass
 
     def start_e(self, world=None, factory=None, renderer=None, direction=0):
-        if self.stamina < SKILL_E_2_COST or not self.cooldowns.is_ready("skill_e"): return
+        if self.stamina < LR_SKILL_E_COST or not self.cooldowns.is_ready("skill_e"): return
         # [FIX] Bổ sung trạng thái nhảy
         if self.state in ['idle', 'run', 'walk', 'jump_up', 'fall']:
-            self.stamina -= SKILL_E_2_COST
+            self.stamina -= LR_SKILL_E_COST
             cd = self.get_skill_cooldown('e')
             self.cooldowns.start_cooldown("skill_e", cd)
             if direction: self.facing_right = (direction > 0)
@@ -282,6 +305,23 @@ class LeafRanger(BaseChar):
                 except: pass
 
     # ================= HOOKS KHI ANIMATION KẾT THÚC =================
+
+    # ================= COOLDOWN OVERRIDE =================
+    def get_skill_cooldown(self, skill_key):
+        """Return cooldown in frames using LeafRanger-specific values."""
+        if skill_key == 'q':   base_cd = LR_SKILL_Q_COOLDOWN
+        elif skill_key == 'w': base_cd = LR_SKILL_W_COOLDOWN
+        elif skill_key == 'e': base_cd = LR_SKILL_E_COOLDOWN
+        elif skill_key == 'a': base_cd = LR_ATTACK_COOLDOWN
+        else: base_cd = 0
+
+        level = self.skill_levels.get(skill_key, 0)
+        current_cd = float(base_cd)
+        for _ in range(level):
+            reduction = max(current_cd * SKILL_CD_REDUCE_RATE, SKILL_CD_REDUCE_FLAT_MIN * FPS)
+            current_cd -= reduction
+        return max(0.0, current_cd)
+
     def on_cast_q_complete(self, world, factory, renderer):
         if not getattr(self, '_laser_spawned', False):
             self.spawn_laser(world, factory, renderer)
@@ -524,12 +564,8 @@ class LeafRanger(BaseChar):
                 action = 'attack_w_poison'
                 print("[LeafRanger] W-enhanced attack: Poison")
             else:
-                # Plant/Root shot
-                if self.facing_right:
-                    proj_x += 100
-                else:
-                    proj_x -= 20
-                projectile = PlantProjectile(proj_x, proj_y + 35, direction, self, renderer)
+                # Plant/Root shot – same spawn point as Poison/Normal
+                projectile = PlantProjectile(proj_x, proj_y, direction, self, renderer)
                 action = 'attack_w_plant'
                 print("[LeafRanger] W-enhanced attack: Plant (root)")
             

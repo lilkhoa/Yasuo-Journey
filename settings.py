@@ -144,6 +144,30 @@ DAMAGE_SKILL_W = 25
 DAMAGE_SKILL_Q_2 = 45  # Laser beam damage (slightly lower than tornado)
 DAMAGE_SKILL_E_2 = 35  # Arrow Rain damage per enemy hit
 
+# ── Leaf Ranger (Player 2) Character Stats ──────────────────────────────────
+# All values are intentionally separated from Yasuo's stats so each character
+# can be balanced independently.  Yasuo values (PLAYER_*, SKILL_*) are untouched.
+
+LR_MAX_HEALTH         = 65000   # Less HP than Yasuo (75000) – ranged / squishier
+LR_MAX_STAMINA        = 200     # More stamina than Yasuo (150) – spends it on arrows
+
+LR_BASE_ATTACK_DAMAGE = 22      # Lower auto-attack AD than Yasuo (25) – ranged bonus in skills
+LR_BASE_ARMOR         = 20      # Less armour than Yasuo (30) – lighter build
+LR_BASE_LIFESTEAL     = 0.08    # Slightly higher lifesteal (vs 0.05) to compensate lower armour
+LR_SPEED_WALK         = 220     # Slightly faster than Yasuo (200)
+LR_ATTACK_RANGE       = 350     # Long-range bow attacks (vs Yasuo's 150)
+
+# Leaf Ranger cooldowns – stored in **frames** (CooldownManager uses update(1) per tick)
+LR_SKILL_Q_COOLDOWN  = 180   #  3.0 s at 60 FPS  (Yasuo Q = 240 frames / 4.0 s)
+LR_SKILL_W_COOLDOWN  = 90   #  6.0 s at 60 FPS  (Yasuo W = 300 frames / 5.0 s)
+LR_SKILL_E_COOLDOWN  = 210   # 12.0 s at 60 FPS  (Yasuo E = 100 frames / ~1.7 s)
+LR_ATTACK_COOLDOWN   = 50    # ~0.83 s at 60 FPS (Yasuo A =  60 frames / 1.0 s)
+
+# Leaf Ranger skill stamina costs
+LR_SKILL_Q_COST = 80   # Laser beam
+LR_SKILL_W_COST = 25   # Toxin Enhancement buff (Yasuo W costs 30)
+LR_SKILL_E_COST = 40    # Arrow Rain (mirrors SKILL_E_2_COST)
+
 # Player 2 W Skill Settings
 SKILL_W_BUFF_DURATION = 5.0        # Duration of W buff in seconds
 DAMAGE_W_POISON = 3               # Poison projectile base damage

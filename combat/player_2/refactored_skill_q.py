@@ -208,7 +208,9 @@ class SkillQLaser(BaseSkill):
     """Q Skill: Fire a laser beam (LeafRanger)."""
 
     def __init__(self, owner):
-        super().__init__(owner, name="Laser Beam", base_cooldown=0.1)
+        from settings import LR_SKILL_Q_COST
+        super().__init__(owner, name="Laser Beam", base_cooldown=0.1,
+                         stamina_cost=LR_SKILL_Q_COST)
 
     def execute(self, world, factory, renderer, skill_sprites=None, **kwargs):
         """

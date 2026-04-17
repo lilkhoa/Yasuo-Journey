@@ -360,7 +360,9 @@ class ArrowRainProjectile:
 
 class SkillE(BaseSkill):
     def __init__(self, owner):
-        super().__init__(owner, name="Arrow Rain", base_cooldown=SKILL_E_2_COOLDOWN)
+        from settings import LR_SKILL_E_COST
+        super().__init__(owner, name="Arrow Rain", base_cooldown=SKILL_E_2_COOLDOWN,
+                         stamina_cost=LR_SKILL_E_COST)
         
         self.cast_range = SKILL_E_2_CAST_RANGE
         self.is_dashing = False # Flag giữ chỗ cho Animation của LeafRanger (Dùng chung từ BaseChar)

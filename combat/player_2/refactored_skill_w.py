@@ -1,6 +1,6 @@
 import time
 from combat.refactored_skill import BaseSkill
-from settings import SKILL_W_BUFF_DURATION, SKILL_W_COST
+from settings import SKILL_W_BUFF_DURATION, LR_SKILL_W_COST
 
 
 class SkillW(BaseSkill):
@@ -27,7 +27,7 @@ class SkillW(BaseSkill):
             owner=owner,
             name="Toxin Enhancement",
             base_cooldown=0.1,  # Cooldown managed by owner.cooldowns
-            stamina_cost=SKILL_W_COST
+            stamina_cost=LR_SKILL_W_COST
         )
         
         # Buff state (managed by this skill)

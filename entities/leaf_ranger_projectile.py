@@ -400,6 +400,11 @@ class PoisonProjectile(NormalArrowProjectile):
         self.hit_h           = 0
         self.hit_impact_x    = 0   # world-space X centre saved at impact
         self.hit_impact_y    = 0   # world-space Y centre saved at impact
+        # Per-subclass Y correction (pixels).  Positive = shift animation DOWN.
+        # Accounts for the visual content not being centred within its crop rect.
+        # Poison: content ~9 px below frame centre  → correction = 0 (close enough)
+        # Plant:  content ~20 px above frame centre → correction = +20
+        self._hit_y_correction = 0
         # Poison content bbox (114,26)→(178,88) in the 256×128 source.
         # Add 10 px padding and display at 1.5× crop size → 126×123.
         self._load_hit_textures("poison", "arrow_hit_poison_", 8,
@@ -489,7 +494,7 @@ class PoisonProjectile(NormalArrowProjectile):
         # Freeze the impact position at the arrow's visual centre so the hit
         # animation stays perfectly aligned with the flight line.
         self.hit_impact_x  = self.x + self.width  // 2
-        self.hit_impact_y  = self.y + self.height // 2
+        self.hit_impact_y  = self.y + self.height // 2 + self._hit_y_correction
         # active stays True so the manager keeps updating/rendering until
         # the animation finishes (update() sets active=False at the end)
 
@@ -567,6 +572,11 @@ class PlantProjectile(PoisonProjectile):
         self._load_hit_textures("root", "arrow_hit_entangle_", 8,
                                 src_x=104, src_y=46, src_w=99, src_h=61,
                                 display_w=148, display_h=92)
+        # The entangle animation's visual content sits ~20 px above the
+        # mathematical centre of the frame (content starts at ~26/92 from top
+        # rather than at 50%).  Shift the anchor down so it aligns with the
+        # arrow's actual flight line.
+        self._hit_y_correction = 20
 
     def apply_effect(self, enemy):
         """Apply root/snare effect to the enemy that was hit."""
