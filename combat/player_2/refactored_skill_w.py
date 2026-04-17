@@ -19,8 +19,6 @@ class SkillW(BaseSkill):
         self.buff_active_time = 0
         
     def execute(self, world=None, factory=None, renderer=None, **kwargs):
-        print("Casting W: Toxin Enhancement activated!")
-        
         if not hasattr(self.owner, 'w_buff_active'): self.owner.w_buff_active = False
         if not hasattr(self.owner, 'w_buff_timer'): self.owner.w_buff_timer = 0
         if not hasattr(self.owner, 'w_attack_toggle'): self.owner.w_attack_toggle = False 
@@ -46,4 +44,3 @@ class SkillW(BaseSkill):
             self.owner.w_buff_active = False
             self.owner.w_attack_toggle = False
             self.owner.w_poison_applied.clear()
-            print("W Buff Expired.")

@@ -11,9 +11,9 @@ if root_dir not in sys.path:
 
 from entities.base_char import BaseChar
 from entities.leaf_ranger_projectile import PoisonProjectile, PlantProjectile, HealDustProjectile, NormalArrowProjectile
-from combat.player_2.refactored_skill_q import SkillQLaser, update_q_laser_logic, load_laser_cast_animation, load_laser_projectile_frames
+from combat.player_2.refactored_skill_q import SkillQLaser, update_q_laser_logic, load_laser_cast_animation_proportional, load_laser_projectile_frames
 from combat.player_2.refactored_skill_w import SkillW
-from combat.player_2.refactored_skill_e import SkillE, load_arrow_rain_cast_animation, update_e_aoe_logic
+from combat.player_2.refactored_skill_e import SkillE, load_arrow_rain_cast_animation_proportional, update_e_aoe_logic
 from combat.utils import load_image_sequence, flip_sprites_horizontal
 from settings import SKILL_W_BUFF_DURATION, SKILL_W_COST, SKILL_E_2_COST, SKILL_E_2_COOLDOWN, SKILL_DAMAGE_GROWTH
 
@@ -103,6 +103,9 @@ class LeafRanger(BaseChar):
         universal_crop = (117, 45, 77, 83)
 
         self.anims_right['idle'] = load_scaled_sequence('idle', 'idle_', 12, self.scale_factor, universal_crop)
+        print(f"[SPRITE DEBUG] Idle loaded: {len(self.anims_right['idle'])} frames, "
+              f"size={self.anims_right['idle'][0].size if self.anims_right['idle'] else 'N/A'}, scale={self.scale_factor}")
+        
         self.anims_right['run']  = load_scaled_sequence('run', 'run_', 10, self.scale_factor, universal_crop)
         self.anims_right['walk'] = [frame for frame in self.anims_right['run'] for _ in range(1)]
         
@@ -118,15 +121,54 @@ class LeafRanger(BaseChar):
         if not self.anims_right['idle']: 
             self.anims_right['idle'] = [factory.from_color(sdl2.ext.Color(0, 255, 0), (40, 60))]
 
-        # Load Skill Assets (Các chiêu thức Q, E riêng của Player 2 giữ nguyên size của ảnh gốc)
+        # Load Skill Assets
+        # CRITICAL: Q and E cast sprites are 288×128 (same as idle source images)
+        # They MUST use the SAME crop box (117, 45, 77, 83) as idle to keep character position consistent!
+        # Without cropping, the character would appear to "jump" to a different position during cast.
         _skill_asset_dir = os.path.join(root_dir, 'assets', 'Skills')
         _proj_asset_dir  = os.path.join(root_dir, 'assets', 'Projectile')
+
+        # Q cast: Crop to (117, 45, 77, 83) then scale by 1.5× → same size as idle
+        print(f"[SPRITE DEBUG] Loading Q cast with scale_factor={self.scale_factor}, crop_box={universal_crop}")
         
-        self.laser_cast_frames = load_laser_cast_animation(factory, _skill_asset_dir)
+        self.laser_cast_frames = load_laser_cast_animation_proportional(factory, _skill_asset_dir,
+                                                                         scale_factor=self.scale_factor,
+                                                                         crop_box=universal_crop)
+        
+        print(f"[SPRITE DEBUG] Q cast loaded: {len(self.laser_cast_frames)} frames")
+        if self.laser_cast_frames:
+            for i, frame in enumerate(self.laser_cast_frames[:3]):  # Print first 3 frames
+                print(f"  Frame {i}: size={frame.size if hasattr(frame, 'size') else 'N/A'}")
+        
+        # Load laser projectile visual effects
         self.laser_projectile_frames = load_laser_projectile_frames(factory, _proj_asset_dir)
-        self.e_casting_frames = load_arrow_rain_cast_animation(factory, _skill_asset_dir)
+        print(f"[SPRITE DEBUG] Laser projectile loaded: {len(self.laser_projectile_frames)} frames")
+        if self.laser_projectile_frames:
+            print(f"  Size: {self.laser_projectile_frames[0].size if hasattr(self.laser_projectile_frames[0], 'size') else 'N/A'}")
+        
+        # E cast: Also use same crop box to maintain position consistency
+        self.e_casting_frames = load_arrow_rain_cast_animation_proportional(factory, _skill_asset_dir,
+                                                                             scale_factor=self.scale_factor,
+                                                                             crop_box=universal_crop)
         
         self.anims_right['q'] = self.laser_cast_frames
+        self.anims_right['e'] = self.e_casting_frames
+        
+        # Validate size consistency: All animations should be scaled by same factor
+        idle_size = self.anims_right['idle'][0].size if self.anims_right['idle'] else (0, 0)
+        q_size = self.laser_cast_frames[0].size if self.laser_cast_frames else (0, 0)
+        e_size = self.e_casting_frames[0].size if self.e_casting_frames else (0, 0)
+        
+        print(f"[SIZE VALIDATION]")
+        print(f"  Idle: {idle_size[0]}×{idle_size[1]} (crop {universal_crop}, scale {self.scale_factor}×)")
+        print(f"  Q cast: {q_size[0]}×{q_size[1]} (crop {universal_crop}, scale {self.scale_factor}×)")
+        print(f"  E cast: {e_size[0]}×{e_size[1]} (crop {universal_crop}, scale {self.scale_factor}×)")
+        
+        # All should be same size since they use same crop and scale
+        if idle_size == q_size == e_size:
+            print(f"  ✓ ALL MATCH! Character will stay in place during skill casts.")
+        else:
+            print(f"  ✗ MISMATCH! Character will jump during skill transitions!")
         
         # W là chiêu đánh trên không
         w_folder = os.path.join(_skill_asset_dir, "skill_w_2")
@@ -201,6 +243,10 @@ class LeafRanger(BaseChar):
         if self.stamina < 20 or not self.cooldowns.is_ready("skill_q"): return
         # [FIX] Bổ sung trạng thái nhảy
         if self.state in ['idle', 'run', 'walk', 'jump_up', 'fall']:
+            sprite_w = self.sprite.size[0] if self.sprite else 0
+            sprite_h = self.sprite.size[1] if self.sprite else 0
+            print(f"[Q DEBUG] Cast Start: state={self.state} → casting_q, sprite_size=({sprite_w},{sprite_h})")
+            
             self.stamina -= 20
             cd = self.get_skill_cooldown('q')
             self.cooldowns.start_cooldown("skill_q", cd)
@@ -234,6 +280,13 @@ class LeafRanger(BaseChar):
         if not getattr(self, '_laser_spawned', False):
             self.spawn_laser(world, factory, renderer)
         self._laser_spawned = False
+        # Guard already set in base_char before state change
+        
+        sprite_w = self.sprite.size[0] if self.sprite else 0
+        sprite_h = self.sprite.size[1] if self.sprite else 0
+        print(f"[Q DEBUG] Cast Complete: sprite_size=({sprite_w},{sprite_h}), "
+              f"is_jumping={self.is_jumping}, vel_y={self.vel_y:.1f}, guard={getattr(self, '_post_cast_guard', 0)}")
+        
         if self.sound_manager:
             try: self.sound_manager.play_sound("player_q2")
             except: pass
@@ -256,13 +309,22 @@ class LeafRanger(BaseChar):
         sprites = self.laser_projectile_frames
         if not sprites:
             sprites = [factory.from_color(sdl2.ext.Color(255, 255, 0), size=(800, 80))]
+            print("[LASER DEBUG] Using fallback yellow sprite")
+        else:
+            print(f"[LASER DEBUG] Using loaded sprites: {len(sprites)} frames, size={sprites[0].size if sprites else 'N/A'}")
+        
         laser = self.skill_q.execute(world, factory, renderer, skill_sprites=sprites)
         if laser:
             self.active_lasers.append(laser)
+            print(f"[LASER DEBUG] Laser spawned: x={laser.x:.1f}, y={laser.y:.1f}, dir={laser.direction}, "
+                  f"range={laser.max_range}, active={laser.active}, total_lasers={len(self.active_lasers)}")
+        else:
+            print("[LASER DEBUG] ERROR - Laser spawn returned None!")
 
     def spawn_e_aoe(self, renderer, game_map=None):
         if self.skill_e is None: return
-        aoe = self.skill_e.execute(renderer, game_map)
+        enemies = getattr(self, '_cached_enemies', [])
+        aoe = self.skill_e.execute(renderer, game_map, enemies=enemies)
         if aoe:
             self.e_aoe = aoe
 
@@ -271,14 +333,22 @@ class LeafRanger(BaseChar):
         # 1. Bắn Laser ở frame thứ 9
         if self.state == 'casting_q':
             if self.frame_index >= 9 and not getattr(self, '_laser_spawned', False):
+                sprite_w = self.sprite.size[0] if self.sprite else 0
+                sprite_h = self.sprite.size[1] if self.sprite else 0
+                print(f"[Q DEBUG] Frame 9 Spawn: frame={self.frame_index}, sprite_size=({sprite_w},{sprite_h})")
                 self.spawn_laser(world, factory, renderer)
                 self._laser_spawned = True
                 
-        # 2. Gọi mưa tên ở frame thứ 6
+        # 2. Spawn Arrow Rain on the LAST frame of the E animation so the AoE
+        #    appears only after the arrow is visually released (not mid bow-draw).
+        if self.state != 'dashing_e':
+            self._e_spawned = False
+
         if self.state == 'dashing_e':
-            if self.frame_index >= 6 and not getattr(self, '_e_spawned', False):
+            e_total = len(getattr(self, 'e_casting_frames', [])) or 12
+            if self.frame_index >= e_total - 1 and not getattr(self, '_e_spawned', False):
+                self._e_spawned = True   # set first to prevent re-entry
                 self.spawn_e_aoe(renderer, game_map)
-                self._e_spawned = True
                 
         # Update vật lý, máu, va chạm từ BaseChar
         super().update(dt, world, factory, renderer, game_map, boxes)
@@ -298,6 +368,7 @@ class LeafRanger(BaseChar):
 
     # ================= VÒNG LẶP SKILL & RENDER =================
     def update_skills(self, dt, enemies, projectiles=None, network_ctx=None):
+        self._cached_enemies = enemies  # Cache for spawn_e_aoe targeting
         for laser in self.active_lasers[:]:
             update_q_laser_logic(laser, enemies, dt, network_ctx)
             if not laser.active:
@@ -310,25 +381,67 @@ class LeafRanger(BaseChar):
             self.e_aoe = None
 
     def render_skills(self, renderer, camera):
+        # Render Q laser beams with tiled extension effect
+        if self.active_lasers:
+            print(f"[RENDER DEBUG] Rendering {len(self.active_lasers)} lasers")
+        
         for laser in self.active_lasers:
-            if not hasattr(laser, 'sprites') or not laser.sprites: continue
+            if not hasattr(laser, 'sprites') or not laser.sprites: 
+                print(f"[RENDER DEBUG] Laser has no sprites!")
+                continue
+            if not hasattr(laser, 'current_range') or laser.current_range <= 0:
+                print(f"[RENDER DEBUG] Laser range invalid: {getattr(laser, 'current_range', 'N/A')}")
+                continue
+                
             sprite = laser.sprites[laser.anim_frame % len(laser.sprites)]
-            if not hasattr(sprite, 'surface') or not sprite.surface: continue
+            if not hasattr(sprite, 'surface') or not sprite.surface: 
+                continue
             
             surface = sprite.surface
             texture = sdl2.SDL_CreateTextureFromSurface(renderer, surface)
-            if texture:
+            if not texture:
+                continue
+            
+            # Calculate how many sprite tiles we need to cover the current range
+            sprite_width = surface.w
+            sprite_height = surface.h
+            num_tiles = max(1, int(laser.current_range / sprite_width) + 1)
+            
+            # Render tiled beam extending in the direction of fire
+            for i in range(num_tiles):
+                tile_offset = i * sprite_width
+                
+                # Don't render beyond current range
+                if tile_offset >= laser.current_range:
+                    break
+                
+                # Calculate final tile width (might be partial)
+                remaining_range = laser.current_range - tile_offset
+                tile_width = min(sprite_width, int(remaining_range))
+                
                 if laser.direction > 0:
-                    render_x = int(laser.x - camera.camera.x)
+                    # Right-facing laser
+                    render_x = int(laser.x + tile_offset - camera.camera.x)
                 else:
-                    render_x = int(laser.x - laser.max_range - camera.camera.x)
+                    # Left-facing laser (render backwards)
+                    render_x = int(laser.x - tile_offset - tile_width - camera.camera.x)
+                
+                # Source rectangle (for partial tiles at the end)
+                if tile_width < sprite_width:
+                    src_rect = sdl2.SDL_Rect(0, 0, tile_width, sprite_height)
+                else:
+                    src_rect = None  # Use full sprite
+                
                 dst_rect = sdl2.SDL_Rect(
                     render_x,
                     int(laser.y - camera.camera.y),
-                    surface.w, surface.h
+                    tile_width,
+                    sprite_height
                 )
-                sdl2.SDL_RenderCopy(renderer, texture, None, dst_rect)
-                sdl2.SDL_DestroyTexture(texture)
+                
+                sdl2.SDL_RenderCopy(renderer, texture, src_rect, dst_rect)
+            
+            sdl2.SDL_DestroyTexture(texture)
         
         if self.e_aoe is not None and self.e_aoe.active:
             # Sửa lỗi mismatch renderer

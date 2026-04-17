@@ -11,16 +11,79 @@ from entities.leaf_ranger_aoe import ArrowRainAoE
 # ASSET LOADING
 # ─────────────────────────────────────────────────────────────────────────────
 
-def load_arrow_rain_cast_animation(factory, skill_asset_dir):
+def load_arrow_rain_cast_animation(factory, skill_asset_dir, target_size=None):
     e_folder = os.path.join(skill_asset_dir, "skill_e_2")
     sprites = load_image_sequence(
         factory,
         e_folder,
         prefix="3_atk_",
         count=12,
-        target_size=(150, 150),
-        zero_pad=False 
+        target_size=target_size,
+        zero_pad=False
     )
+    return sprites
+
+
+def load_arrow_rain_cast_animation_proportional(factory, skill_asset_dir, scale_factor=1.0, crop_box=None):
+    """
+    Load E cast animation with proportional scaling and optional cropping.
+    
+    E cast sprites are 288×128 pixels (same as idle and Q cast source images).
+    They need the SAME crop box as idle to keep character position consistent.
+    
+    Args:
+        factory: Sprite factory
+        skill_asset_dir: Path to Skills folder
+        scale_factor: Scaling multiplier (e.g., 1.5 for LeafRanger)
+        crop_box: (x, y, w, h) tuple for cropping, e.g., (117, 45, 77, 83)
+    """
+    import sdl2
+    import sdl2.ext
+    import sys
+    e_folder = os.path.join(skill_asset_dir, "skill_e_2")
+    
+    sprites = []
+    for i in range(1, 13):  # 3_atk_1.png through 3_atk_12.png
+        file_path = os.path.join(e_folder, f"3_atk_{i}.png")
+        if not os.path.exists(file_path):
+            continue
+        
+        try:
+            surf_ptr = sdl2.ext.load_image(file_path)
+            
+            # Apply crop box if provided (SAME as idle sprites)
+            if crop_box:
+                cx, cy, cw, ch = crop_box
+                src_rect = sdl2.SDL_Rect(cx, cy, cw, ch)
+            else:
+                orig_w = surf_ptr.w if hasattr(surf_ptr, 'w') else surf_ptr.contents.w
+                orig_h = surf_ptr.h if hasattr(surf_ptr, 'h') else surf_ptr.contents.h
+                src_rect = sdl2.SDL_Rect(0, 0, orig_w, orig_h)
+            
+            # Scale the cropped region
+            new_w = int(src_rect.w * scale_factor)
+            new_h = int(src_rect.h * scale_factor)
+            
+            rmask, gmask, bmask, amask = 0x000000ff, 0x0000ff00, 0x00ff0000, 0xff000000
+            if sys.byteorder == 'big':
+                rmask, gmask, bmask, amask = 0xff000000, 0x00ff0000, 0x0000ff00, 0x000000ff
+            
+            scaled_surf = sdl2.SDL_CreateRGBSurface(0, new_w, new_h, 32, rmask, gmask, bmask, amask)
+            sdl2.SDL_SetSurfaceBlendMode(surf_ptr, sdl2.SDL_BLENDMODE_NONE)
+            
+            dst_rect = sdl2.SDL_Rect(0, 0, new_w, new_h)
+            sdl2.SDL_BlitScaled(surf_ptr, src_rect, scaled_surf, dst_rect)
+            
+            sprite = factory.from_surface(scaled_surf)
+            sprites.append(sprite)
+            sdl2.SDL_FreeSurface(surf_ptr)
+        except Exception as e:
+            print(f"[ERROR] E cast frame {i}: {e}")
+    
+    if sprites:
+        crop_info = f"crop={crop_box}" if crop_box else "no crop"
+        print(f"[E CAST] Loaded {len(sprites)} frames: {sprites[0].size if sprites else 'N/A'} (factor={scale_factor}, {crop_info})")
+    
     return sprites
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -38,8 +101,6 @@ class SkillE(BaseSkill):
         """
         Execute is called mid-animation (frame 6) to spawn the actual AoE.
         """
-        print(f"[{self.name}] Spawning AoE Object!")
-        
         direction = 1 if self.owner.facing_right else -1
         
         # Calculate spawn position (center of AoE)
@@ -60,8 +121,6 @@ class SkillE(BaseSkill):
             
             if found_ground: spawn_y = ground_y
             
-        print(f"[{self.name}] Spawn coords: ({spawn_x}, {spawn_y})")
-        
         # Pass damage multiplier
         aoe = ArrowRainAoE(spawn_x, spawn_y, self.owner, renderer, damage_multiplier=self.damage_multiplier)
         return aoe

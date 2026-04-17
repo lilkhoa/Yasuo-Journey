@@ -1323,9 +1323,28 @@ def run(net_mode: str = "solo", host_ip: str = "127.0.0.1", ext_seed: int = 0):
             if remote_player:
                 remote_player.render(sdl_renderer, camera.camera.x, camera.camera.y)
 
-            # Render Local Player
-            p_dst = SDL_Rect(int(player.entity.sprite.x - camera.camera.x), int(player.entity.sprite.y - camera.camera.y), 128, 128)
+            # Render Local Player at natural sprite size for LeafRanger/scaled characters,
+            # or fixed 128×128 for Yasuo. This allows idle (115×124) and Q cast (186×186)
+            # to each render at their own size while keeping character figure consistent.
+            _psprite = player.entity.sprite
+            if hasattr(player, 'scale_factor') and player.scale_factor != 1.0:
+                # LeafRanger: use natural sprite dimensions
+                render_w, render_h = _psprite.size[0], _psprite.size[1]
+            else:
+                # Yasuo: fixed 128×128
+                render_w, render_h = 128, 128
+            
+            p_dst = SDL_Rect(int(player.entity.sprite.x - camera.camera.x), 
+                            int(player.entity.sprite.y - camera.camera.y), 
+                            render_w, render_h)
             p_tex = sdl2.SDL_CreateTextureFromSurface(sdl_renderer, player.entity.sprite.surface)
+            
+            # Debug: Print render info on state change
+            if not hasattr(player, '_last_render_state') or player._last_render_state != player.state:
+                player._last_render_state = player.state
+                print(f"[RENDER DEBUG] state={player.state}, sprite_size=({_psprite.size[0]},{_psprite.size[1]}), "
+                      f"render_size=({render_w},{render_h})")
+            
             r, g, b = player.color_mod
             if player.flash_timer > 0: r, g, b = (255, 100, 100)
             sdl2.SDL_SetTextureColorMod(p_tex, int(r), int(g), int(b))

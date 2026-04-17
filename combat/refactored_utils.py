@@ -95,11 +95,18 @@ def load_image_sequence(factory, folder_path, prefix, count, target_size=None, z
 
         surface = sdl2.ext.load_image(filepath)
         final_ptr = surface
+        
+        # Get original size for debug logging
+        src_temp, _ = get_surface_struct_and_ptr(surface)
+        original_w, original_h = src_temp.w, src_temp.h
 
         if target_size:
             tw, th = target_size
+            print(f"[LOAD DEBUG] {filename}: original=({original_w},{original_h}) -> target=({tw},{th})")
             scaled_ptr = scale_surface(surface, tw, th)
             final_ptr = scaled_ptr
+        else:
+            print(f"[LOAD DEBUG] {filename}: loaded at original=({original_w},{original_h})")
 
         src, ptr = get_surface_struct_and_ptr(final_ptr)
         if hasattr(ptr, "contents"):
