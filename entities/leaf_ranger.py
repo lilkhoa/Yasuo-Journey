@@ -15,7 +15,7 @@ from combat.player_2.refactored_skill_q import SkillQLaser, update_q_laser_logic
 from combat.player_2.refactored_skill_w import SkillW
 from combat.player_2.refactored_skill_e import SkillE, load_arrow_rain_cast_animation_proportional, update_e_aoe_logic, update_e_projectile_logic
 from combat.utils import load_image_sequence, flip_sprites_horizontal
-from settings import SKILL_W_BUFF_DURATION, SKILL_W_COST, SKILL_E_2_COST, SKILL_E_2_COOLDOWN, SKILL_DAMAGE_GROWTH
+from settings import SKILL_W_BUFF_DURATION, SKILL_W_COST, SKILL_E_2_COST, SKILL_E_2_COOLDOWN, SKILL_DAMAGE_GROWTH, DEBUG_COLLISION_BOXES
 
 class LeafRanger(BaseChar):
     def __init__(self, world, factory, x, y, sound_manager=None, renderer_ptr=None):
@@ -479,6 +479,22 @@ class LeafRanger(BaseChar):
                 sdl2.SDL_RenderCopy(renderer, texture, src_rect, dst_rect)
             
             sdl2.SDL_DestroyTexture(texture)
+
+            # DEBUG: draw the laser hitbox when DEBUG_COLLISION_BOXES is enabled
+            if DEBUG_COLLISION_BOXES:
+                hitbox = laser.get_hitbox()
+                hb_rect = sdl2.SDL_Rect(
+                    int(hitbox.x - camera.camera.x),
+                    int(hitbox.y - camera.camera.y),
+                    hitbox.w,
+                    hitbox.h,
+                )
+                sdl2.SDL_SetRenderDrawBlendMode(renderer, sdl2.SDL_BLENDMODE_BLEND)
+                sdl2.SDL_SetRenderDrawColor(renderer, 255, 255, 0, 60)   # yellow fill
+                sdl2.SDL_RenderFillRect(renderer, hb_rect)
+                sdl2.SDL_SetRenderDrawColor(renderer, 255, 255, 0, 255)  # yellow border
+                sdl2.SDL_RenderDrawRect(renderer, hb_rect)
+                sdl2.SDL_SetRenderDrawBlendMode(renderer, sdl2.SDL_BLENDMODE_NONE)
         
         # Render E falling projectiles
         for projectile in self.e_projectiles:

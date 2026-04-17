@@ -182,15 +182,18 @@ class LaserObject:
         """
         Returns SDL_Rect representing the laser's damage area.
         Laser is a long horizontal rectangle extending from spawn point.
+        Height and Y-origin match the rendered sprite exactly:
+        - top is at self.y (same as the dst_rect top in render_skills)
+        - height is taken from the first sprite frame so it never drifts
+          from the visual.
         """
-        hitbox_height = 40
-        # Centre the hitbox vertically on the spawn Y
-        hitbox_y = int(self.y - hitbox_height // 2)
+        hitbox_height = 20
+        hitbox_y = int(self.y) + 30  # top-aligned with the rendered sprite
 
         if self.direction > 0:  # Firing right
             return sdl2.SDL_Rect(int(self.x), hitbox_y, self.max_range, hitbox_height)
         else:                   # Firing left
-            return sdl2.SDL_Rect(int(self.x - self.max_range), hitbox_y,
+            return sdl2.SDL_Rect(int(self.x - self.max_range) + 80, hitbox_y,
                                  self.max_range, hitbox_height)
 
     def delete(self):
