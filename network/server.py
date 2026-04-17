@@ -198,7 +198,7 @@ class GameServer:
                 with self._char_lock:
                     self._remote_character_type = p.get("character_type", "yasuo")
                 print(f"[Server] Client selected character: {self._remote_character_type}")
-            elif t in (pkt.SKILL_EVENT, pkt.HIT_EVENT, pkt.GAME_PAUSE, pkt.GAME_RESUME, pkt.GAME_EVENT):
+            elif t in (pkt.SKILL_EVENT, pkt.HIT_EVENT, pkt.GAME_PAUSE, pkt.GAME_RESUME, pkt.GAME_EVENT, pkt.PICKUP_REQUEST, pkt.ITEM_DROPPED):
                 try:
                     self._event_queue.put_nowait(p)
                 except queue.Full:
