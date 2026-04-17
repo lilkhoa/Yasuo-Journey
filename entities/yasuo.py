@@ -146,7 +146,7 @@ class Yasuo(BaseChar):
             if w: self.active_walls.append(w)
 
     # ================= VÒNG LẶP UPDATE KỸ NĂNG (POLYMORPHIC) =================
-    def update_skills(self, dt, enemies, projectiles=None, network_ctx=None):
+    def update_skills(self, dt, enemies, projectiles=None, network_ctx=None, camera=None, game_map=None, renderer=None):
         """Cập nhật logic cho các object như lốc hoặc tường gió đang tồn tại"""
         from combat.refactored_skill_q import update_q_logic
         from combat.refactored_skill_w import update_w_logic
