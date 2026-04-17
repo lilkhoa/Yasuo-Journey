@@ -20,6 +20,7 @@ from core.text_renderer import TextRenderer
 # --- IMPORTS ENTITIES (REFACTORED) ---
 from entities.yasuo import Yasuo
 from entities.leaf_ranger import LeafRanger
+from entities.leaf_ranger_projectile import PoisonProjectile, PlantProjectile
 from entities.npc import NPCManager
 from entities.boss import BossManager
 from entities.projectile import ProjectileManager
@@ -1102,7 +1103,11 @@ def run(net_mode: str = "solo", host_ip: str = "127.0.0.1", ext_seed: int = 0):
                                     barrel.take_damage(1, dropped_items, sdl_renderer)
                                     
                                     # Kích hoạt âm thanh vỡ thùng
-                                    if sound_manager: sound_manager.play_sound("player_auto_barrel")
+                                    if sound_manager:
+                                        if owner_class and owner_class.__name__ == 'LeafRanger':
+                                            sound_manager.play_sound("lr_on_hit")
+                                        else:
+                                            sound_manager.play_sound("player_auto_barrel")
                                     
                                     # Hủy mũi tên
                                     if hasattr(projectile, 'on_hit'): projectile.on_hit()
@@ -1134,7 +1139,10 @@ def run(net_mode: str = "solo", host_ip: str = "127.0.0.1", ext_seed: int = 0):
                                 # Kích hoạt hồi máu / thể lực lifesteal cho Leaf Ranger
                                 if hasattr(player, 'on_hit_enemy'):
                                     player.on_hit_enemy(projectile.damage)
-                                    sound_manager.play_sound("player_auto_npc")
+                                    if isinstance(projectile, (PoisonProjectile, PlantProjectile)):
+                                        sound_manager.play_sound("lr_w2")
+                                    else:
+                                        sound_manager.play_sound("lr_on_hit")
                                 
                                 # Cộng điểm hạ gục nếu quái chết
                                 if (hasattr(enemy, 'is_alive') and not enemy.is_alive()) or (hasattr(enemy, 'health') and enemy.health <= 0):

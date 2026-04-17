@@ -132,7 +132,7 @@ SKILL_E_2_HEIGHT = 600               # Arrow rain area height (pixels)
 SKILL_E_2_ROOT_ZONE_HEIGHT = 100     # Bottom portion where roots appear (ground impact zone)
 SKILL_E_2_DURATION = 2.5             # Arrow rain duration (seconds)
 SKILL_E_2_SNARE_DURATION = 1.5       # Root duration for enemies hit (seconds)
-SKILL_E_2_CAST_RANGE = 200           # Distance from player to spawn AoE center
+SKILL_E_2_CAST_RANGE = 600           # Distance from player to spawn AoE center
 
 # Damage Settings [MỚI]
 PLAYER_ATTACK_DAMAGE = 25

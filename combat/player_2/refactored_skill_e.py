@@ -406,16 +406,21 @@ class SkillE(BaseSkill):
             elif not enemy.is_alive():
                 continue
             
-            # Get enemy position
+            # Get enemy position (use center X for accurate direction & distance)
             if hasattr(enemy, 'x'):
                 enemy_x = enemy.x
             elif hasattr(enemy, 'sprite') and hasattr(enemy.sprite, 'x'):
                 enemy_x = enemy.sprite.x
             else:
                 continue
+
+            # Use center X so large enemies (Boss 256px wide) are not skipped
+            # when the player's sprite overlaps the enemy's left edge
+            enemy_width = getattr(enemy, 'width', 0)
+            enemy_center_x = enemy_x + enemy_width / 2
             
             # Check if enemy is in front of player (based on facing direction)
-            dx = enemy_x - self.owner.x
+            dx = enemy_center_x - self.owner.x
             if direction > 0 and dx < 0:  # Facing right, enemy is left
                 continue
             if direction < 0 and dx > 0:  # Facing left, enemy is right
@@ -425,7 +430,7 @@ class SkillE(BaseSkill):
             distance = abs(dx)
             if distance <= self.cast_range and distance < min_distance:
                 min_distance = distance
-                target_x = enemy_x
+                target_x = enemy_center_x
         
         # If no enemy found, target max range
         if target_x is None:

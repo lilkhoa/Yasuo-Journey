@@ -295,8 +295,8 @@ class SkillBarHUD:
             if skill_key in self.skill_icons:
                 sdl2.SDL_RenderCopy(self.renderer, self.skill_icons[skill_key], None, bg_rect)
             
-            # Only render cooldown if skill exists
-            if skill_obj is not None:
+            # Only render cooldown if skill exists OR this is the A (attack) slot
+            if skill_obj is not None or skill_key == 'A':
                 # Cooldown Overlay
                 cooldown = self._get_cooldown_remaining(skill_key)
                 max_cd = self._get_cooldown_max(skill_key)
@@ -383,16 +383,19 @@ class SkillBarHUD:
             return 0
         
         skill_obj = self.player.skills[index]
-        if skill_obj is None:
+        # For the A slot (attack), skill_obj is None but cooldown is tracked
+        # directly on player.cooldowns under the key "attack" — don't bail early.
+        if skill_obj is None and skill_key != 'A':
             return 0
         
         # Check if skill has cooldown_manager
-        if hasattr(skill_obj, 'cooldown_manager'):
+        if skill_obj is not None and hasattr(skill_obj, 'cooldown_manager'):
             return skill_obj.cooldown_manager.get_cooldown_remaining()
         
         # Fallback: check player's cooldown_manager
         if hasattr(self.player, 'cooldowns'):
-            skill_map = {0: 'skill_q', 1: 'skill_w', 2: 'skill_e', 3: 'skill_r', 4: 'skill_a'}
+            # The attack (A) cooldown is stored under "attack", not "skill_a"
+            skill_map = {0: 'skill_q', 1: 'skill_w', 2: 'skill_e', 3: 'skill_r', 4: 'attack'}
             name = skill_map.get(index, skill_key.lower())
             return self.player.cooldowns.cooldowns.get(name, 0)
         
