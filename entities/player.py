@@ -657,7 +657,7 @@ class Player:
             w = self.skill_w.cast(world, factory, renderer, skill_sprites=self.wall_frames)
             if w: self.active_walls.append(w)
 
-    def update_skills(self, dt, enemies, network_ctx=None):
+    def update_skills(self, dt, enemies, projectiles=None, network_ctx=None, camera=None, game_map=None, renderer=None):
         """
         Polymorphic skill update method.
         Updates all active skills (tornadoes, walls, dashes, etc.)
@@ -665,7 +665,11 @@ class Player:
         Args:
             dt: Delta time
             enemies: List of enemy entities for collision
+            projectiles: List of active projectiles (unused for Yasuo)
             network_ctx: Network context (is_multi, is_host, game_client) or None
+            camera: Camera instance (unused for Yasuo, needed for LeafRanger)
+            game_map: GameMap instance (unused for Yasuo, needed for LeafRanger)
+            renderer: SDL2 renderer (unused for Yasuo, needed for LeafRanger)
         """
         # Import here to avoid circular imports
         from combat.skill_q import update_q_logic

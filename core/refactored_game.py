@@ -1059,7 +1059,9 @@ def run(net_mode: str = "solo", host_ip: str = "127.0.0.1", ext_seed: int = 0):
 
             # [SỬA LỖI Ở ĐÂY] Lấy danh sách đạn đang bay và truyền vào cho nhân vật
             active_projectiles = getattr(projectile_manager, 'projectiles', [])
-            player.update_skills(dt, all_combat_targets,projectiles=active_projectiles, network_ctx=network_ctx)
+            player.update_skills(dt, all_combat_targets, projectiles=active_projectiles, 
+                               network_ctx=network_ctx, camera=camera, game_map=my_map, 
+                               renderer=renderer.sdlrenderer)
             
             if hasattr(player, 'skill_e') and hasattr(player.skill_e, 'update_dash'):
                 player.skill_e.update_dash(dt, all_combat_targets, all_obstacles, my_map, network_ctx)
@@ -1138,6 +1140,10 @@ def run(net_mode: str = "solo", host_ip: str = "127.0.0.1", ext_seed: int = 0):
                                 if (hasattr(enemy, 'is_alive') and not enemy.is_alive()) or (hasattr(enemy, 'health') and enemy.health <= 0):
                                     kill_count += 1
                                     if hasattr(player, 'on_kill_enemy'): player.on_kill_enemy()
+                                
+                                # Áp dụng hiệu ứng đặc biệt (độc, chặn, ...) nếu đạn hỗ trợ
+                                if hasattr(projectile, 'apply_effect'):
+                                    projectile.apply_effect(enemy)
                                 
                                 # Gọi hàm on_hit() để mũi tên biến mất ngay lập tức
                                 projectile.on_hit()

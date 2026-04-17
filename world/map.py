@@ -133,16 +133,20 @@ class GameMap:
         
         return rects
     
-    def get_ground_height_at_x(self, world_x):
+    def get_ground_height_at_x(self, world_x, start_y=0):
         """
         Find the ground height (Y position) at a given world X coordinate.
-        Scans from top to bottom to find the topmost solid terrain tile.
+        Scans from start_y downward to find the first solid terrain tile below that point.
+        
+        This is useful for finding ground for falling objects that may pass through
+        multiple platform levels.
         
         Args:
             world_x: World X position (in pixels)
+            start_y: Y position to start scanning from (defaults to 0 = top of map)
             
         Returns:
-            float: Y position of the ground surface at this X coordinate,
+            float: Y position of the ground surface at this X coordinate below start_y,
                    or None if no terrain found at this column
         """
         if not self.map_data or len(self.map_data) == 0:
@@ -155,16 +159,29 @@ class GameMap:
         if col < 0 or col >= len(self.map_data[0]):
             return None
         
-        # Scan from top (row 0) downward to find first terrain tile
-        for row in range(len(self.map_data)):
+        # Convert start_y to row index (start searching from this row)
+        start_row = max(0, int(start_y // TILE_SIZE))
+        
+        # DEBUG: Track what we're scanning
+        from settings import DEBUG_COLLISION_BOXES
+        if DEBUG_COLLISION_BOXES and start_y > 0:  # Only log when actively searching (not initial scan)
+            print(f"[MapGroundScan] x={world_x:.1f} (col={col}), start_y={start_y:.1f} (row={start_row})")
+        
+        # Scan from start_row downward to find first terrain tile
+        for row in range(start_row, len(self.map_data)):
             if col < len(self.map_data[row]):
                 char = self.map_data[row][col]
                 if char in SOLID_TILES:
                     # Found terrain! Return the Y position of its top surface
-                    # The tile's top is at (row * TILE_SIZE)
-                    # Subtracting a bit for visual positioning on ground
                     ground_y = row * TILE_SIZE
+                    
+                    if DEBUG_COLLISION_BOXES and start_y > 0:
+                        print(f"[MapGroundScan] Found ground at row={row}, y={ground_y}, tile='{char}'")
+                    
                     return ground_y
         
-        # No terrain found in this column
+        # No terrain found in this column below start_y
+        if DEBUG_COLLISION_BOXES and start_y > 0:
+            print(f"[MapGroundScan] No ground found below y={start_y:.1f}")
+        
         return None

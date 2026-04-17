@@ -173,7 +173,8 @@ class BaseChar:
             int(self.height)
         )
 
-        self.draw_debug_rect(renderer, hitbox, camera_x, camera_y)  # đỏ = hitbox
+        # Debug collision box disabled
+        # self.draw_debug_rect(renderer, hitbox, camera_x, camera_y)  # đỏ = hitbox
 
     # ================= HỆ THỐNG BUFF VÀ CHỈ SỐ =================
     def apply_buff(self, name, duration, value=0):
@@ -342,13 +343,20 @@ class BaseChar:
                 self.sound_manager.play_sound("player_land")
         if self.is_jumping and self.vel_y == 0: self.vel_y = self.gravity
 
-        # [MỚI CHÈN VÀO ĐÂY] Tự động set state nhảy/rơi nếu đang ở trên không
-        # Sẽ không can thiệp nếu đang vung vũ khí hoặc tung chiêu
+        # Auto-set jump/fall state if airborne (with post-cast guard)
+        # Decrement guard timer each frame
+        if hasattr(self, '_post_cast_guard') and self._post_cast_guard > 0:
+            self._post_cast_guard -= 1
+        
+        # Only auto-transition to fall/jump_up if not in protected states AND guard expired
         if self.is_jumping and self.state not in ['dead', 'hurt', 'casting_q', 'casting_w', 'dashing_e', 'attacking']:
-            if self.vel_y < 0:
-                self.state = 'jump_up'
-            else:
-                self.state = 'fall'
+            guard_active = (self.state == 'idle' and getattr(self, '_post_cast_guard', 0) > 0)
+            if not guard_active:
+                new_state = 'jump_up' if self.vel_y < 0 else 'fall'
+                if self.state != new_state:
+                    print(f"[Q DEBUG] Auto-transition: {self.state} → {new_state}, "
+                          f"is_jumping={self.is_jumping}, vel_y={self.vel_y:.1f}, guard={getattr(self, '_post_cast_guard', 0)}")
+                self.state = new_state
 
         if self.state == 'hurt':
             self.hurt_timer += dt
@@ -378,10 +386,24 @@ class BaseChar:
         elif self.state == 'fall': frames = current_anims.get('fall', current_anims.get('jump', current_anims.get('idle', [])))
         else: frames = current_anims.get('idle', [])
 
-        if not frames: return
+        # Safety check: If frames are missing for skill casting states, force return to idle
+        if not frames:
+            if self.state in ['casting_q', 'casting_w', 'dashing_e', 'attacking']:
+                print(f"[ANIMATION ERROR] Missing frames for state '{self.state}', forcing idle")
+                self.state = 'idle'
+                self.frame_index = 0
+                # Try to get idle frames as fallback
+                frames = current_anims.get('idle', [])
+                if not frames:
+                    return  # Critical failure - no idle frames either
+            else:
+                return
 
         if self.state != self.prev_state:
             self.frame_index = 0
+            sprite_w = self.sprite.size[0] if self.sprite else 0
+            sprite_h = self.sprite.size[1] if self.sprite else 0
+            print(f"[STATE CHANGE] {self.prev_state} → {self.state}, Current sprite: ({sprite_w}×{sprite_h}), Frames available: {len(frames)}")
             self.prev_state = self.state
 
         speed = 0.05 if self.state == 'attacking' else self.anim_speed
@@ -390,7 +412,12 @@ class BaseChar:
             self.anim_timer = 0
             self.frame_index += 1
             if self.frame_index >= len(frames):
+                # Set guard BEFORE state change so it's active when physics runs next frame
                 if self.state == 'casting_q':
+                    self._post_cast_guard = 3  # 3 frames to ensure protection
+                    sprite_w = self.sprite.size[0] if self.sprite else 0
+                    sprite_h = self.sprite.size[1] if self.sprite else 0
+                    print(f"[Q DEBUG] Animation End: casting_q → idle, sprite_size=({sprite_w},{sprite_h})")
                     self.on_cast_q_complete(world, factory, renderer)
                     self.state = 'idle'
                 elif self.state == 'casting_w':
@@ -412,8 +439,22 @@ class BaseChar:
         idx = self.frame_index % len(frames)
         if self.entity.sprite:
             old_pos = self.entity.sprite.position
+            old_height = self.entity.sprite.size[1]
+            old_width = self.entity.sprite.size[0]
+            old_state = self.state
             self.entity.sprite = frames[idx]
-            self.entity.sprite.position = old_pos
+            new_height = self.entity.sprite.size[1]
+            new_width = self.entity.sprite.size[0]
+            
+            # Debug log sprite size changes
+            if old_width != new_width or old_height != new_height:
+                print(f"[SPRITE SIZE] State={old_state}, Frame={self.frame_index}/{len(frames)}: "
+                      f"({old_width}×{old_height}) → ({new_width}×{new_height})")
+            
+            # Adjust Y position to keep feet at same position when sprite size changes
+            # (sprites are positioned by top-left, so larger sprites would sink down)
+            y_adjust = old_height - new_height
+            self.entity.sprite.position = (old_pos[0], old_pos[1] + y_adjust)
 
     # ================= HOOKS CHO CLASS CON OVERRIDE =================
     def on_cast_q_complete(self, world, factory, renderer):
