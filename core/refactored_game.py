@@ -363,8 +363,8 @@ def run(net_mode: str = "solo", host_ip: str = "127.0.0.1", ext_seed: int = 0):
                 game_menu.lobby_client_ready = game_client.lobby_client_ready
                 game_menu.lobby_host_ready = game_client.lobby_host_ready
                 if game_client.lobby_game_starting:
-                    game_menu.state = MenuState.GAME_PLAYING
-                    menu_action = "START_GAME"
+                    game_menu.state = MenuState.CHARACTER_SELECT
+                    game_menu.char_selection = 0
 
         if menu_action == "QUIT_GAME": running = False
         elif menu_action == "START_HOST":
@@ -395,6 +395,10 @@ def run(net_mode: str = "solo", host_ip: str = "127.0.0.1", ext_seed: int = 0):
                 else:
                     if remote_player is None:
                         remote_player = RemotePlayer(world, software_factory, renderer_ptr=renderer.sdlrenderer)
+                    # Load host's character sprite for remote_player
+                    host_char = game_client.get_remote_character_type()
+                    if remote_player and host_char:
+                        remote_player.set_character_type(host_char)
 
         elif menu_action == "LOBBY_ACTION":
             if is_host and game_server:
@@ -403,8 +407,9 @@ def run(net_mode: str = "solo", host_ip: str = "127.0.0.1", ext_seed: int = 0):
                 elif game_server.client_ready:
                     game_server.game_starting = True
                     game_server.push_lobby_state()
-                    game_menu.state = MenuState.GAME_PLAYING
-                    menu_action = "START_GAME"
+                    # Go to character select first, then start game
+                    game_menu.state = MenuState.CHARACTER_SELECT
+                    game_menu.char_selection = 0
             elif is_client and game_client:
                 game_client.send_lobby_ready(not game_menu.lobby_client_ready)
                 game_menu.lobby_client_ready = not game_menu.lobby_client_ready
@@ -428,6 +433,20 @@ def run(net_mode: str = "solo", host_ip: str = "127.0.0.1", ext_seed: int = 0):
                 char_id = menu_action[1]
             
             print(f"[DEBUG] Starting game with character: {char_id}")
+
+            # Notify network about character selection
+            if is_host and game_server:
+                game_server.set_host_character_type(char_id)
+                # Load remote player's character (client's choice)
+                remote_char = game_server.get_remote_character_type()
+                if remote_player and remote_char:
+                    remote_player.set_character_type(remote_char)
+            elif is_client and game_client:
+                game_client.send_character_select(char_id)
+                # Load host's character for remote display
+                host_char = game_client.get_remote_character_type()
+                if remote_player and host_char:
+                    remote_player.set_character_type(host_char)
             
             if 'player' in locals() and player.entity:
                 player.entity.delete()
@@ -912,6 +931,28 @@ def run(net_mode: str = "solo", host_ip: str = "127.0.0.1", ext_seed: int = 0):
                     remote_player.apply_network_state(remote_raw)
                     remote_player.update(dt)
 
+                for e_state in game_client.get_entity_state():
+                    target_id = e_state.get('eid')
+                    hp = e_state.get('hp', 0)
+                    for n in npc_manager.npcs:
+                        if getattr(n, 'net_id', id(n)) == target_id:
+                            if n.health > 0 and hp <= 0:
+                                n.take_damage(n.health)
+                            else:
+                                n.health = hp
+                            n.x = e_state.get('x', n.x)
+                            n.y = e_state.get('y', n.y)
+                            break
+                    for b in boss_manager.bosses:
+                        if getattr(b, 'net_id', id(b)) == target_id:
+                            if getattr(b, 'health', 0) > 0 and hp <= 0:
+                                b.take_damage(getattr(b, 'health', 0))
+                            elif hasattr(b, 'health'):
+                                b.health = hp
+                            b.x = e_state.get('x', b.x)
+                            b.y = e_state.get('y', b.y)
+                            break
+
                 for gev in game_client.pop_game_events():
                     t = gev.get('type')
                     if t == net_pkt.GAME_EVENT:
@@ -928,42 +969,17 @@ def run(net_mode: str = "solo", host_ip: str = "127.0.0.1", ext_seed: int = 0):
                     elif t == net_pkt.GAME_RESUME:
                         if game_menu.state == MenuState.PAUSE:
                             game_menu.state = MenuState.GAME_PLAYING
-
-                for e_state in game_client.get_entity_state():
-                    target_id = e_state.get('eid')
-                    hp = e_state.get('hp', 0)
-                    for n in npc_manager.npcs:
-                        if getattr(n, 'net_id', id(n)) == target_id:
-                            if n.health > 0 and hp <= 0:
-                                n.take_damage(n.health) 
-                            else:
-                                n.health = hp
-                            n.x = e_state.get('x', n.x)
-                            n.y = e_state.get('y', n.y)
-                            break
-                    for b in boss_manager.bosses:
-                        if getattr(b, 'net_id', id(b)) == target_id:
-                            if getattr(b, 'health', 0) > 0 and hp <= 0:
-                                b.take_damage(getattr(b, 'health', 0))
-                            elif hasattr(b, 'health'):
-                                b.health = hp
-                            b.x = e_state.get('x', b.x)
-                            b.y = e_state.get('y', b.y)
-                            break
-                
-                for gev in game_client.pop_game_events():
-                    t = gev.get('type')
-                    if t == net_pkt.ITEM_DROPPED:
+                    elif t == net_pkt.ITEM_DROPPED:
                         item_type_val = gev.get('item_type')
-                        x = gev.get('x', 0)
-                        y = gev.get('y', 0)
+                        ix = gev.get('x', 0)
+                        iy = gev.get('y', 0)
                         item_net_id = gev.get('item_net_id')
                         try:
                             item_type = ItemType(item_type_val)
                             item_info = common_drop_table.get(item_type)
                             if item_info:
                                 item_name, item_w, item_h, item_tex = item_info
-                                new_item = DroppedItem(x, y, item_tex, item_w, item_h,
+                                new_item = DroppedItem(ix, iy, item_tex, item_w, item_h,
                                                       text_renderer, item_type, item_name)
                                 new_item.net_id = item_net_id
                                 new_item.pickup_delay = 1.5
@@ -978,6 +994,10 @@ def run(net_mode: str = "solo", host_ip: str = "127.0.0.1", ext_seed: int = 0):
                                 if item.net_id == item_net_id:
                                     item.is_collected = True
                                     break
+                    elif t == net_pkt.CHARACTER_SELECT:
+                        remote_char = gev.get('character_type', 'yasuo')
+                        if remote_player:
+                            remote_player.set_character_type(remote_char)
 
             elif is_client and game_client and not game_client.is_connected() and game_menu.state == MenuState.GAME_PLAYING:
                 print("[Client] Disconnected from server! Returning to menu.")

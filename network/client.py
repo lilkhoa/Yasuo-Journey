@@ -44,6 +44,10 @@ class GameClient:
         self.lobby_client_ready = False
         self.lobby_game_starting = False
 
+        # Character type tracking
+        self._local_character_type = "yasuo"   # Set before connecting
+        self._remote_character_type = "yasuo"  # Received from server handshake
+
         self._state_lock  = threading.Lock()
         self._events_lock = threading.Lock()
 
@@ -132,6 +136,16 @@ class GameClient:
         ev = pkt.make_pickup_request(self.player_id, item_net_id, player_net_id)
         self._enqueue(ev)
 
+    def send_character_select(self, character_type: str):
+        """Send the local player's character choice to the server."""
+        self._local_character_type = character_type
+        ev = pkt.make_character_select(self.player_id, character_type)
+        self._enqueue(ev)
+
+    def get_remote_character_type(self) -> str:
+        """Return the host player's character type (received in handshake)."""
+        return self._remote_character_type
+
     # ── Inbound helpers (game loop ← server) ─────────────────────────────
 
     def get_remote_player_state(self) -> dict:
@@ -171,7 +185,9 @@ class GameClient:
             if t == pkt.HANDSHAKE:
                 self.player_id = p.get("player_id", 1)
                 self.seed      = p.get("seed", 0)
+                self._remote_character_type = p.get("character_type", "yasuo")
                 self._handshake_done.set()
+                print(f"[Client] Host character: {self._remote_character_type}")
 
             elif t == pkt.PLAYER_STATE:
                 # Server is relaying the host player's state to us
@@ -191,7 +207,11 @@ class GameClient:
                 self.lobby_client_ready = p.get("client_ready", False)
                 self.lobby_game_starting = p.get("game_starting", False)
 
-            elif t in (pkt.GAME_EVENT, pkt.GAME_PAUSE, pkt.GAME_RESUME, pkt.GAME_OVER):
+            elif t == pkt.CHARACTER_SELECT:
+                self._remote_character_type = p.get("character_type", "yasuo")
+                print(f"[Client] Remote player selected: {self._remote_character_type}")
+
+            elif t in (pkt.GAME_EVENT, pkt.GAME_PAUSE, pkt.GAME_RESUME, pkt.ITEM_DROPPED, pkt.PICKUP_REQUEST):
                 with self._events_lock:
                     self._pending_game_events.append(p)
 
