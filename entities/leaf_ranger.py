@@ -252,6 +252,12 @@ class LeafRanger(BaseChar):
     #             self.state = 'fall'
 
     # ================= KHỞI TẠO KÍCH HOẠT =================
+    def attack(self):
+        super().attack()
+        if self.state == 'attacking' and self.frame_index == 0 and self.sound_manager:
+            try: self.sound_manager.play_sound("lr_normal_attack")
+            except: pass
+
     def start_w(self, direction=0):
         """Activate W buff instantly (no animation)"""
         if self.stamina < LR_SKILL_W_COST or not self.cooldowns.is_ready("skill_w"): return
@@ -263,10 +269,6 @@ class LeafRanger(BaseChar):
             
             # Instant buff activation (no casting animation)
             self.spawn_w_buff()
-            
-            if self.sound_manager:
-                try: self.sound_manager.play_sound("player_w1")
-                except: pass
 
     def start_q(self, direction=0):
         if self.stamina < LR_SKILL_Q_COST or not self.cooldowns.is_ready("skill_q"): return
@@ -284,7 +286,7 @@ class LeafRanger(BaseChar):
             self.frame_index = 0
             self._laser_spawned = False
             if self.sound_manager:
-                try: self.sound_manager.play_sound("player_q1")
+                try: self.sound_manager.play_sound("lr_q1")
                 except: pass
 
     def start_e(self, world=None, factory=None, renderer=None, direction=0):
@@ -301,7 +303,7 @@ class LeafRanger(BaseChar):
             self.frame_index = 0
             self._e_spawned = False
             if self.sound_manager:
-                try: self.sound_manager.play_sound("player_e1")
+                try: self.sound_manager.play_sound("lr_e1")
                 except: pass
 
     # ================= HOOKS KHI ANIMATION KẾT THÚC =================
@@ -333,10 +335,6 @@ class LeafRanger(BaseChar):
         print(f"[Q DEBUG] Cast Complete: sprite_size=({sprite_w},{sprite_h}), "
               f"is_jumping={self.is_jumping}, vel_y={self.vel_y:.1f}, guard={getattr(self, '_post_cast_guard', 0)}")
         
-        if self.sound_manager:
-            try: self.sound_manager.play_sound("player_q2")
-            except: pass
-
     def on_cast_w_complete(self, world, factory, renderer):
         """W has no animation - this should never be called"""
         pass
@@ -362,6 +360,9 @@ class LeafRanger(BaseChar):
             self.active_lasers.append(laser)
             print(f"[LASER DEBUG] Laser spawned: x={laser.x:.1f}, y={laser.y:.1f}, dir={laser.direction}, "
                   f"range={laser.max_range}, active={laser.active}, total_lasers={len(self.active_lasers)}")
+            if self.sound_manager:
+                try: self.sound_manager.play_sound("lr_q2")
+                except: pass
         else:
             print("[LASER DEBUG] ERROR - Laser spawn returned None!")
 
@@ -400,11 +401,15 @@ class LeafRanger(BaseChar):
 
         if self.state == 'dashing_e':
             e_total = len(getattr(self, 'e_casting_frames', [])) or 12
-            if self.frame_index >= e_total - 1 and not getattr(self, '_e_spawned', False):
+            spawn_frame = max(1, e_total // 2)  # Fire halfway through animation
+            if self.frame_index >= spawn_frame and not getattr(self, '_e_spawned', False):
                 self._e_spawned = True   # set first to prevent re-entry
                 # Camera will be passed later via _cached_camera in update_skills
                 # For now, just set a flag
                 self._e_ready_to_spawn = True
+                if self.sound_manager:
+                    try: self.sound_manager.play_sound("lr_e2")
+                    except: pass
                 
         # Update vật lý, máu, va chạm từ BaseChar
         super().update(dt, world, factory, renderer, game_map, boxes)

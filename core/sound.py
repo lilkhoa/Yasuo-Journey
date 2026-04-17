@@ -243,6 +243,15 @@ class SoundManager:
         success &= self.load_sound("player_w2", os.path.join("assets", "Sounds", "W-2.ogg"))
         success &= self.load_sound("player_e1", os.path.join("assets", "Sounds", "E-1.ogg"))
         success &= self.load_sound("player_e2", os.path.join("assets", "Sounds", "E-2.ogg"))
+
+        # Leaf Ranger skill sounds
+        success &= self.load_sound("lr_q1", os.path.join("assets", "Sounds", "leaf_ranger", "Q-1.ogg"))
+        success &= self.load_sound("lr_q2", os.path.join("assets", "Sounds", "leaf_ranger", "Q_2.mp3"))
+        success &= self.load_sound("lr_w2", os.path.join("assets", "Sounds", "leaf_ranger", "W_2.mp3"))
+        success &= self.load_sound("lr_e1", os.path.join("assets", "Sounds", "leaf_ranger", "E_1.ogg"))
+        success &= self.load_sound("lr_e2", os.path.join("assets", "Sounds", "leaf_ranger", "E_2.mp3"))
+        success &= self.load_sound("lr_on_hit", os.path.join("assets", "Sounds", "leaf_ranger", "on_hit.mp3"))
+        success &= self.load_sound("lr_normal_attack", os.path.join("assets", "Sounds", "leaf_ranger", "normal_attack.ogg"))
         
         # Movement sounds
         success &= self.load_sound("player_walk", os.path.join("assets", "Sounds", "player-walk.mp3"))
