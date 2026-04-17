@@ -213,9 +213,15 @@ class RemotePlayer:
             return
         self._last_applied_ts = ts
         
+        # Sync clocks: calculate the offset between local monotonic and sender's monotonic
+        if not hasattr(self, '_clock_offset'):
+            self._clock_offset = time.monotonic() - ts
+            
+        local_ts = ts + self._clock_offset
+        
         self.visible = True
         self._interpolator.add_snapshot(
-            ts=ts if ts != 0 else time.monotonic(),
+            ts=local_ts,
             x=net_state.get('x', self.x),
             y=net_state.get('y', self.y),
             state=net_state.get('state', 'idle'),

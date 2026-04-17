@@ -189,10 +189,9 @@ class DroppedItem:
             
             # --- NETWORK MODE: Send pickup request to server ---
             if game_client and game_client.is_connected():
-                # In network mode: send pickup request
-                # BUG FIX: Set is_collected=True ngay để tránh gửi lại nhiều lần
-                # Server sẽ approve và gửi lại effect (coin, equipment, etc.)
-                self.is_collected = True
+                if getattr(self, 'pickup_requested', False):
+                    return False
+                self.pickup_requested = True
                 player_id = getattr(game_client, 'player_id', 1)
                 game_client.send_pickup_request(self.net_id, player_id)
                 return True  # Pickup interaction was processed

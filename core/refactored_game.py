@@ -444,6 +444,11 @@ def run(net_mode: str = "solo", host_ip: str = "127.0.0.1", ext_seed: int = 0):
             # Notify network about character selection
             if is_host and game_server:
                 game_server.set_host_character_type(char_id)
+                # BUG FIX: Host need to broadcast character select to client
+                char_pkt = net_pkt.make_packet(net_pkt.CHARACTER_SELECT)
+                char_pkt['character_type'] = char_id
+                game_server.push_game_event(char_pkt)
+                
                 # Load remote player's character (client's choice)
                 remote_char = game_server.get_remote_character_type()
                 if remote_player and remote_char:
@@ -852,6 +857,9 @@ def run(net_mode: str = "solo", host_ip: str = "127.0.0.1", ext_seed: int = 0):
                     frame_index=local_state['frame_index'],
                     timestamp=local_state['ts'],
                 )
+                # BUG FIX Animation: Thêm wall-clock offset để client có thể
+                # dùng timestamp tương đối thay vì tuyệt đối (2 máy dùng clock khác nhau)
+                state_pkt['wall_ts'] = time.time()
                 game_server.push_local_player_state(state_pkt)
 
                 if _net_tick % _net_broadcast_every == 0:
@@ -935,6 +943,8 @@ def run(net_mode: str = "solo", host_ip: str = "127.0.0.1", ext_seed: int = 0):
                                 approved_ev = net_pkt.make_pickup_request(player_id, item_net_id, player_id)
                                 approved_ev['approved'] = True
                                 game_server.push_game_event(approved_ev)
+                                # BUG FIX: Đánh dấu đã broadcast để host không gửi lại event "0 nhặt"
+                                item.pickup_broadcasted = True
                                 break
                     elif t == net_pkt.GAME_PAUSE:
                         if game_menu.state == MenuState.GAME_PLAYING:
@@ -966,6 +976,8 @@ def run(net_mode: str = "solo", host_ip: str = "127.0.0.1", ext_seed: int = 0):
                     frame_index=local_state['frame_index'],
                     timestamp=local_state['ts'],
                 )
+                # BUG FIX Animation: Thêm wall_ts để host có thể sync timestamp
+                state_pkt['wall_ts'] = time.time()
                 game_client.send_player_state(state_pkt)
 
                 remote_raw = game_client.get_remote_player_state()
