@@ -30,6 +30,8 @@ if root_dir not in sys.path:
 
 from combat.utils import load_grid_sprite_sheet, flip_sprites_horizontal
 from network.interpolation import RemotePlayerInterpolator
+from combat.refactored_skill_q import load_tornado_assets, TornadoObject
+from combat.refactored_skill_w import load_wall_assets, WallObject
 
 PLAYER_ASSET_DIR = os.path.join(root_dir, 'assets', 'Player')
 PLAYER2_ASSET_DIR = os.path.join(root_dir, 'assets', 'Player_2')
@@ -60,7 +62,11 @@ class RemotePlayer:
         # ── SDLExt entity for sprite binding ──────────────────────────────
         self.entity = sdl2.ext.Entity(world)
         self.entity.sprite = self.anims_right['idle'][0]
+        self.entity = sdl2.ext.Entity(world)
+        self.entity.sprite = self.anims_right['idle'][0]
         self.entity.sprite.position = (200, 350)   # Default off-screen-ish
+
+        self.active_vfx = []
 
         # ── State ─────────────────────────────────────────────────────────
         self.x: float           = 200.0
@@ -107,6 +113,13 @@ class RemotePlayer:
 
         self._render_w = 128
         self._render_h = 128
+        
+        # Load skill VFX frames
+        skill_dir = os.path.join(root_dir, 'assets', 'Skills')
+        self.skill_frames = {
+            'q': load_tornado_assets(factory, skill_dir),
+            'w': load_wall_assets(factory, skill_dir)
+        }
 
     def _load_leaf_ranger_sprites(self, factory):
         """Load Leaf Ranger (Player 2) sprites with scaling and cropping."""
@@ -158,10 +171,13 @@ class RemotePlayer:
         self.anims_right['fall']          = load_scaled_sequence('jump_down', 'jump_down_', 3, universal_crop)
         self.anims_right['dead']          = load_scaled_sequence('death', 'death_', 19, universal_crop)
         self.anims_right['hurt']          = load_scaled_sequence('take_hit', 'take_hit_', 6, universal_crop)
-        # Q and E use cast_crop but for remote display, idle fallback is fine
-        self.anims_right['q']             = load_scaled_sequence('idle', 'idle_', 12, universal_crop)
-        self.anims_right['w']             = []  # W is instant buff, no anim
-        self.anims_right['e']             = load_scaled_sequence('idle', 'idle_', 12, universal_crop)
+        _skill_asset_dir = os.path.join(root_dir, 'assets', 'Skills')
+        from combat.player_2.refactored_skill_q import load_laser_cast_animation_proportional
+        from combat.player_2.refactored_skill_e import load_arrow_rain_cast_animation_proportional
+        cast_crop = (90, 45, 120, 83)
+        self.anims_right['q'] = load_laser_cast_animation_proportional(factory, _skill_asset_dir, scale_factor=scale, crop_box=cast_crop)
+        self.anims_right['w'] = []  # W is instant buff, no anim
+        self.anims_right['e'] = load_arrow_rain_cast_animation_proportional(factory, _skill_asset_dir, scale_factor=scale, crop_box=cast_crop)
 
         if not self.anims_right['idle']:
             self.anims_right['idle'] = [factory.from_color(sdl2.ext.Color(0, 200, 100), (40, 60))]
@@ -178,6 +194,24 @@ class RemotePlayer:
             self._render_w = self.anims_right['idle'][0].size[0]
             self._render_h = self.anims_right['idle'][0].size[1]
         print(f"[RemotePlayer] Leaf Ranger loaded: {self._render_w}x{self._render_h}")
+        
+        # Load skill VFX frames (graceful fallback if assets missing)
+        _proj_asset_dir = os.path.join(root_dir, 'assets', 'Projectile')
+        self.skill_frames = {'q': [], 'e': []}
+        try:
+            from combat.player_2.refactored_skill_q import load_laser_projectile_frames
+            frames = load_laser_projectile_frames(factory, _proj_asset_dir)
+            if frames:
+                self.skill_frames['q'] = frames
+        except Exception as e:
+            print(f"[RemotePlayer] Could not load Leaf Ranger Q frames: {e}")
+        try:
+            from combat.player_2.refactored_skill_e import load_arrow_rain_cast_animation_proportional
+            frames = load_arrow_rain_cast_animation_proportional(factory, _skill_asset_dir, scale_factor=scale)
+            if frames:
+                self.skill_frames['e'] = frames
+        except Exception as e:
+            print(f"[RemotePlayer] Could not load Leaf Ranger E frames: {e}")
 
     def set_character_type(self, char_type: str):
         """
@@ -241,6 +275,8 @@ class RemotePlayer:
         Advance animation based on the interpolated network state.
         Call once per frame from the main game loop.
         """
+        self.update_vfx(dt)
+        
         if not self.visible:
             return
 
@@ -306,10 +342,158 @@ class RemotePlayer:
             result = anims.get('idle', [])
         return result
 
-    # ── Render ────────────────────────────────────────────────────────────
+    # ── Render & VFX ────────────────────────────────────────────────────────────
+
+    def spawn_skill_vfx(self, skill_key: str, direction: int, x: float, y: float, game_map=None, camera=None):
+        """Spawn purely visual effect objects for the remote player's skill casts."""
+        frames = getattr(self, 'skill_frames', {}).get(skill_key)
+        
+        # Attack projectiles load their own textures so they don't need frames
+        if not frames and skill_key not in ['attack_normal', 'attack_w_poison', 'attack_w_plant']:
+            return
+        
+        if self._character_type == 'yasuo':
+            if skill_key == 'q':
+                obj = TornadoObject(self._world, frames, x, y, direction, max_dist=700, max_hits=0, damage_multiplier=0)
+                obj.is_visual_only = True
+                self.active_vfx.append({'obj': obj, 'type': 'tornado', 'char': 'yasuo'})
+            elif skill_key == 'w':
+                obj = WallObject(self._world, frames, x, y, duration=4.0, damage_multiplier=0)
+                obj.is_visual_only = True
+                self.active_vfx.append({'obj': obj, 'type': 'wall', 'char': 'yasuo'})
+        elif self._character_type == 'leaf_ranger':
+            if skill_key == 'q':
+                from combat.player_2.refactored_skill_q import LaserObject
+                obj = LaserObject(self._world, frames, x, y, direction, laser_range=700, damage_multiplier=0)
+                obj.is_visual_only = True
+                self.active_vfx.append({'obj': obj, 'type': 'laser', 'char': 'leaf_ranger'})
+            elif skill_key == 'e':
+                from combat.player_2.refactored_skill_e import ArrowRainProjectile
+                
+                # In multiplayer, SKILL_EVENT for 'e' passes target_x as the `x` argument!
+                target_x = x
+                if camera and game_map:
+                    obj = ArrowRainProjectile(
+                        target_x=target_x,
+                        owner=self,
+                        renderer=self.renderer_ptr,
+                        game_map=game_map,
+                        camera=camera,
+                        damage_multiplier=0  # Visual only, no damage
+                    )
+                    # Tell it not to root or do physics damage if we want,
+                    # but since enemies list passed in update() is [], it naturally won't deal damage.
+                    self.active_vfx.append({'obj': obj, 'type': 'arrow_rain_projectile', 'char': 'leaf_ranger'})
+                from entities.leaf_ranger_projectile import NormalArrowProjectile, PoisonProjectile, PlantProjectile
+                if skill_key == 'attack_normal':
+                    obj = NormalArrowProjectile(x, y, direction, self, self.renderer_ptr)
+                elif skill_key == 'attack_w_poison':
+                    obj = PoisonProjectile(x, y, direction, self, self.renderer_ptr)
+                else:
+                    obj = PlantProjectile(x, y, direction, self, self.renderer_ptr)
+                obj.is_visual_only = True
+                self.active_vfx.append({'obj': obj, 'type': 'leaf_ranger_attack', 'char': 'leaf_ranger'})
+
+    def update_vfx(self, dt: float):
+        """Update active visual effects without triggering network collisions."""
+        from combat.refactored_skill_q import update_q_logic
+        from combat.refactored_skill_w import update_w_logic
+        
+        for item in self.active_vfx[:]:
+            obj = item['obj']
+            if item['char'] == 'yasuo':
+                if item['type'] == 'tornado':
+                    update_q_logic(obj, [], dt, network_ctx=None)
+                elif item['type'] == 'wall':
+                    update_w_logic(obj, enemies=None, projectiles=None, dt=dt, network_ctx=None)
+            elif item['char'] == 'leaf_ranger':
+                if item['type'] == 'laser':
+                    from combat.player_2.refactored_skill_q import update_q_laser_logic
+                    update_q_laser_logic(obj, [], dt, network_ctx=None)
+                elif item['type'] == 'arrow_rain_projectile':
+                    # ArrowRainProjectile falls and turns into AoE
+                    aoe = obj.update(dt, [])  # Empty enemy list = no collision
+                    if aoe:
+                        # Swap from falling projectile to AoE surface
+                        item['obj'] = aoe
+                        item['type'] = 'arrow_rain_aoe'
+                elif item['type'] == 'arrow_rain_aoe':
+                    # ArrowRainAoE just needs dt
+                    obj.update(dt)
+                elif item['type'] == 'leaf_ranger_attack':
+                    obj.update(dt)
+                    
+            if not getattr(obj, 'active', False):
+                if hasattr(obj, 'delete'): obj.delete()
+                elif hasattr(obj, 'cleanup'): obj.cleanup()
+                self.active_vfx.remove(item)
 
     def render(self, sdl_renderer, camera_x: float, camera_y: float):
-        """Render the remote player with a blue tint."""
+        """Render the remote player and VFX with a blue tint."""
+        # Render VFX
+        for item in self.active_vfx:
+            obj = item['obj']
+            
+            # Use obj.render() directly for custom projectiles/effects
+            if item['type'] in ['leaf_ranger_attack', 'arrow_rain_projectile', 'arrow_rain_aoe']:
+                if hasattr(obj, 'render'):
+                    if item['type'] == 'arrow_rain_projectile':
+                        # ArrowRainProjectile takes (renderer, camera)
+                        # The object already has self.camera which was correctly passed at spawn!
+                        obj.render(sdl_renderer, obj.camera)
+                    elif item['type'] == 'arrow_rain_aoe':
+                        # ArrowRainAoE takes (camera_x, camera_y)
+                        obj.render(camera_x, camera_y)
+                    else:
+                        obj.render(camera_x, camera_y)
+                continue
+
+            # Handle VFX with list of sprites (Laser)
+            if item['type'] == 'laser':
+                if hasattr(obj, 'sprites') and obj.sprites:
+                    sprite = obj.sprites[int(obj.anim_frame) % len(obj.sprites)]
+                    if sprite and hasattr(sprite, 'surface') and sprite.surface:
+                        tex = sdl2.SDL_CreateTextureFromSurface(sdl_renderer, sprite.surface)
+                        if tex:
+                            sdl2.SDL_SetTextureColorMod(tex, REMOTE_TINT[0], REMOTE_TINT[1], REMOTE_TINT[2])
+                            sdl2.SDL_SetTextureAlphaMod(tex, 180)
+                            
+                            if item['type'] == 'laser':
+                                # Render beam using LeafRanger tiling style
+                                sw, sh = sprite.surface.w, sprite.surface.h
+                                num_tiles = max(1, int(obj.current_range / sw) + 1)
+                                for i in range(num_tiles):
+                                    tile_offset = i * sw
+                                    if tile_offset >= obj.current_range: break
+                                    remaining_range = obj.current_range - tile_offset
+                                    tile_w = min(sw, int(remaining_range))
+                                    
+                                    if obj.direction > 0:
+                                        rx = int(obj.x + tile_offset - camera_x)
+                                    else:
+                                        rx = int(obj.x - tile_offset - tile_w - camera_x)
+                                    
+                                    src_rect = sdl2.SDL_Rect(0, 0, tile_w, sh) if tile_w < sw else None
+                                    dst_rect = sdl2.SDL_Rect(rx, int(obj.y - camera_y), tile_w, sh)
+                                    sdl2.SDL_RenderCopy(sdl_renderer, tex, src_rect, dst_rect)
+                                
+                            sdl2.SDL_DestroyTexture(tex)
+                continue
+
+            # Handle VFX with single sprite (Yasuo Tornado/Wall)
+            sprite = getattr(obj, 'sprite', None) or getattr(obj, 'current_sprite', None)
+            if sprite and hasattr(sprite, 'surface') and sprite.surface:
+                tex = sdl2.SDL_CreateTextureFromSurface(sdl_renderer, sprite.surface)
+                if tex:
+                    sx = getattr(sprite, 'x', getattr(obj, 'current_x', 0))
+                    sy = getattr(sprite, 'y', getattr(obj, 'current_y', 0))
+                    dst = sdl2.SDL_Rect(int(sx - camera_x), int(sy - camera_y), sprite.surface.w, sprite.surface.h)
+                    
+                    sdl2.SDL_SetTextureColorMod(tex, REMOTE_TINT[0], REMOTE_TINT[1], REMOTE_TINT[2])
+                    sdl2.SDL_SetTextureAlphaMod(tex, 180)
+                    sdl2.SDL_RenderCopy(sdl_renderer, tex, None, dst)
+                    sdl2.SDL_DestroyTexture(tex)
+
         if not self.visible:
             return
         if not self.entity.sprite.surface:

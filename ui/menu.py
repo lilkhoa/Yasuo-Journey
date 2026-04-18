@@ -67,22 +67,22 @@ class GameMenu:
             surf = sdl2.ext.load_image(yasuo_path)
             self.char_profiles[0]["texture"] = sdl2.SDL_CreateTextureFromSurface(self.renderer, surf)
             # Giả định ảnh strip ngang, frame_width = frame_height
-            self.char_profiles[0]["w"] = surf.contents.h 
-            self.char_profiles[0]["h"] = surf.contents.h
+            self.char_profiles[0]["w"] = surf.h if hasattr(surf, 'h') else surf.contents.h 
+            self.char_profiles[0]["h"] = surf.h if hasattr(surf, 'h') else surf.contents.h
             sdl2.SDL_FreeSurface(surf)
         except Exception as e:
-            print(f"[MENU] Không thể load ảnh Yasuo: {e}")
+            print(f"[MENU] Failed to load Yasuo image: {e}")
 
         # Load ảnh Leaf Ranger (Lấy frame idle_1.png)
         ranger_path = os.path.join(assets_dir, "Player_2", "idle", "idle_1.png")
         try:
             surf = sdl2.ext.load_image(ranger_path)
             self.char_profiles[1]["texture"] = sdl2.SDL_CreateTextureFromSurface(self.renderer, surf)
-            self.char_profiles[1]["w"] = surf.contents.w
-            self.char_profiles[1]["h"] = surf.contents.h
+            self.char_profiles[1]["w"] = surf.w if hasattr(surf, 'w') else surf.contents.w
+            self.char_profiles[1]["h"] = surf.h if hasattr(surf, 'h') else surf.contents.h
             sdl2.SDL_FreeSurface(surf)
         except Exception as e:
-            print(f"[MENU] Không thể load ảnh Leaf Ranger: {e}")
+            print(f"[MENU] Failed to load Leaf Ranger image: {e}")
 
         # Multiplayer Data
         self.join_ip = ""

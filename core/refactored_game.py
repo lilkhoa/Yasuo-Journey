@@ -349,6 +349,8 @@ def run(net_mode: str = "solo", host_ip: str = "127.0.0.1", ext_seed: int = 0):
 
     running = True
     last_time = sdl2.SDL_GetTicks()
+    char_sync_countdown = 0   # Re-broadcast character select for first N frames
+    local_char_id = 'yasuo'   # Set when game starts
     
     while running:
         current_time = sdl2.SDL_GetTicks()
@@ -445,8 +447,7 @@ def run(net_mode: str = "solo", host_ip: str = "127.0.0.1", ext_seed: int = 0):
             if is_host and game_server:
                 game_server.set_host_character_type(char_id)
                 # BUG FIX: Host need to broadcast character select to client
-                char_pkt = net_pkt.make_packet(net_pkt.CHARACTER_SELECT)
-                char_pkt['character_type'] = char_id
+                char_pkt = net_pkt.make_character_select(0, char_id)
                 game_server.push_game_event(char_pkt)
                 
                 # Load remote player's character (client's choice)
@@ -459,6 +460,10 @@ def run(net_mode: str = "solo", host_ip: str = "127.0.0.1", ext_seed: int = 0):
                 host_char = game_client.get_remote_character_type()
                 if remote_player and host_char:
                     remote_player.set_character_type(host_char)
+            
+            # Re-broadcast character select for a few frames to handle timing
+            char_sync_countdown = 5
+            local_char_id = char_id
             
             if 'player' in locals() and player.entity:
                 player.entity.delete()
@@ -859,8 +864,23 @@ def run(net_mode: str = "solo", host_ip: str = "127.0.0.1", ext_seed: int = 0):
                 )
                 # BUG FIX Animation: Thêm wall-clock offset để client có thể
                 # dùng timestamp tương đối thay vì tuyệt đối (2 máy dùng clock khác nhau)
+                # Re-broadcast character select at start of game to handle timing
+                if char_sync_countdown > 0:
+                    char_sync_countdown -= 1
+                    game_server.set_host_character_type(local_char_id)
+                    char_pkt = net_pkt.make_character_select(0, local_char_id)
+                    game_server.push_game_event(char_pkt)
+
                 state_pkt['wall_ts'] = time.time()
                 game_server.push_local_player_state(state_pkt)
+
+                # Sync skill VFX
+                if hasattr(player, '_pending_skill_events') and player._pending_skill_events:
+                    for ev in player._pending_skill_events:
+                        skill_key, direction, sx, sy = ev
+                        skill_pkt = net_pkt.make_skill_event(0, skill_key, direction, sx, sy)
+                        game_server.push_game_event(skill_pkt)
+                    player._pending_skill_events.clear()
 
                 if _net_tick % _net_broadcast_every == 0:
                     entity_list = []
@@ -897,7 +917,8 @@ def run(net_mode: str = "solo", host_ip: str = "127.0.0.1", ext_seed: int = 0):
                 remote_raw = game_server.get_remote_state()
                 if remote_player:
                     remote_char = game_server.get_remote_character_type()
-                    if getattr(remote_player, '_character_type', '') != remote_char:
+                    if remote_char and getattr(remote_player, '_character_type', 'yasuo') != remote_char:
+                        print(f"[HOST] Remote character changed: {remote_player._character_type} -> {remote_char}")
                         remote_player.set_character_type(remote_char)
                     if remote_raw:
                         remote_player.apply_network_state(remote_raw)
@@ -952,6 +973,13 @@ def run(net_mode: str = "solo", host_ip: str = "127.0.0.1", ext_seed: int = 0):
                     elif t == net_pkt.GAME_RESUME:
                         if game_menu.state == MenuState.PAUSE:
                             game_menu.state = MenuState.GAME_PLAYING
+                    elif t == net_pkt.SKILL_EVENT:
+                        skill_key = ev.get('skill')
+                        direction = ev.get('direction', 1)
+                        sx = ev.get('x', 0)
+                        sy = ev.get('y', 0)
+                        if remote_player:
+                            remote_player.spawn_skill_vfx(skill_key, direction, sx, sy, game_map=my_map, camera=camera)
 
             elif is_host and game_server and not game_server.is_connected() and game_menu.state == MenuState.GAME_PLAYING:
                 print("[Server] Client disconnected! Returning to menu.")
@@ -976,13 +1004,31 @@ def run(net_mode: str = "solo", host_ip: str = "127.0.0.1", ext_seed: int = 0):
                     frame_index=local_state['frame_index'],
                     timestamp=local_state['ts'],
                 )
+                # Re-broadcast character select at start of game to handle timing
+                if char_sync_countdown > 0:
+                    char_sync_countdown -= 1
+                    game_client.send_character_select(local_char_id)
+
                 # BUG FIX Animation: Thêm wall_ts để host có thể sync timestamp
                 state_pkt['wall_ts'] = time.time()
                 game_client.send_player_state(state_pkt)
 
+                # Sync skill VFX
+                if hasattr(player, '_pending_skill_events') and player._pending_skill_events:
+                    for ev in player._pending_skill_events:
+                        skill_key, direction, sx, sy = ev
+                        game_client.send_skill_event(skill_key, direction, sx, sy)
+                    player._pending_skill_events.clear()
+
                 remote_raw = game_client.get_remote_player_state()
-                if remote_player and remote_raw:
-                    remote_player.apply_network_state(remote_raw)
+                if remote_player:
+                    # Keep remote player character type in sync with host's character
+                    host_char = game_client.get_remote_character_type()
+                    if host_char and getattr(remote_player, '_character_type', 'yasuo') != host_char:
+                        print(f"[CLIENT] Remote character changed: {remote_player._character_type} -> {host_char}")
+                        remote_player.set_character_type(host_char)
+                    if remote_raw:
+                        remote_player.apply_network_state(remote_raw)
                     remote_player.update(dt)
 
                 for e_state in game_client.get_entity_state():
@@ -1066,6 +1112,13 @@ def run(net_mode: str = "solo", host_ip: str = "127.0.0.1", ext_seed: int = 0):
                         remote_char = gev.get('character_type', 'yasuo')
                         if remote_player:
                             remote_player.set_character_type(remote_char)
+                    elif t == net_pkt.SKILL_EVENT:
+                        skill_key = gev.get('skill')
+                        direction = gev.get('direction', 1)
+                        sx = gev.get('x', 0)
+                        sy = gev.get('y', 0)
+                        if remote_player:
+                            remote_player.spawn_skill_vfx(skill_key, direction, sx, sy, game_map=my_map, camera=camera)
 
             elif is_client and game_client and not game_client.is_connected() and game_menu.state == MenuState.GAME_PLAYING:
                 print("[Client] Disconnected from server! Returning to menu.")
