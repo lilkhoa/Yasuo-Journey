@@ -119,6 +119,8 @@ class Yasuo(BaseChar):
             self.skill_e.cast(world, factory, renderer)
             if self.sound_manager:
                 self.sound_manager.play_sound("player_e1")
+            if not hasattr(self, '_pending_skill_events'): self._pending_skill_events = []
+            self._pending_skill_events.append(('e', direction if direction else (1 if self.facing_right else -1), self.entity.sprite.x, self.entity.sprite.y))
 
     # ================= HOOKS KHI ANIMATION KẾT THÚC =================
     def on_cast_q_complete(self, world, factory, renderer):
@@ -138,12 +140,18 @@ class Yasuo(BaseChar):
     def spawn_tornado(self, world, factory, renderer):
         if self.tornado_frames: 
             t = self.skill_q.cast(world, factory, renderer, skill_sprites=self.tornado_frames)
-            if t: self.active_tornadoes.append(t)
+            if t: 
+                self.active_tornadoes.append(t)
+                if not hasattr(self, '_pending_skill_events'): self._pending_skill_events = []
+                self._pending_skill_events.append(('q', 1 if self.facing_right else -1, t.sprite.x, t.sprite.y))
 
     def spawn_wall(self, world, factory, renderer):
         if self.wall_frames: 
             w = self.skill_w.cast(world, factory, renderer, skill_sprites=self.wall_frames)
-            if w: self.active_walls.append(w)
+            if w: 
+                self.active_walls.append(w)
+                if not hasattr(self, '_pending_skill_events'): self._pending_skill_events = []
+                self._pending_skill_events.append(('w', 1 if self.facing_right else -1, w.sprite.x, w.sprite.y))
 
     # ================= VÒNG LẶP UPDATE KỸ NĂNG (POLYMORPHIC) =================
     def update_skills(self, dt, enemies, projectiles=None, network_ctx=None, camera=None, game_map=None, renderer=None):
