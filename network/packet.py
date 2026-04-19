@@ -60,6 +60,8 @@ GAME_RESUME      = "GAME_RESUME"
 PICKUP_REQUEST   = "PICKUP_REQUEST"
 ITEM_DROPPED     = "ITEM_DROPPED"
 CHARACTER_SELECT = "CHARACTER_SELECT"
+BARREL_DESTROY   = "BARREL_DESTROY"
+CHEST_OPEN       = "CHEST_OPEN"
 
 # ── Serialisation helpers ────────────────────────────────────────────────────
 
@@ -252,3 +254,17 @@ def make_item_dropped(item_type: int, x: float, y: float, item_net_id: int) -> d
         "item_net_id": item_net_id,
     }
 
+
+def make_barrel_destroy(barrel_net_id: int) -> dict:
+    """Create a packet indicating a barrel has been destroyed."""
+    return {
+        "type": BARREL_DESTROY,
+        "barrel_net_id": barrel_net_id
+    }
+
+def make_chest_open(chest_net_id: int) -> dict:
+    """Create a packet indicating a chest has been opened."""
+    return {
+        "type": CHEST_OPEN,
+        "chest_net_id": chest_net_id
+    }

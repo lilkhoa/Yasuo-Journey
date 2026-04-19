@@ -211,7 +211,7 @@ class GameClient:
                 self._remote_character_type = p.get("character_type", "yasuo")
                 print(f"[Client] Remote player selected: {self._remote_character_type}")
 
-            elif t in (pkt.GAME_EVENT, pkt.GAME_PAUSE, pkt.GAME_RESUME, pkt.ITEM_DROPPED, pkt.PICKUP_REQUEST, pkt.SKILL_EVENT):
+            elif t in (pkt.GAME_EVENT, pkt.GAME_PAUSE, pkt.GAME_RESUME, pkt.ITEM_DROPPED, pkt.PICKUP_REQUEST, pkt.SKILL_EVENT, pkt.BARREL_DESTROY, pkt.CHEST_OPEN):
                 with self._events_lock:
                     self._pending_game_events.append(p)
 

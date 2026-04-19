@@ -640,6 +640,12 @@ def run(net_mode: str = "solo", host_ip: str = "127.0.0.1", ext_seed: int = 0):
                             if collect_timer <= 0: 
                                 if chest.interact():
                                     collect_timer = COLLECT_INTERVAL
+                                    if is_multi:
+                                        chest_pkt = net_pkt.make_chest_open(chest.net_id)
+                                        if is_host and game_server:
+                                            game_server.push_game_event(chest_pkt)
+                                        elif is_client and game_client and game_client.is_connected():
+                                            game_client._enqueue(chest_pkt)
                                     break
                         
                         for statue in checkpoints:
@@ -980,6 +986,20 @@ def run(net_mode: str = "solo", host_ip: str = "127.0.0.1", ext_seed: int = 0):
                         sy = ev.get('y', 0)
                         if remote_player:
                             remote_player.spawn_skill_vfx(skill_key, direction, sx, sy, game_map=my_map, camera=camera)
+                    elif t == net_pkt.BARREL_DESTROY:
+                        barrel_net_id = ev.get('barrel_net_id')
+                        for barrel in barrels:
+                            if barrel.net_id == barrel_net_id and not barrel.is_broken:
+                                barrel.take_damage(999, dropped_items, sdl_renderer)
+                                if sound_manager:
+                                    sound_manager.play_sound("player_auto_barrel")
+                                break
+                    elif t == net_pkt.CHEST_OPEN:
+                        chest_net_id = ev.get('chest_net_id')
+                        for chest in chests:
+                            if hasattr(chest, 'net_id') and chest.net_id == chest_net_id:
+                                chest.force_open()
+                                break
 
             elif is_host and game_server and not game_server.is_connected() and game_menu.state == MenuState.GAME_PLAYING:
                 print("[Server] Client disconnected! Returning to menu.")
@@ -1119,6 +1139,21 @@ def run(net_mode: str = "solo", host_ip: str = "127.0.0.1", ext_seed: int = 0):
                         sy = gev.get('y', 0)
                         if remote_player:
                             remote_player.spawn_skill_vfx(skill_key, direction, sx, sy, game_map=my_map, camera=camera)
+                    elif t == net_pkt.BARREL_DESTROY:
+                        barrel_net_id = gev.get('barrel_net_id')
+                        for barrel in barrels:
+                            if hasattr(barrel, 'net_id') and barrel.net_id == barrel_net_id and not barrel.is_broken:
+                                # Client should NOT spawn local items, as Host will send ITEM_DROPPED
+                                barrel.take_damage(999, [], sdl_renderer)
+                                if sound_manager:
+                                    sound_manager.play_sound("player_auto_barrel")
+                                break
+                    elif t == net_pkt.CHEST_OPEN:
+                        chest_net_id = gev.get('chest_net_id')
+                        for chest in chests:
+                            if hasattr(chest, 'net_id') and chest.net_id == chest_net_id:
+                                chest.force_open()
+                                break
 
             elif is_client and game_client and not game_client.is_connected() and game_menu.state == MenuState.GAME_PLAYING:
                 print("[Client] Disconnected from server! Returning to menu.")
@@ -1135,7 +1170,10 @@ def run(net_mode: str = "solo", host_ip: str = "127.0.0.1", ext_seed: int = 0):
 
             for box in boxes: box.update(dt, my_map)
             for barrel in barrels: barrel.update(dt, my_map)
-            for chest in chests: chest.update(dt, player, dropped_items, renderer.sdlrenderer)
+            # To prevent item duplication on the client side, use a dummy list. 
+            # The host will sync authentic items via ITEM_DROPPED.
+            target_drop_list = [] if (is_multi and is_client) else dropped_items
+            for chest in chests: chest.update(dt, player, target_drop_list, renderer.sdlrenderer)
             for item in dropped_items: item.update(dt, my_map, player)
             for statue in checkpoints: statue.update(dt, player)
             dropped_items = [item for item in dropped_items if not item.is_collected]
@@ -1245,7 +1283,15 @@ def run(net_mode: str = "solo", host_ip: str = "127.0.0.1", ext_seed: int = 0):
                                 p_rect = sdl2.SDL_Rect(int(px), int(py), int(pw), int(ph))
                                 
                                 if sdl2.SDL_HasIntersection(p_rect, barrel_rect):
-                                    barrel.take_damage(1, dropped_items, sdl_renderer)
+                                    barrel.take_damage(1, target_drop_list, sdl_renderer)
+                                    
+                                    # Sync barrel destruction to remote player
+                                    if barrel.is_broken and is_multi:
+                                        destroy_pkt = net_pkt.make_barrel_destroy(barrel.net_id)
+                                        if is_host and game_server:
+                                            game_server.push_game_event(destroy_pkt)
+                                        elif is_client and game_client and game_client.is_connected():
+                                            game_client._enqueue(destroy_pkt)
                                     
                                     # Kích hoạt âm thanh vỡ thùng
                                     if sound_manager:
@@ -1346,7 +1392,14 @@ def run(net_mode: str = "solo", host_ip: str = "127.0.0.1", ext_seed: int = 0):
                         
                         for barrel in barrels:
                             if not barrel.is_broken and sdl2.SDL_HasIntersection(atk_rect, barrel.get_bounds()):
-                                barrel.take_damage(1, dropped_items, sdl_renderer)
+                                barrel.take_damage(1, target_drop_list, sdl_renderer)
+                                # Sync barrel destruction to remote player
+                                if barrel.is_broken and is_multi:
+                                    destroy_pkt = net_pkt.make_barrel_destroy(barrel.net_id)
+                                    if is_host and game_server:
+                                        game_server.push_game_event(destroy_pkt)
+                                    elif is_client and game_client and game_client.is_connected():
+                                        game_client._enqueue(destroy_pkt)
                                 if not player._attack_hit_anything:
                                     sound_manager.play_sound("player_auto_barrel"); player._attack_hit_anything = True
                         

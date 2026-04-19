@@ -203,7 +203,7 @@ class GameServer:
                     self._event_queue.put_nowait(p)
                 except queue.Full:
                     pass
-            elif t in (pkt.SKILL_EVENT, pkt.HIT_EVENT, pkt.GAME_PAUSE, pkt.GAME_RESUME, pkt.GAME_EVENT, pkt.PICKUP_REQUEST, pkt.ITEM_DROPPED):
+            elif t in (pkt.SKILL_EVENT, pkt.HIT_EVENT, pkt.GAME_PAUSE, pkt.GAME_RESUME, pkt.GAME_EVENT, pkt.PICKUP_REQUEST, pkt.ITEM_DROPPED, pkt.BARREL_DESTROY, pkt.CHEST_OPEN):
                 try:
                     self._event_queue.put_nowait(p)
                 except queue.Full:
