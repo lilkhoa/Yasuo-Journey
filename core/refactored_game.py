@@ -1143,7 +1143,8 @@ def run(net_mode: str = "solo", host_ip: str = "127.0.0.1", ext_seed: int = 0):
                         barrel_net_id = gev.get('barrel_net_id')
                         for barrel in barrels:
                             if hasattr(barrel, 'net_id') and barrel.net_id == barrel_net_id and not barrel.is_broken:
-                                barrel.take_damage(999, dropped_items, sdl_renderer)
+                                # Client should NOT spawn local items, as Host will send ITEM_DROPPED
+                                barrel.take_damage(999, [], sdl_renderer)
                                 if sound_manager:
                                     sound_manager.play_sound("player_auto_barrel")
                                 break
@@ -1169,7 +1170,10 @@ def run(net_mode: str = "solo", host_ip: str = "127.0.0.1", ext_seed: int = 0):
 
             for box in boxes: box.update(dt, my_map)
             for barrel in barrels: barrel.update(dt, my_map)
-            for chest in chests: chest.update(dt, player, dropped_items, renderer.sdlrenderer)
+            # To prevent item duplication on the client side, use a dummy list. 
+            # The host will sync authentic items via ITEM_DROPPED.
+            target_drop_list = [] if (is_multi and is_client) else dropped_items
+            for chest in chests: chest.update(dt, player, target_drop_list, renderer.sdlrenderer)
             for item in dropped_items: item.update(dt, my_map, player)
             for statue in checkpoints: statue.update(dt, player)
             dropped_items = [item for item in dropped_items if not item.is_collected]
@@ -1279,7 +1283,7 @@ def run(net_mode: str = "solo", host_ip: str = "127.0.0.1", ext_seed: int = 0):
                                 p_rect = sdl2.SDL_Rect(int(px), int(py), int(pw), int(ph))
                                 
                                 if sdl2.SDL_HasIntersection(p_rect, barrel_rect):
-                                    barrel.take_damage(1, dropped_items, sdl_renderer)
+                                    barrel.take_damage(1, target_drop_list, sdl_renderer)
                                     
                                     # Sync barrel destruction to remote player
                                     if barrel.is_broken and is_multi:
@@ -1388,7 +1392,7 @@ def run(net_mode: str = "solo", host_ip: str = "127.0.0.1", ext_seed: int = 0):
                         
                         for barrel in barrels:
                             if not barrel.is_broken and sdl2.SDL_HasIntersection(atk_rect, barrel.get_bounds()):
-                                barrel.take_damage(1, dropped_items, sdl_renderer)
+                                barrel.take_damage(1, target_drop_list, sdl_renderer)
                                 # Sync barrel destruction to remote player
                                 if barrel.is_broken and is_multi:
                                     destroy_pkt = net_pkt.make_barrel_destroy(barrel.net_id)
