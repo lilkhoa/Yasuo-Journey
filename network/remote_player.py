@@ -348,8 +348,8 @@ class RemotePlayer:
         """Spawn purely visual effect objects for the remote player's skill casts."""
         frames = getattr(self, 'skill_frames', {}).get(skill_key)
         
-        # Attack projectiles load their own textures so they don't need frames
-        if not frames and skill_key not in ['attack_normal', 'attack_w_poison', 'attack_w_plant']:
+        # Attack projectiles and ArrowRainProjectile load their own textures so they don't need frames
+        if not frames and skill_key not in ['attack_normal', 'attack_w_poison', 'attack_w_plant', 'e']:
             return
         
         if self._character_type == 'yasuo':
@@ -384,6 +384,7 @@ class RemotePlayer:
                     # Tell it not to root or do physics damage if we want,
                     # but since enemies list passed in update() is [], it naturally won't deal damage.
                     self.active_vfx.append({'obj': obj, 'type': 'arrow_rain_projectile', 'char': 'leaf_ranger'})
+            elif skill_key in ('attack_normal', 'attack_w_poison', 'attack_w_plant'):
                 from entities.leaf_ranger_projectile import NormalArrowProjectile, PoisonProjectile, PlantProjectile
                 if skill_key == 'attack_normal':
                     obj = NormalArrowProjectile(x, y, direction, self, self.renderer_ptr)
@@ -423,9 +424,11 @@ class RemotePlayer:
                 elif item['type'] == 'leaf_ranger_attack':
                     obj.update(dt)
                     
-            if not getattr(obj, 'active', False):
-                if hasattr(obj, 'delete'): obj.delete()
-                elif hasattr(obj, 'cleanup'): obj.cleanup()
+            # Important: Get the updated obj reference from item, as it might have changed (e.g. projectile -> aoe)
+            current_obj = item['obj']
+            if not getattr(current_obj, 'active', False):
+                if hasattr(current_obj, 'delete'): current_obj.delete()
+                elif hasattr(current_obj, 'cleanup'): current_obj.cleanup()
                 self.active_vfx.remove(item)
 
     def render(self, sdl_renderer, camera_x: float, camera_y: float):

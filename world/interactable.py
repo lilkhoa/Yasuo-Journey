@@ -161,11 +161,15 @@ BARREL_RENDER_WIDTH = 27 * 2
 BARREL_RENDER_HEIGHT = 35 * 2
 
 class Barrel:
+    _next_net_id = 0  # Class-level counter for unique network IDs
+
     def __init__(self, x, y, texture, item_data, text_renderer):
         """
             item_data: Dictionary of tuple 
                 "red_potion"[type]: (name, width, height, texture)
         """
+        self.net_id = Barrel._next_net_id
+        Barrel._next_net_id += 1
         self.x = x
         self.y = y
         self.initial_x = x  # Store initial position for reset
@@ -406,12 +410,17 @@ class Barrel:
         self.invulnerable_timer = 0
 
 class Chest:
+    _next_net_id = 1
+
     def __init__(self, world_x, grid_y_pos, sprite_sheet, item_data, text_renderer):
         '''
             real_x, real_y
         '''
         self.world_x = world_x
         self.grid_y_pos = grid_y_pos
+
+        self.net_id = Chest._next_net_id
+        Chest._next_net_id += 1
 
         self.texture = sprite_sheet
         self.frame_count = 7
@@ -525,6 +534,21 @@ class Chest:
             print("Chest opening!")
 
             return True
+    
+    def force_open(self):
+        """Force chest to open (for network sync) without checking interaction conditions."""
+        if self.state == "CLOSED":
+            self.state = "OPENING"
+            self.current_frame = 0
+            self.has_spawned_items = False
+            from core.sound import get_sound_manager
+            sound_manager = get_sound_manager()
+            if sound_manager:
+                self.chest_sound_channel = sound_manager.play_sound("chest_open")
+                self.chest_sound_timer = 3.0
+            print(f"Chest {self.net_id} forcibly opened!")
+            return True
+        return False
     
     def reset(self):
         """Reset chest to initial closed state"""

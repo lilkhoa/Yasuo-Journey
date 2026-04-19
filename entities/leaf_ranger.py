@@ -583,30 +583,24 @@ class LeafRanger(BaseChar):
             projectile_manager.add_projectile(projectile)
             self.w_attack_toggle = not self.w_attack_toggle  # Toggle for next attack
             
+            # Queue event for network broadcast (works for both host and client)
             if network_ctx:
                 is_multi, is_host, net_obj = network_ctx
-                if is_multi and net_obj:
-                    if is_host and getattr(net_obj, '_connected', None) and net_obj._connected.is_set():
-                        import network.packet as net_pkt
-                        net_obj._enqueue(net_pkt.make_skill_event(action, direction, x=proj_x, y=proj_y))
-                    elif not is_host and getattr(net_obj, 'is_connected', lambda: False)() and hasattr(net_obj, 'send_skill_event'):
-                        try: net_obj.send_skill_event(action, direction, proj_x, proj_y)
-                        except: pass
+                if is_multi:
+                    if not hasattr(self, '_pending_skill_events'): self._pending_skill_events = []
+                    self._pending_skill_events.append((action, direction, proj_x, proj_y))
         else:
             # Normal attack: Regular arrow
             projectile = NormalArrowProjectile(proj_x, proj_y, direction, self, renderer)
             projectile_manager.add_projectile(projectile)
             action = 'attack_normal'
             
+            # Queue event for network broadcast (works for both host and client)
             if network_ctx:
                 is_multi, is_host, net_obj = network_ctx
-                if is_multi and net_obj:
-                    if is_host and getattr(net_obj, '_connected', None) and net_obj._connected.is_set():
-                        import network.packet as net_pkt
-                        net_obj._enqueue(net_pkt.make_skill_event(action, direction, x=proj_x, y=proj_y))
-                    elif not is_host and getattr(net_obj, 'is_connected', lambda: False)() and hasattr(net_obj, 'send_skill_event'):
-                        try: net_obj.send_skill_event(action, direction, proj_x, proj_y)
-                        except: pass
+                if is_multi:
+                    if not hasattr(self, '_pending_skill_events'): self._pending_skill_events = []
+                    self._pending_skill_events.append((action, direction, proj_x, proj_y))
 
     def apply_poison_damage(self, target, damage, tick_rate, duration):
         target_id = getattr(target, 'net_id', id(target))
