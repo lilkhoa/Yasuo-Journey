@@ -237,20 +237,18 @@ def make_character_select(player_id: int, character_type: str) -> dict:
     }
 
 
-def make_item_dropped(item_type: int, x: float, y: float, item_net_id: int) -> dict:
+# Cập nhật hàm make_item_dropped
+def make_item_dropped(item_type: int, x: float, y: float, item_net_id: int, vx: float = 0.0, vy: float = 0.0) -> dict:
     """
     Notify clients that an item was dropped at a location.
-    
-    Args:
-        item_type: ItemType enum value
-        x, y: Position
-        item_net_id: Unique item ID
     """
     return {
         "type": ITEM_DROPPED,
         "item_type": item_type,
         "x": round(x, 2),
         "y": round(y, 2),
+        "vx": round(vx, 3), # [THÊM MỚI] Gửi kèm vận tốc x
+        "vy": round(vy, 3), # [THÊM MỚI] Gửi kèm vận tốc y
         "item_net_id": item_net_id,
     }
 
