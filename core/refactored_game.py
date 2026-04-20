@@ -845,8 +845,12 @@ def run(net_mode: str = "solo", host_ip: str = "127.0.0.1", ext_seed: int = 0):
             keys = sdl2.SDL_GetKeyboardState(None)
             all_obstacles = boxes + [b for b in barrels if not b.is_broken]
 
-            player.set_blocking(keys[sdl2.SDLK_s])
-            player.handle_movement(keys)
+            # [SỬA ĐỔI] Ngăn không cho di chuyển / cập nhật phím nếu đã chết
+            if player.state != 'dead':
+                player.set_blocking(keys[sdl2.SDLK_s])
+                player.handle_movement(keys)
+            else:
+                player.vel_x = 0 # Dừng hẳn gia tốc
             
             # [1] LƯU TRẠNG THÁI TRƯỚC KHI PLAYER UPDATE VẬT LÝ
             old_obs_pos = {}
@@ -1299,22 +1303,27 @@ def run(net_mode: str = "solo", host_ip: str = "127.0.0.1", ext_seed: int = 0):
 
             notif_system.update()
 
-            # hard code for yasuo
-            # if player.entity.sprite:
-            #     player_rect = SDL_Rect(int(player.entity.sprite.x), int(player.entity.sprite.y), 128, 128)
-            #     camera.update(player_rect, my_map.width_pixel)
             if player.entity.sprite:
-                hitbox = player.get_hitbox()
-                offset_x = hitbox.x - player.x
-                
-                # Giới hạn map dựa trên hitbox
-                if hitbox.x < 0: 
-                    player.entity.sprite.x = -offset_x
-                if hitbox.x + hitbox.w > my_map.width_pixel: 
-                    player.entity.sprite.x = my_map.width_pixel - hitbox.w - offset_x
-                
-                # Camera theo dõi vị trí của hitbox thay vì toàn bộ ảnh (để đỡ bị lệch tâm)
-                camera.update(player.get_hitbox(), my_map.width_pixel)
+                # [SỬA ĐỔI] Góc nhìn khán giả (Spectator)
+                if player.state == 'dead' and is_multi and remote_player:
+                    # Camera theo dõi đồng đội
+                    rx = int(remote_player.x)
+                    ry = int(remote_player.y)
+                    rw = getattr(remote_player, 'width', 128)
+                    rh = getattr(remote_player, 'height', 128)
+                    remote_rect = sdl2.SDL_Rect(rx, ry, rw, rh)
+                    camera.update(remote_rect, my_map.width_pixel)
+                else:
+                    # BÌNH THƯỜNG: Camera theo dõi bản thân
+                    hitbox = player.get_hitbox()
+                    offset_x = hitbox.x - player.x
+                    
+                    if hitbox.x < 0: 
+                        player.entity.sprite.x = -offset_x
+                    if hitbox.x + hitbox.w > my_map.width_pixel: 
+                        player.entity.sprite.x = my_map.width_pixel - hitbox.w - offset_x
+                    
+                    camera.update(player.get_hitbox(), my_map.width_pixel)
 
             alive_npcs = [n for n in npc_manager.npcs if n.is_alive()]
             alive_bosses = boss_manager.get_alive_bosses()
@@ -1582,12 +1591,21 @@ def run(net_mode: str = "solo", host_ip: str = "127.0.0.1", ext_seed: int = 0):
                         if hasattr(player, attr_name): delattr(player, attr_name)
 
                 if player.state == 'dead' and player.dead_animation_complete:
-                    game_over = True
-                    game_over_timer = 3.0
-                    if not game_over_sound_played:
-                        sound_manager.set_music_volume(int(0.3 * 128))
-                        sound_manager.play_sound("game_over")
-                        game_over_sound_played = True
+                    # [SỬA ĐỔI] Kiểm tra xem đồng đội đã chết chưa
+                    teammate_dead = False
+                    if is_multi and remote_player:
+                        if hasattr(remote_player, 'state') and remote_player.state == 'dead':
+                            teammate_dead = True
+                            
+                    # Chơi Solo HOẶC chơi Mạng nhưng cả 2 đều chết thì mới END GAME
+                    if not is_multi or teammate_dead:
+                        game_over = True
+                        game_over_timer = 3.0
+                        if not game_over_sound_played:
+                            sound_manager.set_music_volume(int(0.3 * 128))
+                            sound_manager.play_sound("game_over")
+                            game_over_sound_played = True
+                    # Nếu chơi mạng mà đồng đội vẫn sống -> Bỏ qua (Chế độ Spectator)
 
             else:
                 game_over_timer -= dt
@@ -1698,6 +1716,12 @@ def run(net_mode: str = "solo", host_ip: str = "127.0.0.1", ext_seed: int = 0):
                 if not hasattr(run, 'victory_text_renderer'):
                     run.victory_text_renderer = TextRenderer(sdl_renderer, "assets/fonts/arial.ttf", size=72)
                 run.victory_text_renderer.renderer_text("VICTORY", WINDOW_WIDTH//2, WINDOW_HEIGHT//3, color=(255, 255, 50), draw_bg=True, bg_color=(0, 0, 0, 200), radius=15)
+
+            # [THÊM MỚI] Hiển thị UI Spectator
+            if player.state == 'dead' and is_multi and not game_over:
+                if not hasattr(run, 'spectator_text_renderer'):
+                    run.spectator_text_renderer = TextRenderer(sdl_renderer, "assets/fonts/arial.ttf", size=30)
+                run.spectator_text_renderer.renderer_text("SPECTATING TEAMMATE...", WINDOW_WIDTH//2, 50, color=(200, 200, 200), draw_bg=True, bg_color=(0, 0, 0, 150), radius=5)
 
         game_menu.render()
         
