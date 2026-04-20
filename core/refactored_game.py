@@ -992,6 +992,15 @@ def run(net_mode: str = "solo", host_ip: str = "127.0.0.1", ext_seed: int = 0):
                     if t == net_pkt.HIT_EVENT:
                         target_id = ev.get('target_id')
                         damage    = ev.get('damage', 0)
+                        target_type = ev.get('target_type') # Lấy thêm key target_type
+
+                        # [THÊM MỚI] Xử lý đồng bộ rung thùng nếu mục tiêu là thùng
+                        if target_type == 'barrel':
+                            for b in barrels:
+                                if getattr(b, 'net_id', None) == target_id and not b.is_broken:
+                                    b.take_damage(damage, dropped_items, sdl_renderer)
+                                    break
+
                         for n in npc_manager.npcs:
                             if getattr(n, 'net_id', id(n)) == target_id and n.is_alive():
                                 n.take_damage(damage)
@@ -1188,6 +1197,16 @@ def run(net_mode: str = "solo", host_ip: str = "127.0.0.1", ext_seed: int = 0):
                                         if ev_name == 'obstacle_move' or time.time() - getattr(obj, 'last_pushed_time', 0) > 0.5:
                                             obj.x = nx
                                         break
+                        # [THÊM MỚI] Nếu Host báo xuống là thùng bị đánh
+                        elif ev_name == 'barrel_hit':
+                            nid = gev.get('nid')
+                            dmg = gev.get('dmg', 1)
+                            for b in barrels:
+                                if getattr(b, 'net_id', None) == nid and not b.is_broken:
+                                    # Truyền list rỗng [] để tránh rớt đồ bị nhân đôi bên Client
+                                    b.take_damage(dmg, [], sdl_renderer)
+                                    break
+
                     elif t == net_pkt.GAME_PAUSE:
                         if game_menu.state == MenuState.GAME_PLAYING:
                             game_menu.state = MenuState.PAUSE
@@ -1276,7 +1295,7 @@ def run(net_mode: str = "solo", host_ip: str = "127.0.0.1", ext_seed: int = 0):
             for chest in chests: chest.update(dt, player, target_drop_list, renderer.sdlrenderer)
             for item in dropped_items: item.update(dt, my_map, player)
             for statue in checkpoints: statue.update(dt, player)
-            dropped_items = [item for item in dropped_items if not item.is_collected]
+            dropped_items[:] = [item for item in dropped_items if not item.is_collected]
 
             notif_system.update()
 
@@ -1391,6 +1410,14 @@ def run(net_mode: str = "solo", host_ip: str = "127.0.0.1", ext_seed: int = 0):
                                 if sdl2.SDL_HasIntersection(p_rect, barrel_rect):
                                     barrel.take_damage(1, target_drop_list, sdl_renderer)
                                     
+                                    # [THÊM MỚI] Báo ngay cho mạng biết cái thùng vừa bị đánh
+                                    if is_multi:
+                                        if is_client and game_client and game_client.is_connected():
+                                            game_client.send_hit_event('barrel', barrel.net_id, 1)
+                                        elif is_host and game_server:
+                                            hit_pkt = net_pkt.make_game_event('barrel_hit', nid=barrel.net_id, dmg=1)
+                                            game_server.push_game_event(hit_pkt)
+
                                     # Sync barrel destruction to remote player
                                     if barrel.is_broken and is_multi:
                                         destroy_pkt = net_pkt.make_barrel_destroy(barrel.net_id)
@@ -1499,6 +1526,15 @@ def run(net_mode: str = "solo", host_ip: str = "127.0.0.1", ext_seed: int = 0):
                         for barrel in barrels:
                             if not barrel.is_broken and sdl2.SDL_HasIntersection(atk_rect, barrel.get_bounds()):
                                 barrel.take_damage(1, target_drop_list, sdl_renderer)
+                                
+                                # [THÊM MỚI] Tương tự như trên
+                                if is_multi:
+                                    if is_client and game_client and game_client.is_connected():
+                                        game_client.send_hit_event('barrel', barrel.net_id, 1)
+                                    elif is_host and game_server:
+                                        hit_pkt = net_pkt.make_game_event('barrel_hit', nid=barrel.net_id, dmg=1)
+                                        game_server.push_game_event(hit_pkt)
+
                                 # Sync barrel destruction to remote player
                                 if barrel.is_broken and is_multi:
                                     destroy_pkt = net_pkt.make_barrel_destroy(barrel.net_id)
