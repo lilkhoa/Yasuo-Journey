@@ -270,12 +270,12 @@ class RemotePlayer:
 
     # ── Per-frame update ──────────────────────────────────────────────────
 
-    def update(self, dt: float):
+    def update(self, dt: float, my_map=None, obstacles=None, enemies=None):
         """
         Advance animation based on the interpolated network state.
         Call once per frame from the main game loop.
         """
-        self.update_vfx(dt)
+        self.update_vfx(dt, my_map, obstacles, enemies)
         
         if not self.visible:
             return
@@ -395,8 +395,8 @@ class RemotePlayer:
                 obj.is_visual_only = True
                 self.active_vfx.append({'obj': obj, 'type': 'leaf_ranger_attack', 'char': 'leaf_ranger'})
 
-    def update_vfx(self, dt: float):
-        """Update active visual effects without triggering network collisions."""
+    def update_vfx(self, dt: float, my_map=None, obstacles=None, enemies=None):
+        """Update active skill VFX and check collisions."""
         from combat.refactored_skill_q import update_q_logic
         from combat.refactored_skill_w import update_w_logic
         
@@ -412,23 +412,43 @@ class RemotePlayer:
                     from combat.player_2.refactored_skill_q import update_q_laser_logic
                     update_q_laser_logic(obj, [], dt, network_ctx=None)
                 elif item['type'] == 'arrow_rain_projectile':
-                    # ArrowRainProjectile falls and turns into AoE
-                    aoe = obj.update(dt, [])  # Empty enemy list = no collision
+                    aoe = obj.update(dt, [])
                     if aoe:
-                        # Swap from falling projectile to AoE surface
                         item['obj'] = aoe
                         item['type'] = 'arrow_rain_aoe'
                 elif item['type'] == 'arrow_rain_aoe':
-                    # ArrowRainAoE just needs dt
                     obj.update(dt)
                 elif item['type'] == 'leaf_ranger_attack':
-                    obj.update(dt)
                     
-            # Important: Get the updated obj reference from item, as it might have changed (e.g. projectile -> aoe)
-            current_obj = item['obj']
-            if not getattr(current_obj, 'active', False):
-                if hasattr(current_obj, 'delete'): current_obj.delete()
-                elif hasattr(current_obj, 'cleanup'): current_obj.cleanup()
+                    # 1. Cho mũi tên ảo tương tác với Bản đồ (cắm vào tường/rương)
+                    obj.update(dt, world=None, my_map=my_map, interactables=obstacles)
+                    
+                    # 2. Tự hủy mũi tên ảo nếu chạm Quái Vật
+                    if enemies and obj.active:
+                        for e in enemies:
+                            if hasattr(e, 'is_alive') and not e.is_alive(): continue
+                            if hasattr(obj, 'check_collision') and obj.check_collision(e):
+                                if hasattr(obj, 'on_hit'): obj.on_hit()
+                                else: obj.active = False
+                                break
+                                
+                    # 3. Tự hủy mũi tên ảo nếu chạm Thùng Gỗ
+                    # (Vì NormalArrowProjectile mặc định bỏ qua thùng gỗ để nhường cho vòng lặp chính phá)
+                    if obstacles and obj.active:
+                        import sdl2
+                        for obs in obstacles:
+                            if obs.__class__.__name__ == 'Barrel' and not obs.is_broken:
+                                p_rect = sdl2.SDL_Rect(int(obj.x), int(obj.y), int(obj.width), int(obj.height))
+                                bx, by, bw, bh = obs.get_bounds()
+                                b_rect = sdl2.SDL_Rect(int(bx), int(by), int(bw), int(bh))
+                                
+                                if sdl2.SDL_HasIntersection(p_rect, b_rect):
+                                    if hasattr(obj, 'on_hit'): obj.on_hit()
+                                    else: obj.active = False
+                                    break
+                                    
+            # Remove inactive VFX
+            if not getattr(obj, 'active', True):
                 self.active_vfx.remove(item)
 
     def render(self, sdl_renderer, camera_x: float, camera_y: float):

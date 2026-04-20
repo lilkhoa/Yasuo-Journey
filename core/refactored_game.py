@@ -104,7 +104,7 @@ def run(net_mode: str = "solo", host_ip: str = "127.0.0.1", ext_seed: int = 0):
     sound_manager.load_boss_sounds()
     sound_manager.load_game_sounds()
     sound_manager.load_item_sounds()
-    
+
     if sound_manager.get_sound("statue_process"):
         sound_manager.set_volume("statue_process", 128) # Max volume
     if sound_manager.get_sound("statue_click"):
@@ -114,6 +114,10 @@ def run(net_mode: str = "solo", host_ip: str = "127.0.0.1", ext_seed: int = 0):
         sound_manager.play_music(loops=-1)
     else:
         print("[AUDIO] Warning: Could not load background music")
+
+    sound_manager.set_all_sfx_volume(0.2)
+    volume = int(sdl2.sdlmixer.MIX_MAX_VOLUME * 0.2)
+    sound_manager.set_music_volume(volume)
 
     try:
         # --- LOADING ASSETS ---
@@ -844,7 +848,32 @@ def run(net_mode: str = "solo", host_ip: str = "127.0.0.1", ext_seed: int = 0):
             player.set_blocking(keys[sdl2.SDLK_s])
             player.handle_movement(keys)
             
+            # [1] LƯU TRẠNG THÁI TRƯỚC KHI PLAYER UPDATE VẬT LÝ
+            old_obs_pos = {}
+            if is_multi:
+                for obj in all_obstacles:
+                    if hasattr(obj, 'net_id'):
+                        old_obs_pos[obj.net_id] = obj.x
+
+            # LOGIC CŨ CỦA BẠN
             player.update(dt, world, software_factory, renderer.sdlrenderer, game_map=my_map, boxes=all_obstacles)
+
+            # [2] CHECK NẾU LOCAL PLAYER VỪA ĐẨY THÙNG
+            if is_multi:
+                for obj in all_obstacles:
+                    if hasattr(obj, 'net_id'):
+                        old_x = old_obs_pos.get(obj.net_id, obj.x)
+                        if obj.x != old_x:
+                            # Đánh dấu thời gian đẩy để không bị giật lùi
+                            obj.last_pushed_time = time.time()
+                            
+                            # Cả Client VÀ Host đều phải gửi sự kiện obstacle_move tức thời
+                            if is_client and game_client and game_client.is_connected():
+                                move_pkt = net_pkt.make_game_event('obstacle_move', nid=obj.net_id, x=obj.x)
+                                game_client._enqueue(move_pkt)
+                            elif not is_client and game_server:
+                                move_pkt = net_pkt.make_game_event('obstacle_move', nid=obj.net_id, x=obj.x)
+                                game_server.push_game_event(move_pkt)
 
             if player.entity.sprite:
                 if player.entity.sprite.x < 0: player.entity.sprite.x = 0
@@ -919,6 +948,15 @@ def run(net_mode: str = "solo", host_ip: str = "127.0.0.1", ext_seed: int = 0):
                             for proj in projectile_manager.projectiles
                         ])
                     )
+                    # [3] HOST BROADCAST TỌA ĐỘ THÙNG CHO CLIENT
+                    obs_list = []
+                    # SỬ DỤNG TRỰC TIẾP boxes + barrels
+                    for obj in boxes + barrels:
+                        if hasattr(obj, 'net_id'):
+                            obs_list.append({'nid': obj.net_id, 'x': float(obj.x), 'y': float(obj.y)})
+                    
+                    if obs_list:
+                        game_server.push_game_event(net_pkt.make_game_event('obstacle_state', obstacles=obs_list))
 
                 remote_raw = game_server.get_remote_state()
                 if remote_player:
@@ -928,7 +966,8 @@ def run(net_mode: str = "solo", host_ip: str = "127.0.0.1", ext_seed: int = 0):
                         remote_player.set_character_type(remote_char)
                     if remote_raw:
                         remote_player.apply_network_state(remote_raw)
-                    remote_player.update(dt)
+
+                    # remote_player.update(dt, my_map=my_map, obstacles=all_obstacles, enemies=all_combat_targets)
 
                 # Sync dropped items from host to client
                 for item in dropped_items:
@@ -1000,6 +1039,17 @@ def run(net_mode: str = "solo", host_ip: str = "127.0.0.1", ext_seed: int = 0):
                             if hasattr(chest, 'net_id') and chest.net_id == chest_net_id:
                                 chest.force_open()
                                 break
+                    elif t == net_pkt.GAME_EVENT:
+                        ev_name = ev.get('event')
+                        # Nhận tọa độ khi Client đẩy thùng
+                        if ev_name == 'obstacle_move':
+                            nid = ev.get('nid')
+                            nx = ev.get('x')
+                            for obj in all_obstacles:
+                                if getattr(obj, 'net_id', None) == nid:
+                                    obj.x = nx
+                                    obj.last_pushed_time = time.time()
+                                    break
 
             elif is_host and game_server and not game_server.is_connected() and game_menu.state == MenuState.GAME_PLAYING:
                 print("[Server] Client disconnected! Returning to menu.")
@@ -1049,33 +1099,65 @@ def run(net_mode: str = "solo", host_ip: str = "127.0.0.1", ext_seed: int = 0):
                         remote_player.set_character_type(host_char)
                     if remote_raw:
                         remote_player.apply_network_state(remote_raw)
-                    remote_player.update(dt)
 
+                    # remote_player.update(dt, my_map=my_map, obstacles=all_obstacles, enemies=all_combat_targets)
+
+                # Import các Enum cần thiết để ép kiểu lại đúng định dạng
+                from entities.npc import NPCState, Direction as NPCDir
+                from entities.boss import BossState, Direction as BossDir
+
+                # Cập nhật máu và vị trí NPC/Boss
                 for e_state in game_client.get_entity_state():
                     target_id = e_state.get('eid')
-                    hp = e_state.get('hp', 0)
+                    
+                    # 1. Đồng bộ NPC
                     for n in npc_manager.npcs:
-                        if getattr(n, 'net_id', id(n)) == target_id:
-                            # BUG FIX: Không gọi take_damage() khi HP = 0 vì on_death_callback
-                            # sẽ tạo item local trùng với item nhận từ ITEM_DROPPED của host.
-                            # is_alive() chỉ kiểm tra health > 0, nên chỉ cần set health = 0.
-                            n.health = hp
+                        if getattr(n, 'net_id', None) == target_id:
+                            # Bổ sung fallback bảo mật: Nếu mất gói tin máu, giữ nguyên máu hiện tại
+                            hp = e_state.get('hp', e_state.get('health', n.health))
+                            
+                            if n.health > 0 and hp <= 0: n.take_damage(n.health) 
+                            else: n.health = hp
+                            
                             n.x = e_state.get('x', n.x)
                             n.y = e_state.get('y', n.y)
-                            n.direction = 1 if e_state.get('direction', 1) > 0 else -1
-                            n.is_attacking = e_state.get('is_attacking', False)
+                            
+                            # [SỬA LỖI]: Ép kiểu từ String (mạng gửi) về lại object Enum của NPCState
+                            raw_state = e_state.get('state', '')
+                            if isinstance(raw_state, str):
+                                for s_enum in NPCState:
+                                    if s_enum.name == raw_state or s_enum.value == raw_state:
+                                        n.state = s_enum
+                                        break
+                            
+                            # [SỬA LỖI]: Lấy đúng key 'direction' mà server gửi và gán về Enum Direction
+                            raw_dir = e_state.get('direction', 1)
+                            n.direction = NPCDir.RIGHT if raw_dir == 1 else NPCDir.LEFT
                             break
+                            
+                    # 2. Đồng bộ BOSS
                     for b in boss_manager.bosses:
-                        if getattr(b, 'net_id', id(b)) == target_id:
-                            # BUG FIX: Set health trực tiếp thay vì take_damage()
-                            # tránh trigger on_death_callback tạo item trùng
-                            if hasattr(b, 'health'):
-                                b.health = hp
+                        if getattr(b, 'net_id', None) == target_id:
+                            hp = e_state.get('hp', e_state.get('health', getattr(b, 'health', 0)))
+                            
+                            if getattr(b, 'health', 0) > 0 and hp <= 0: b.take_damage(getattr(b, 'health', 0))
+                            elif hasattr(b, 'health'): b.health = hp
+                            
                             b.x = e_state.get('x', b.x)
                             b.y = e_state.get('y', b.y)
-                            b.direction = 1 if e_state.get('direction', 1) > 0 else -1
-                            b.is_attacking = e_state.get('is_attacking', False)
-                            b.attack_type = e_state.get('attack_type', 'melee')
+                            
+                            # [SỬA LỖI]: Ép kiểu từ String về BossState Enum
+                            raw_state = e_state.get('state', '')
+                            if isinstance(raw_state, str):
+                                for s_enum in BossState:
+                                    if s_enum.name == raw_state or s_enum.value == raw_state:
+                                        b.state = s_enum
+                                        break
+                            
+                            # [SỬA LỖI]: Lấy đúng key 'direction' và đổi thành Boss Direction
+                            raw_dir = e_state.get('direction', 1)
+                            if hasattr(b, 'direction'):
+                                b.direction = BossDir.RIGHT if raw_dir == 1 else BossDir.LEFT
                             break
 
                 for gev in game_client.pop_game_events():
@@ -1088,6 +1170,24 @@ def run(net_mode: str = "solo", host_ip: str = "127.0.0.1", ext_seed: int = 0):
                         elif ev_name == 'victory':
                             victory = True
                             victory_timer = victory_text_duration
+                        elif ev_name in ['obstacle_state', 'obstacle_move']:
+                            obs_list = gev.get('obstacles', [])
+                            
+                            # Nếu là sự kiện đẩy tức thời từ Host, bọc nó vào mảng để xử lý chung
+                            if ev_name == 'obstacle_move':
+                                obs_list = [{'nid': gev.get('nid'), 'x': gev.get('x')}]
+                                
+                            for o_data in obs_list:
+                                nid = o_data.get('nid')
+                                nx = o_data.get('x')
+                                
+                                # SỬ DỤNG TRỰC TIẾP boxes + barrels
+                                for obj in boxes + barrels:
+                                    if getattr(obj, 'net_id', None) == nid:
+                                        # Ép đồng bộ nếu là Host đẩy (obstacle_move) HOẶC nếu đã qua 0.5s từ lần tự đẩy
+                                        if ev_name == 'obstacle_move' or time.time() - getattr(obj, 'last_pushed_time', 0) > 0.5:
+                                            obj.x = nx
+                                        break
                     elif t == net_pkt.GAME_PAUSE:
                         if game_menu.state == MenuState.GAME_PLAYING:
                             game_menu.state = MenuState.PAUSE
@@ -1165,8 +1265,8 @@ def run(net_mode: str = "solo", host_ip: str = "127.0.0.1", ext_seed: int = 0):
                 game_menu.selected_index = 0
                 menu_action = "BACK_TO_MAIN"
 
-            elif is_multi and remote_player:
-                remote_player.update(dt)
+            # elif is_multi and remote_player:
+            #     remote_player.update(dt, my_map=my_map, obstacles=all_obstacles, enemies=all_combat_targets)
 
             for box in boxes: box.update(dt, my_map)
             for barrel in barrels: barrel.update(dt, my_map)
@@ -1235,6 +1335,12 @@ def run(net_mode: str = "solo", host_ip: str = "127.0.0.1", ext_seed: int = 0):
             
             all_combat_targets = alive_npcs + alive_bosses + all_minions
             
+            # ================= ĐẶT VÀO ĐÂY =================
+            # Lúc này mọi dữ liệu map, quái, thùng đều đã sẵn sàng 100%
+            if is_multi and remote_player:
+                remote_player.update(dt, my_map=my_map, obstacles=all_obstacles, enemies=all_combat_targets)
+            # ===============================================
+
             network_ctx = (is_multi, is_host, game_client)
 
             # [SỬA LỖI Ở ĐÂY] Lấy danh sách đạn đang bay và truyền vào cho nhân vật
