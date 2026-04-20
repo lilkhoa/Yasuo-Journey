@@ -16,7 +16,14 @@ BOX_PUSH_THRESHOLD = 0.2  # Time (second) which the player need to hold before p
 BOX_PUSH_SPEED_RATIO = 0.7 # Speed of Player while pushing the box (reduce 30% to normal)
 
 class Box:
+    # Thêm bộ đếm ID cho Box (Bắt đầu từ 1000 để không trùng với Barrel)
+    _next_net_id = 1000
+
     def __init__(self, x, y, texture):
+        self.net_id = Box._next_net_id
+        Box._next_net_id += 1
+        self.last_pushed_time = 0.0  # [MỚI] Chống giật lùi khi lag mạng
+
         self.x = x
         self.y = y
         self.initial_x = x  # Store initial position for reset
@@ -170,6 +177,8 @@ class Barrel:
         """
         self.net_id = Barrel._next_net_id
         Barrel._next_net_id += 1
+        self.last_pushed_time = 0.0  # [MỚI] Chống giật lùi khi lag mạng
+
         self.x = x
         self.y = y
         self.initial_x = x  # Store initial position for reset

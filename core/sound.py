@@ -427,6 +427,13 @@ class SoundManager:
             sdl2.sdlmixer.Mix_VolumeChunk(self.sounds[name], vol)
         else:
             print(f"[CẢNH BÁO] Không tìm thấy âm thanh '{name}' để chỉnh âm lượng.")
+        
+    def set_all_sfx_volume(self, volume_percent=0.2):
+        vol = int(sdl2.sdlmixer.MIX_MAX_VOLUME * volume_percent)
+        
+        for sound in self.sounds.values():
+            if sound:
+                sdl2.sdlmixer.Mix_VolumeChunk(sound, vol)
 
 
 # Global sound manager instance (singleton pattern)

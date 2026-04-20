@@ -27,8 +27,8 @@ SKILLS_PATH = "assets/Skills"
 DEBUG_COLLISION_BOXES = False  # Set to True to see collision boxes and hitboxes
 
 # Sound settings
-MUSIC_VOLUME = 50
-SFX_VOLUME = 50
+MUSIC_VOLUME = 20
+SFX_VOLUME = 20
 
 # NPC Settings
 NPC_GHOST_HEALTH = 50
